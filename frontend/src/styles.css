@@ -1,0 +1,102 @@
+:root {
+  --tinta: #16181d;
+  --tinta-fraca: #5c6270;
+  --fundo: #f6f7f9;
+  --papel: #ffffff;
+  --borda: #e2e5ea;
+  --acento: #2f5bd7;
+  --rascunho: #b7791f;
+  --rascunho-fundo: #fdf6e3;
+  --publicado: #1a7f52;
+  --publicado-fundo: #e8f6ef;
+  --erro: #b42318;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  color: var(--tinta);
+  background: var(--fundo);
+}
+
+a { color: var(--acento); }
+
+.topo {
+  display: flex; align-items: center; gap: 20px;
+  padding: 12px 24px; background: var(--papel); border-bottom: 1px solid var(--borda);
+}
+.topo h1 { font-size: 15px; margin: 0; font-weight: 650; }
+.topo nav { display: flex; gap: 4px; margin-left: auto; align-items: center; }
+.topo nav a {
+  padding: 6px 12px; border-radius: 6px; text-decoration: none;
+  color: var(--tinta-fraca); font-weight: 500;
+}
+.topo nav a.ativo { background: var(--fundo); color: var(--tinta); }
+.quem { color: var(--tinta-fraca); font-size: 13px; }
+
+main { max-width: 980px; margin: 0 auto; padding: 24px; }
+
+h2 { font-size: 20px; margin: 0 0 4px; }
+h3 { font-size: 15px; margin: 24px 0 8px; }
+.legenda { color: var(--tinta-fraca); margin: 0 0 20px; font-size: 14px; }
+
+.cartao {
+  background: var(--papel); border: 1px solid var(--borda);
+  border-radius: 10px; padding: 16px; margin-bottom: 12px;
+}
+.cartao h4 { margin: 0 0 6px; font-size: 15px; }
+
+.etiqueta {
+  display: inline-block; padding: 2px 8px; border-radius: 20px;
+  font-size: 11px; font-weight: 650; letter-spacing: .3px; text-transform: uppercase;
+}
+.etiqueta.rascunho { background: var(--rascunho-fundo); color: var(--rascunho); }
+.etiqueta.publicado { background: var(--publicado-fundo); color: var(--publicado); }
+
+button {
+  font: inherit; padding: 8px 14px; border-radius: 7px; cursor: pointer;
+  border: 1px solid var(--borda); background: var(--papel); color: var(--tinta);
+}
+button:hover:not(:disabled) { border-color: var(--tinta-fraca); }
+button:disabled { opacity: .5; cursor: default; }
+button.primario { background: var(--acento); border-color: var(--acento); color: #fff; }
+button.perigo { color: var(--erro); }
+
+.linha { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.entre { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
+
+input, select {
+  font: inherit; padding: 8px 10px; border: 1px solid var(--borda);
+  border-radius: 7px; background: var(--papel); width: 100%;
+}
+
+.entrar { max-width: 380px; margin: 12vh auto; }
+.entrar .cartao { padding: 24px; }
+.entrar label { display: block; margin-bottom: 12px; font-size: 13px; color: var(--tinta-fraca); }
+.entrar input { margin-top: 4px; }
+
+.alternativa {
+  display: flex; gap: 10px; align-items: flex-start; padding: 9px 12px;
+  border: 1px solid var(--borda); border-radius: 8px; margin-bottom: 6px;
+  cursor: pointer; background: var(--papel);
+}
+.alternativa:hover { border-color: var(--tinta-fraca); }
+.alternativa.marcada { border-color: var(--acento); background: #f4f7ff; }
+.alternativa .letra { font-weight: 650; min-width: 18px; }
+
+.erro { color: var(--erro); background: #fef3f2; border: 1px solid #fecdca;
+        padding: 10px 12px; border-radius: 8px; margin-bottom: 12px; font-size: 14px; }
+.vazio { color: var(--tinta-fraca); padding: 32px; text-align: center;
+         border: 1px dashed var(--borda); border-radius: 10px; }
+
+table { width: 100%; border-collapse: collapse; font-size: 14px; }
+th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--borda); }
+th { color: var(--tinta-fraca); font-weight: 600; font-size: 12px; text-transform: uppercase; }
+
+.barra { height: 6px; background: var(--fundo); border-radius: 4px; overflow: hidden; min-width: 90px; }
+.barra > div { height: 100%; background: var(--acento); }
+
+iframe { border: 0; border-radius: 8px; width: 100%; aspect-ratio: 16/9; background: #000; }
+.mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }

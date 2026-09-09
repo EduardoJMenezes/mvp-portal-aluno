@@ -1,0 +1,23 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(.venv/bin/python -m pytest:*)",
+      "Bash(.venv/bin/python -m app.seed:*)",
+      "Bash(.venv/bin/python scripts/verificar_fluxos.py:*)",
+      "Bash(.venv/bin/python scripts/token_mcp.py:*)",
+      "Bash(.venv/bin/python -m uvicorn:*)",
+      "Bash(npm run build:*)",
+      "Bash(npm run dev:*)",
+      "Bash(npx tsc --noEmit:*)",
+      "Bash(psql -d plataforma_mvp:*)",
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)"
+    ],
+    "deny": [
+      "Read(./.env)",
+      "Bash(cat .env)",
+      "Bash(dropdb:*)"
+    ]
+  }
+}
