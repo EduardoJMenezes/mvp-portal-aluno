@@ -62,6 +62,40 @@ documentação da API em `/docs`.
 Para mexer no frontend com recarregamento automático: `npm run dev` em
 `frontend/` (porta 5173, com proxy para o backend).
 
+### Deploy no Railway
+
+Crie **um serviço de aplicação** conectado a este repositório e um serviço
+PostgreSQL. Mantenha a raiz do repositório como Root Directory: o Railway
+[detecta o Dockerfile da raiz](https://docs.railway.com/builds/dockerfiles).
+O build usa Node 20 e a execução usa Python 3.11; o mesmo Uvicorn serve o
+frontend, `/api` e `/mcp`, em `0.0.0.0:$PORT`. Deixe o Start Command sem override
+para usar o comando do Dockerfile.
+
+Nas variáveis do serviço de aplicação, configure (ajuste `Postgres` se o
+serviço de banco tiver outro nome):
+
+```text
+DATABASE_URL=postgresql+psycopg://${{Postgres.PGUSER}}:${{Postgres.PGPASSWORD}}@${{Postgres.PGHOST}}:${{Postgres.PGPORT}}/${{Postgres.PGDATABASE}}
+JWT_SECRET=<segredo aleatório próprio do ambiente>
+CORS_ORIGINS=https://<domínio público da aplicação>
+```
+
+As [variáveis do PostgreSQL](https://docs.railway.com/databases/postgresql)
+são referências ao serviço de banco. O prefixo `postgresql+psycopg://` seleciona
+o driver instalado pelo projeto. `VIMEO_ACCESS_TOKEN` é opcional: sem ele,
+permanece o acervo de demonstração. A porta é fornecida pelo Railway.
+
+O servidor não cria o schema ao iniciar. Para esta POC, execute uma vez
+`python -m app.seed` dentro do serviço, com as variáveis do banco configuradas,
+para criar as tabelas e os dados de demonstração. Esse comando cria as contas
+com a senha de demonstração descrita abaixo e imprime tokens MCP; não use
+`--reset` em um banco que precise preservar. O seed não faz parte do comando
+de inicialização do container.
+
+Gere um domínio público para a aplicação e configure `/api/saude` como caminho
+do healthcheck. Esse endpoint verifica a resposta da aplicação, sem consultar
+o banco. Portal e MCP ficam no mesmo domínio, com o MCP em `/mcp`.
+
 ### Contas da demonstração
 
 Senha de todas: `demo1234`
