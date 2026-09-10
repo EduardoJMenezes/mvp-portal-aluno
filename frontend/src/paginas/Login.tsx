@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { api, type Usuario } from "../api";
 
 const DEMO = [
@@ -13,6 +13,12 @@ export default function Login({ aoEntrar }: { aoEntrar: (u: Usuario) => void }) 
   const [erro, setErro] = useState("");
   const [ocupado, setOcupado] = useState(false);
 
+  useEffect(() => {
+    if (!erro) return;
+    const timeout = window.setTimeout(() => setErro(""), 6000);
+    return () => window.clearTimeout(timeout);
+  }, [erro]);
+
   async function enviar(e: React.FormEvent) {
     e.preventDefault();
     setErro("");
@@ -22,7 +28,7 @@ export default function Login({ aoEntrar }: { aoEntrar: (u: Usuario) => void }) 
       localStorage.setItem("token", r.token);
       aoEntrar(r.usuario);
     } catch (ex) {
-      setErro((ex as Error).message);
+      setErro((ex instanceof Error ? ex.message.trim() : "") || "Não foi possível entrar. Tente novamente.");
     } finally {
       setOcupado(false);
     }
@@ -30,10 +36,21 @@ export default function Login({ aoEntrar }: { aoEntrar: (u: Usuario) => void }) 
 
   return (
     <div className="entrar">
+      {erro && (
+        <div className="toast-login-erro" role="alert" aria-live="assertive" aria-atomic="true">
+          <div className="toast-login-conteudo">
+            <strong>Erro ao entrar</strong>
+            <p>{erro}</p>
+          </div>
+          <button type="button" className="toast-login-fechar" aria-label="Fechar erro de login"
+                  onClick={() => setErro("")}>
+            <span aria-hidden="true">×</span>
+          </button>
+        </div>
+      )}
       <h2>Entrar</h2>
       <p className="legenda">Plataforma Educacional — POC MCP</p>
       <form className="cartao" onSubmit={enviar}>
-        {erro && <div className="erro">{erro}</div>}
         <label>
           E-mail
           <input value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="username" />

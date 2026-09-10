@@ -77,6 +77,32 @@ input, select {
 .entrar label { display: block; margin-bottom: 12px; font-size: 13px; color: var(--tinta-fraca); }
 .entrar input { margin-top: 4px; }
 
+.toast-login-erro {
+  position: fixed;
+  top: max(16px, env(safe-area-inset-top));
+  right: max(16px, env(safe-area-inset-right));
+  z-index: 1000;
+  display: flex; align-items: flex-start; gap: 12px;
+  width: min(380px, calc(100vw - 32px));
+  max-height: calc(100dvh - 32px); overflow-y: auto;
+  padding: 14px 12px 14px 16px;
+  color: var(--erro); background: #fef3f2;
+  border: 1px solid #fecdca; border-left: 4px solid var(--erro);
+  border-radius: 12px; box-shadow: 0 8px 24px rgb(22 24 29 / 12%);
+  font-size: 14px;
+}
+.toast-login-conteudo { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.toast-login-conteudo strong { display: block; font-weight: 650; }
+.toast-login-conteudo p { margin: 4px 0 0; }
+.toast-login-fechar {
+  flex: 0 0 44px; width: 44px; height: 44px; padding: 0;
+  display: grid; place-items: center;
+  color: var(--erro); background: transparent; border-color: transparent;
+  font-size: 24px; line-height: 1;
+}
+.toast-login-fechar:hover:not(:disabled) { background: #fee4e2; border-color: #fecdca; }
+.toast-login-fechar:focus-visible { outline: 2px solid var(--erro); outline-offset: 2px; }
+
 .alternativa {
   display: flex; gap: 10px; align-items: flex-start; padding: 9px 12px;
   border: 1px solid var(--borda); border-radius: 8px; margin-bottom: 6px;

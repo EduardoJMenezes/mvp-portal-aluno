@@ -12,7 +12,7 @@ async function req<T>(caminho: string, init: RequestInit = {}): Promise<T> {
   if (t) cabecalhos.authorization = `Bearer ${t}`;
 
   const resposta = await fetch(BASE + caminho, { ...init, headers: { ...cabecalhos, ...(init.headers as object) } });
-  if (resposta.status === 401) {
+  if (resposta.status === 401 && caminho !== "/login") {
     localStorage.clear();
     window.location.href = "/";
     throw new Error("Sessão expirada.");
