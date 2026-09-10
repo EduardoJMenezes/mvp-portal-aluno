@@ -2,6 +2,7 @@
 
 from functools import lru_cache
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -24,6 +25,18 @@ class Settings(BaseSettings):
     app_host: str = "127.0.0.1"
     app_port: int = 8000
     cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
+
+    @field_validator("database_url", mode="before")
+    @classmethod
+    def _driver_psycopg(cls, valor: object) -> object:
+        """Aceita a URL como Railway e Heroku a entregam: `postgresql://` ou
+        `postgres://`, sem driver. O SQLAlchemy mapearia esses esquemas para o
+        psycopg2, que não está instalado — aqui só existe o psycopg 3."""
+        if isinstance(valor, str):
+            for prefixo in ("postgresql://", "postgres://"):
+                if valor.startswith(prefixo):
+                    return "postgresql+psycopg://" + valor[len(prefixo):]
+        return valor
 
     @property
     def lista_cors(self) -> list[str]:

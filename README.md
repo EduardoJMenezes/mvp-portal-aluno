@@ -75,26 +75,29 @@ Nas variáveis do serviço de aplicação, configure (ajuste `Postgres` se o
 serviço de banco tiver outro nome):
 
 ```text
-DATABASE_URL=postgresql+psycopg://${{Postgres.PGUSER}}:${{Postgres.PGPASSWORD}}@${{Postgres.PGHOST}}:${{Postgres.PGPORT}}/${{Postgres.PGDATABASE}}
+DATABASE_URL=${{Postgres.DATABASE_URL}}
 JWT_SECRET=<segredo aleatório próprio do ambiente>
 CORS_ORIGINS=https://<domínio público da aplicação>
 ```
 
-As [variáveis do PostgreSQL](https://docs.railway.com/databases/postgresql)
-são referências ao serviço de banco. O prefixo `postgresql+psycopg://` seleciona
-o driver instalado pelo projeto. `VIMEO_ACCESS_TOKEN` é opcional: sem ele,
-permanece o acervo de demonstração. A porta é fornecida pelo Railway.
+`DATABASE_URL` é uma [referência ao serviço PostgreSQL](https://docs.railway.com/databases/postgresql).
+O Railway a entrega como `postgresql://…`, sem driver; a aplicação troca o
+esquema por `postgresql+psycopg://`, que é o driver instalado — as duas formas
+funcionam. Sem essa variável o backend tenta o Postgres local do container e o
+login falha. `VIMEO_ACCESS_TOKEN` é opcional: sem ele, permanece o acervo de
+demonstração. A porta é fornecida pelo Railway.
 
-O servidor não cria o schema ao iniciar. Para esta POC, execute uma vez
-`python -m app.seed` dentro do serviço, com as variáveis do banco configuradas,
-para criar as tabelas e os dados de demonstração. Esse comando cria as contas
-com a senha de demonstração descrita abaixo e imprime tokens MCP; não use
-`--reset` em um banco que precise preservar. O seed não faz parte do comando
-de inicialização do container.
+O servidor não cria o schema ao iniciar. Configure `python -m app.seed` como
+**Pre-Deploy Command** do serviço: na primeira execução ele cria as tabelas e
+os dados de demonstração (e imprime os tokens MCP no log do pre-deploy); nas
+seguintes, encontra dados e não faz nada. Nunca use `--reset` no deploy: ele
+apaga o banco.
 
 Gere um domínio público para a aplicação e configure `/api/saude` como caminho
-do healthcheck. Esse endpoint verifica a resposta da aplicação, sem consultar
-o banco. Portal e MCP ficam no mesmo domínio, com o MCP em `/mcp`.
+do healthcheck. O endpoint executa `SELECT 1` no banco e responde 503 quando
+ele está inacessível — um `DATABASE_URL` errado reprova o deploy em vez de
+aparecer como erro na tela de login. Portal e MCP ficam no mesmo domínio, com
+o MCP em `/mcp`.
 
 ### Contas da demonstração
 
@@ -166,7 +169,7 @@ que existe — o modelo se corrige em vez de inventar.
 ## Testes
 
 ```bash
-.venv/bin/python -m pytest backend/tests -q     # 38 testes, contra Postgres real
+.venv/bin/python -m pytest backend/tests -q     # 47 testes, contra Postgres real
 
 # ensaio geral: fala com o MCP como o Claude e com o portal como o aluno
 .venv/bin/python -m app.seed --reset
@@ -185,7 +188,7 @@ backend/app/
   mcp_server/        instância, autenticação e tools do MCP
   vimeo/client.py    API REST do Vimeo + acervo de demonstração
 frontend/src/        React + Vite: portal do professor e do aluno
-backend/tests/       38 testes
+backend/tests/       47 testes
 scripts/             emissão de tokens e ensaio dos quatro fluxos
 docs/                especificação, arquitetura, roteiro, Vimeo
 ```

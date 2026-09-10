@@ -9,7 +9,14 @@ from app.config import get_settings
 
 _settings = get_settings()
 
-engine = create_engine(_settings.database_url, pool_pre_ping=True, future=True)
+engine = create_engine(
+    _settings.database_url,
+    pool_pre_ping=True,
+    future=True,
+    # Banco inacessível precisa virar erro em segundos (503 no portal), não uma
+    # requisição pendurada até o TCP desistir.
+    connect_args={"connect_timeout": 10},
+)
 SessionLocal = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
 
 

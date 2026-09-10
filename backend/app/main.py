@@ -17,10 +17,13 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
+from sqlalchemy import text
+from sqlalchemy.exc import OperationalError
 from starlette.exceptions import HTTPException
 
 from app.api import admin_routes, aluno_routes, auth_routes
 from app.config import get_settings
+from app.db import engine
 from app.errors import AprovacaoNecessaria, NaoAutorizado, NaoEncontrado, RegraDeNegocio
 
 # Importar o módulo de tools registra todas elas na instância `mcp`.
@@ -114,13 +117,51 @@ def _regra(_: Request, exc: RegraDeNegocio) -> JSONResponse:
     return JSONResponse(status_code=400, content={"detail": str(exc)})
 
 
+# Os dois handlers abaixo existem porque o portal mostra `detail` ao usuário.
+# Sem eles, banco fora do ar e bug respondem "Internal Server Error" em texto
+# puro — e a tela de login fica sem uma frase para exibir.
+
+MENSAGEM_BANCO_FORA = "Banco de dados indisponível no momento. Tente novamente em instantes."
+MENSAGEM_ERRO_INTERNO = "Erro interno no servidor. Tente novamente em instantes."
+
+
+@app.exception_handler(OperationalError)
+def _banco_indisponivel(request: Request, exc: OperationalError) -> JSONResponse:
+    # Conexão recusada, host errado, senha inválida: problema de infraestrutura,
+    # não do usuário. Host e usuário do banco ficam só no log.
+    logger.error("banco indisponível em %s %s: %s", request.method, request.url.path, exc)
+    return JSONResponse(status_code=503, content={"detail": MENSAGEM_BANCO_FORA})
+
+
+@app.exception_handler(Exception)
+def _erro_inesperado(_: Request, __: Exception) -> JSONResponse:
+    # O traceback continua indo para o log: o Starlette relança a exceção
+    # depois de enviar esta resposta.
+    return JSONResponse(status_code=500, content={"detail": MENSAGEM_ERRO_INTERNO})
+
+
 @app.get("/api/saude", tags=["infra"])
-def saude() -> dict:
-    return {
-        "ok": True,
-        "vimeo": "api-real" if settings.vimeo_real else "acervo-de-demonstracao",
-        "mcp": "/mcp",
-    }
+def saude() -> JSONResponse:
+    # O Railway usa este caminho para aprovar um deploy. Sem sondar o banco, um
+    # DATABASE_URL errado passa no healthcheck e só aparece como erro na tela
+    # de login — foi exatamente o que aconteceu no primeiro deploy.
+    try:
+        with engine.connect() as conexao:
+            conexao.execute(text("SELECT 1"))
+        banco = "ok"
+    except OperationalError as exc:
+        logger.error("healthcheck: banco indisponível: %s", exc)
+        banco = "indisponivel"
+
+    return JSONResponse(
+        status_code=200 if banco == "ok" else 503,
+        content={
+            "ok": banco == "ok",
+            "banco": banco,
+            "vimeo": "api-real" if settings.vimeo_real else "acervo-de-demonstracao",
+            "mcp": "/mcp",
+        },
+    )
 
 
 app.include_router(auth_routes.router)

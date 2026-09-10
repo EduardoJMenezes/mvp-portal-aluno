@@ -2,8 +2,42 @@
 
 const BASE = "/api";
 
+// Tempo máximo de espera por uma resposta. Sem isso, um banco que não responde
+// deixa o botão em "entrando…" até o navegador desistir sozinho (minutos).
+const TEMPO_LIMITE_MS = 15_000;
+
 function token(): string | null {
   return localStorage.getItem("token");
+}
+
+// Traduz uma resposta de erro em uma frase para a tela. As páginas mostram
+// `Error.message` direto ao usuário, então nada de texto do navegador ou do
+// proxy em inglês — e nada de `statusText`, que vem vazio em HTTP/2.
+async function mensagemDeErro(resposta: Response): Promise<string> {
+  const corpo: unknown = await resposta.json().catch(() => null);
+  const detail = corpo && typeof corpo === "object" ? (corpo as { detail?: unknown }).detail : undefined;
+
+  if (typeof detail === "string" && detail.trim()) return detail;
+
+  // 422 do FastAPI: uma lista de erros de validação, cada um com o caminho do campo.
+  if (Array.isArray(detail)) {
+    const campos = detail
+      .map((e) => (Array.isArray(e?.loc) ? String(e.loc[e.loc.length - 1]) : ""))
+      .filter(Boolean);
+    return campos.length
+      ? `Campos inválidos: ${[...new Set(campos)].join(", ")}.`
+      : "Dados inválidos na requisição.";
+  }
+
+  // Sem `detail` legível: a resposta veio do proxy (502/503 do Railway) ou do
+  // servidor em texto puro. A frase sai do status.
+  if (resposta.status >= 502 && resposta.status <= 504) {
+    return `Servidor indisponível no momento (HTTP ${resposta.status}). Tente novamente em alguns segundos.`;
+  }
+  if (resposta.status >= 500) {
+    return `Erro interno no servidor (HTTP ${resposta.status}). Tente novamente em instantes.`;
+  }
+  return `Falha na requisição (HTTP ${resposta.status}).`;
 }
 
 async function req<T>(caminho: string, init: RequestInit = {}): Promise<T> {
@@ -11,16 +45,31 @@ async function req<T>(caminho: string, init: RequestInit = {}): Promise<T> {
   const t = token();
   if (t) cabecalhos.authorization = `Bearer ${t}`;
 
-  const resposta = await fetch(BASE + caminho, { ...init, headers: { ...cabecalhos, ...(init.headers as object) } });
+  let resposta: Response;
+  try {
+    resposta = await fetch(BASE + caminho, {
+      ...init,
+      headers: { ...cabecalhos, ...(init.headers as object) },
+      signal: init.signal ?? AbortSignal.timeout(TEMPO_LIMITE_MS),
+    });
+  } catch (ex) {
+    // fetch só rejeita quando não houve resposta nenhuma: rede, DNS, servidor
+    // fora do ar ou o tempo limite acima.
+    if (ex instanceof DOMException && ex.name === "TimeoutError") {
+      throw new Error("O servidor demorou demais para responder. Tente novamente.");
+    }
+    if (ex instanceof DOMException && ex.name === "AbortError") {
+      throw new Error("Requisição cancelada.");
+    }
+    throw new Error("Não foi possível conectar ao servidor. Verifique sua conexão e tente novamente.");
+  }
+
   if (resposta.status === 401 && caminho !== "/login") {
     localStorage.clear();
     window.location.href = "/";
     throw new Error("Sessão expirada.");
   }
-  if (!resposta.ok) {
-    const corpo = await resposta.json().catch(() => ({ detail: resposta.statusText }));
-    throw new Error(corpo.detail ?? "Falha na requisição.");
-  }
+  if (!resposta.ok) throw new Error(await mensagemDeErro(resposta));
   return resposta.json();
 }
 
