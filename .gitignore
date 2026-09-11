@@ -16,3 +16,5 @@ frontend/dist/
 
 # macOS
 .DS_Store
+# saída da POC da API do Vimeo (respostas cruas, podem conter metadados)
+.poc_vimeo/
