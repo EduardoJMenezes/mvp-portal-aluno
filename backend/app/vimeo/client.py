@@ -1,8 +1,10 @@
 """Acesso ao Vimeo.
 
-Não existe MCP oficial do Vimeo (só implementações de terceiros), então quem
-fala com o Vimeo é o backend, pela API REST oficial — que é a alternativa
-prevista na seção 8 do MVP. O agente chega ao acervo pelas nossas tools.
+Existe um MCP oficial do Vimeo (beta, plano Pro ou superior), mas ele não entra
+no produto: quem fala com o Vimeo é o backend, pela API REST oficial — que é a
+alternativa prevista na seção 8 do MVP. O porquê está em docs/VIMEO.md e a
+pesquisa completa da API em docs/vimeo-integracao/. O agente chega ao acervo
+pelas nossas tools.
 
 Duas implementações atrás da mesma interface: a real (`VimeoAPI`) e um acervo
 de demonstração (`VimeoDemo`), usado enquanto não há token. Trocar uma pela

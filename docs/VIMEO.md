@@ -3,10 +3,25 @@
 ## Por que o backend fala com o Vimeo
 
 A seção 8 do MVP sugere usar o MCP oficial do Vimeo quando ele expuser as
-operações necessárias. **Não existe MCP oficial do Vimeo** — só implementações
-de terceiros. Então quem conversa com o Vimeo é o nosso backend, pela API REST
-oficial, que é a alternativa que a própria especificação prevê. O agente chega
-ao acervo pela tool `listar_videos_vimeo`.
+operações necessárias. **O MCP oficial existe** — `https://mcp.vimeo.com/mcp`,
+em beta público, exigindo plano Pro ou superior e login OAuth de cada pessoa —,
+**mas ele não entra no produto**. Três motivos:
+
+* ele não conhece a regra de rascunho e aprovação (§6): pelo MCP do Vimeo o
+  modelo mexeria no acervo direto, fora do nosso fluxo;
+* ele autentica uma pessoa num cliente de chat, e o portal precisa de credencial
+  de servidor para job, sincronização e reconciliação, sem ninguém logado;
+* a tela do aluno e o snapshot no PostgreSQL dependem da API REST de qualquer
+  forma.
+
+Então quem conversa com o Vimeo é o nosso backend, pela API REST oficial, que é
+a alternativa que a própria especificação prevê. O agente chega ao acervo pela
+tool `listar_videos_vimeo`. Como ferramenta pessoal do professor, em paralelo ao
+produto, o MCP oficial é bem-vindo — o job de reconciliação é quem percebe o que
+for alterado por fora.
+
+A pesquisa completa das capacidades da API, com matriz, gaps e plano de
+implementação, está em [vimeo-integracao/](vimeo-integracao/README.md).
 
 ## Credencial: Personal Access Token
 
