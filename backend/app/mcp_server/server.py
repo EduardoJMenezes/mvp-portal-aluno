@@ -10,7 +10,7 @@ import os
 
 from fastmcp import FastMCP
 
-from app.mcp_server.auth import TokenDaPlataforma
+from app.mcp_server.auth import construir_auth
 
 # Estas instruções são a camada de bom comportamento — úteis, e insuficientes
 # por si só. A garantia de verdade está no backend: publicar exige aprovação
@@ -40,5 +40,5 @@ mcp = FastMCP(
     name="plataforma-educacional",
     version=os.getenv("MCP_SERVER_VERSION", "0.1.0"),
     instructions=INSTRUCOES,
-    auth=TokenDaPlataforma(),
+    auth=construir_auth(),
 )

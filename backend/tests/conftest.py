@@ -11,6 +11,7 @@ os.environ.setdefault("DATABASE_URL", "postgresql+psycopg:///plataforma_mvp_test
 
 import pytest
 from sqlalchemy import create_engine
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import sessionmaker
 
 from app.config import get_settings
@@ -36,8 +37,21 @@ engine = create_engine(get_settings().database_url, future=True)
 Sessao = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
 
 
-@pytest.fixture(scope="session", autouse=True)
+# Sem autouse de propósito: quem precisa de banco pede `db`, que depende desta
+# fixture. Assim a metade da suíte que não toca o Postgres — Vimeo, leitura de
+# nomes, config, montagem do servidor — roda em máquina sem banco.
+@pytest.fixture(scope="session")
 def schema():
+    try:
+        with engine.connect():
+            pass
+    except OperationalError as e:  # noqa: F841
+        pytest.skip(
+            f"Postgres de teste indisponível em {engine.url}: suba o servidor e crie o "
+            "banco (createdb plataforma_mvp_test) para rodar a parte que depende dele.",
+            allow_module_level=True,
+        )
+
     Base.metadata.drop_all(engine)
     Base.metadata.create_all(engine)
     yield

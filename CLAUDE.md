@@ -65,11 +65,20 @@ Ensaio geral dos quatro fluxos do §21, contra o servidor no ar:
 
 ## Armadilhas conhecidas
 
-* **Ordem de montagem em `main.py`.** O MCP vai em `/mcp` e o frontend
-  estático em `/` — nessa ordem. Um mount em `/` casa com qualquer caminho e
-  encerra o roteamento; invertê-los faz o `dist` sequestrar o endpoint do MCP
-  (405 em toda chamada). O middleware `BarraFinalDoMcp` existe para `/mcp` e
-  `/mcp/` serem a mesma coisa.
+* **Ordem de montagem em `main.py`.** Quem hospeda é o app do MCP; o FastAPI
+  (REST + portal) entra como `Mount("/")` e fica **sempre por último**. Um mount
+  em `/` casa com qualquer caminho e encerra o roteamento: com o portal na
+  frente, ele sequestra `/mcp` (405 em toda chamada) e também as rotas de OAuth
+  que moram na raiz — `/authorize`, `/token`, `/.well-known/...` —, e aí o
+  conector do claude.ai recebe HTML onde espera JSON e desiste do servidor. Ver
+  [docs/MCP-OAUTH.md](docs/MCP-OAUTH.md). O middleware `BarraFinalDoMcp` existe
+  para `/mcp` e `/mcp/` serem a mesma coisa.
+* **Duas credenciais, uma identidade.** O MCP aceita token Bearer opaco (Claude
+  Code, scripts) e login OAuth no GitHub (claude.ai), via `MultiAuth`. As duas
+  terminam nos mesmos claims, e `identidade_da_sessao()` não sabe por qual
+  porta a pessoa entrou — mantenha assim. Quem entra pelo GitHub só abre sessão
+  se `MCP_OAUTH_OPERADORES` (ou o e-mail público) casar com um ADMIN ou
+  GERENCIADOR.
 * **Elicitation mudou no protocolo 2026-07-28.** Requisição iniciada pelo
   servidor não existe mais; o canal é `InputRequiredResult` (SEP-2322).
   `publicar_rascunho` implementa os dois caminhos — não simplifique para só um.

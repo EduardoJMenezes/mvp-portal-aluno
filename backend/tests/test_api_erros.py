@@ -27,12 +27,12 @@ def cliente_sem_banco(monkeypatch):
         finally:
             db.close()
 
-    main.app.dependency_overrides[get_db] = _sessao
+    main.api.dependency_overrides[get_db] = _sessao
     monkeypatch.setattr(main, "engine", _SEM_BANCO)
     try:
         yield TestClient(main.app, raise_server_exceptions=False)
     finally:
-        main.app.dependency_overrides.pop(get_db, None)
+        main.api.dependency_overrides.pop(get_db, None)
 
 
 def test_login_com_banco_fora_responde_503_em_json(cliente_sem_banco) -> None:
@@ -48,7 +48,7 @@ def test_saude_reprova_o_deploy_quando_o_banco_esta_fora(cliente_sem_banco) -> N
     assert r.json()["banco"] == "indisponivel"
 
 
-def test_saude_com_banco_no_ar() -> None:
+def test_saude_com_banco_no_ar(schema) -> None:
     r = TestClient(main.app).get("/api/saude")
     assert r.status_code == 200
     assert r.json()["ok"] is True
@@ -59,11 +59,11 @@ def test_erro_inesperado_responde_500_em_json() -> None:
     def _explode():
         raise RuntimeError("bug simulado")
 
-    main.app.dependency_overrides[get_db] = _explode
+    main.api.dependency_overrides[get_db] = _explode
     try:
         r = TestClient(main.app, raise_server_exceptions=False).post("/api/login", json=CREDENCIAIS)
     finally:
-        main.app.dependency_overrides.pop(get_db, None)
+        main.api.dependency_overrides.pop(get_db, None)
     assert r.status_code == 500
     assert r.json() == {"detail": main.MENSAGEM_ERRO_INTERNO}
 

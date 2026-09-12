@@ -22,6 +22,20 @@ class Settings(BaseSettings):
     vimeo_access_token: str | None = None
     vimeo_api_base: str = "https://api.vimeo.com"
 
+    # OAuth do MCP. O Claude Code manda um header fixo e se contenta com o
+    # token opaco; conector remoto (claude.ai) só fala OAuth. Preenchendo as
+    # três variáveis abaixo, o servidor passa a aceitar os dois — ver
+    # docs/MCP-OAUTH.md. Vazias, fica só o Bearer, como sempre foi.
+    mcp_base_url: str | None = None
+    mcp_oauth_github_client_id: str | None = None
+    mcp_oauth_github_client_secret: str | None = None
+
+    # Quem do GitHub corresponde a qual operador da plataforma:
+    # "EduardoJMenezes=professor@escola.demo, outro@git.hub=chefe@escola.demo".
+    # Sem entrada aqui, vale o e-mail público do GitHub, se ele existir como
+    # ADMIN ou GERENCIADOR. Login do GitHub é case-insensitive.
+    mcp_oauth_operadores: str = ""
+
     app_host: str = "127.0.0.1"
     app_port: int = 8000
     cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
@@ -45,6 +59,26 @@ class Settings(BaseSettings):
     @property
     def vimeo_real(self) -> bool:
         return bool(self.vimeo_access_token and self.vimeo_access_token.strip())
+
+    @property
+    def oauth_mcp_ativo(self) -> bool:
+        """Só liga o OAuth quando as três peças existem — meio configurado não
+        vale: o cliente descobriria o /authorize e bateria num 500."""
+        return bool(
+            self.mcp_base_url
+            and self.mcp_oauth_github_client_id
+            and self.mcp_oauth_github_client_secret
+        )
+
+    @property
+    def mapa_operadores_oauth(self) -> dict[str, str]:
+        """Identificador do GitHub (login ou e-mail) -> e-mail na plataforma."""
+        mapa: dict[str, str] = {}
+        for par in self.mcp_oauth_operadores.split(","):
+            chave, _, valor = par.partition("=")
+            if chave.strip() and valor.strip():
+                mapa[chave.strip().lower()] = valor.strip().lower()
+        return mapa
 
 
 @lru_cache

@@ -14,12 +14,14 @@ import logging
 from pathlib import Path
 
 from fastapi import FastAPI, Request
-from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
 from sqlalchemy.exc import OperationalError
 from starlette.exceptions import HTTPException
+from starlette.middleware import Middleware
+from starlette.middleware.cors import CORSMiddleware
+from starlette.routing import Mount
 
 from app.api import admin_routes, aluno_routes, auth_routes
 from app.config import get_settings
@@ -34,6 +36,8 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name
 logger = logging.getLogger("plataforma")
 
 settings = get_settings()
+
+CAMINHO_MCP = "/mcp"
 
 
 class SpaEstatica(StaticFiles):
@@ -56,63 +60,41 @@ class SpaEstatica(StaticFiles):
 class BarraFinalDoMcp:
     """Faz /mcp e /mcp/ apontarem para o mesmo lugar.
 
-    O endpoint MCP é um sub-app montado em /mcp, e um Mount do Starlette só
-    casa com o prefixo seguido de barra. Sem esta normalização, um cliente
-    configurado com `http://host/mcp` (o jeito que todo mundo escreve) receberia
-    405 do frontend estático em vez de falar com o servidor.
+    O endpoint MCP é uma rota exata em /mcp. Sem esta normalização, um cliente
+    configurado com a barra no fim cairia no portal estático e receberia HTML
+    onde espera JSON-RPC.
     """
 
     def __init__(self, app) -> None:
         self.app = app
 
     async def __call__(self, scope, receive, send) -> None:
-        if scope["type"] == "http" and scope["path"] == "/mcp":
-            scope = {**scope, "path": "/mcp/", "raw_path": b"/mcp/"}
+        if scope["type"] == "http" and scope["path"] == f"{CAMINHO_MCP}/":
+            scope = {**scope, "path": CAMINHO_MCP, "raw_path": CAMINHO_MCP.encode()}
         await self.app(scope, receive, send)
 
 
-
-# O app ASGI do MCP tem lifespan próprio (gerencia as sessões do transporte
-# HTTP). Ele precisa ser o lifespan do FastAPI, senão o servidor sobe sem
-# session manager e toda chamada de tool falha.
-#
-# path="/" + mount em "/mcp": o Mount casa só o prefixo /mcp, deixando o resto
-# das rotas livres. Montá-lo na raiz faria o Mount engolir tudo — inclusive o
-# frontend estático, que é montado logo abaixo.
-mcp_app = mcp.http_app(path="/")
-
-app = FastAPI(
-    title="Plataforma Educacional — POC MCP",
-    version="0.1.0",
-    lifespan=mcp_app.lifespan,
-)
-
-app.add_middleware(BarraFinalDoMcp)
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=settings.lista_cors,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# O portal e a API REST: um FastAPI comum, que vira o "resto do mundo" do app
+# ASGI montado mais abaixo.
+api = FastAPI(title="Plataforma Educacional — POC MCP", version="0.1.0")
 
 
-@app.exception_handler(NaoEncontrado)
+@api.exception_handler(NaoEncontrado)
 def _nao_encontrado(_: Request, exc: NaoEncontrado) -> JSONResponse:
     return JSONResponse(status_code=404, content={"detail": str(exc)})
 
 
-@app.exception_handler(NaoAutorizado)
+@api.exception_handler(NaoAutorizado)
 def _nao_autorizado(_: Request, exc: NaoAutorizado) -> JSONResponse:
     return JSONResponse(status_code=403, content={"detail": str(exc)})
 
 
-@app.exception_handler(AprovacaoNecessaria)
+@api.exception_handler(AprovacaoNecessaria)
 def _aprovacao(_: Request, exc: AprovacaoNecessaria) -> JSONResponse:
     return JSONResponse(status_code=409, content={"detail": str(exc)})
 
 
-@app.exception_handler(RegraDeNegocio)
+@api.exception_handler(RegraDeNegocio)
 def _regra(_: Request, exc: RegraDeNegocio) -> JSONResponse:
     return JSONResponse(status_code=400, content={"detail": str(exc)})
 
@@ -125,7 +107,7 @@ MENSAGEM_BANCO_FORA = "Banco de dados indisponível no momento. Tente novamente 
 MENSAGEM_ERRO_INTERNO = "Erro interno no servidor. Tente novamente em instantes."
 
 
-@app.exception_handler(OperationalError)
+@api.exception_handler(OperationalError)
 def _banco_indisponivel(request: Request, exc: OperationalError) -> JSONResponse:
     # Conexão recusada, host errado, senha inválida: problema de infraestrutura,
     # não do usuário. Host e usuário do banco ficam só no log.
@@ -133,14 +115,14 @@ def _banco_indisponivel(request: Request, exc: OperationalError) -> JSONResponse
     return JSONResponse(status_code=503, content={"detail": MENSAGEM_BANCO_FORA})
 
 
-@app.exception_handler(Exception)
+@api.exception_handler(Exception)
 def _erro_inesperado(_: Request, __: Exception) -> JSONResponse:
     # O traceback continua indo para o log: o Starlette relança a exceção
     # depois de enviar esta resposta.
     return JSONResponse(status_code=500, content={"detail": MENSAGEM_ERRO_INTERNO})
 
 
-@app.get("/api/saude", tags=["infra"])
+@api.get("/api/saude", tags=["infra"])
 def saude() -> JSONResponse:
     # O Railway usa este caminho para aprovar um deploy. Sem sondar o banco, um
     # DATABASE_URL errado passa no healthcheck e só aparece como erro na tela
@@ -159,24 +141,49 @@ def saude() -> JSONResponse:
             "ok": banco == "ok",
             "banco": banco,
             "vimeo": "api-real" if settings.vimeo_real else "acervo-de-demonstracao",
-            "mcp": "/mcp",
+            "mcp": CAMINHO_MCP,
+            "mcp_oauth": "github" if settings.oauth_mcp_ativo else "token-bearer",
         },
     )
 
 
-app.include_router(auth_routes.router)
-app.include_router(admin_routes.router)
-app.include_router(aluno_routes.router)
-
-app.mount("/mcp", mcp_app)
+api.include_router(auth_routes.router)
+api.include_router(admin_routes.router)
+api.include_router(aluno_routes.router)
 
 # O frontend compilado, quando existe, é servido pelo mesmo host — assim a demo
 # roda em uma porta só. Em desenvolvimento usa-se o Vite (porta 5173).
-# Fica por último: um mount em "/" casa com qualquer caminho e encerra a busca.
 _dist = Path(__file__).resolve().parents[2] / "frontend" / "dist"
 if _dist.is_dir():
-    app.mount("/", SpaEstatica(directory=str(_dist), html=True), name="frontend")
+    api.mount("/", SpaEstatica(directory=str(_dist), html=True), name="frontend")
     logger.info("frontend servido de %s", _dist)
+
+
+# Quem hospeda é o app do MCP, não o FastAPI — e a ordem importa muito.
+#
+# O OAuth do MCP precisa de rotas na RAIZ do domínio (/authorize, /token,
+# /register, /consent e os /.well-known/...): é lá que o cliente procura, e é
+# o próprio FastMCP que as cria, a partir do `base_url`. Como um mount em "/"
+# casa com qualquer caminho e encerra o roteamento, o portal estático não pode
+# estar na frente delas — foi assim que a versão anterior deixou o claude.ai
+# sem conseguir descobrir o servidor, recebendo o index.html no lugar do JSON.
+#
+# Então o app do MCP fica por fora (rotas de OAuth + /mcp) e o FastAPI entra
+# como último recurso, cobrindo /api/... e o portal.
+app = mcp.http_app(
+    path=CAMINHO_MCP,
+    middleware=[
+        Middleware(
+            CORSMiddleware,
+            allow_origins=settings.lista_cors,
+            allow_credentials=True,
+            allow_methods=["*"],
+            allow_headers=["*"],
+        ),
+        Middleware(BarraFinalDoMcp),
+    ],
+)
+app.router.routes.append(Mount("/", app=api))
 
 
 def main() -> None:

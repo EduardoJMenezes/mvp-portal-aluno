@@ -2,6 +2,8 @@
 
 import asyncio
 
+from fastmcp.server.auth import AuthProvider
+
 from app.mcp_server.auth import TokenDaPlataforma, _consultar
 from app.mcp_server.server import mcp
 
@@ -68,7 +70,10 @@ def test_token_nao_fica_em_claro_no_banco(db):
 
 
 def test_servidor_exige_autenticacao():
-    assert isinstance(mcp.auth, TokenDaPlataforma), "o MCP não pode subir aberto"
+    # Com OAuth configurado o tipo muda para MultiAuth (ver test_mcp_oauth.py);
+    # o que nenhuma configuração pode produzir é um servidor sem autenticação.
+    assert mcp.auth is not None, "o MCP não pode subir aberto"
+    assert isinstance(mcp.auth, AuthProvider)
 
 
 def test_tools_registradas_e_anotadas():
