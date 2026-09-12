@@ -38,6 +38,14 @@ from app.security import hash_token
 
 logger = logging.getLogger("plataforma.mcp.auth")
 
+# O escopo que o servidor exige de toda sessão. Vem do GitHub (é lá que ele
+# significa alguma coisa: ler o perfil de quem entrou), mas quem exige é o
+# middleware do FastMCP, de qualquer credencial. Por isso o token opaco também
+# o carrega: ele identifica um operador já conferido no banco, então satisfaz
+# o que o servidor pede. Sem isso, ligar o OAuth derrubaria o Claude Code com
+# "Insufficient scope".
+ESCOPOS_EXIGIDOS = ["read:user"]
+
 
 def _claims_do_usuario(usuario: Usuario) -> dict:
     return {
@@ -73,7 +81,7 @@ def _consultar(token: str) -> AccessToken | None:
         return AccessToken(
             token=token,
             client_id=f"usuario-{usuario.id}",
-            scopes=[],
+            scopes=list(ESCOPOS_EXIGIDOS),
             subject=str(usuario.id),
             claims=_claims_do_usuario(usuario),
         )
@@ -176,7 +184,7 @@ def construir_auth() -> AuthProvider:
         # .well-known, que o cliente procura na raiz do domínio.
         base_url=settings.mcp_base_url,  # type: ignore[arg-type]
         # A POC só lê o perfil, para saber quem entrou.
-        required_scopes=["read:user"],
+        required_scopes=list(ESCOPOS_EXIGIDOS),
         client_storage=_armazenamento_oauth(),
     )
     logger.info("MCP com OAuth do GitHub em %s", settings.mcp_base_url)

@@ -19,9 +19,16 @@ from starlette.routing import Mount
 
 from app import main
 from app.config import get_settings
-from app.mcp_server.auth import GitHubDaPlataforma, TokenDaPlataforma, _operador_do_github, construir_auth
-from app.models import Papel, Usuario
-from app.security import hash_senha
+from app.mcp_server.auth import (
+    ESCOPOS_EXIGIDOS,
+    GitHubDaPlataforma,
+    TokenDaPlataforma,
+    _consultar,
+    _operador_do_github,
+    construir_auth,
+)
+from app.models import Papel, TokenMCP, Usuario
+from app.security import hash_senha, hash_token, novo_token_mcp
 
 BASE = "https://exemplo.up.railway.app"
 
@@ -148,3 +155,25 @@ def test_aluno_nao_entra_pelo_github_nem_estando_no_mapa(db, com_oauth, monkeypa
     get_settings.cache_clear()
 
     assert _operador_do_github(["joaogithub"]) is None
+
+
+def test_o_token_opaco_satisfaz_o_escopo_que_o_servidor_exige(com_oauth) -> None:
+    """A regressão que ligar o OAuth causou na primeira tentativa.
+
+    Com OAuth, o middleware passa a exigir escopo de **qualquer** credencial, e
+    o token da plataforma nascia sem nenhum: o Claude Code, que funcionava,
+    passou a levar "Insufficient scope" em toda chamada.
+    """
+    assert set(construir_auth().required_scopes) <= set(ESCOPOS_EXIGIDOS)
+
+
+def test_a_sessao_do_token_opaco_carrega_esse_escopo(db, com_oauth) -> None:
+    operador = _operador(db, "professor@escola.demo")
+    valor = novo_token_mcp()
+    db.add(TokenMCP(usuario_id=operador.id, nome="Claude", token_hash=hash_token(valor)))
+    db.commit()
+
+    acesso = _consultar(valor)
+
+    assert acesso is not None
+    assert set(ESCOPOS_EXIGIDOS) <= set(acesso.scopes)
