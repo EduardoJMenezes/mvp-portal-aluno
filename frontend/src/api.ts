@@ -75,19 +75,41 @@ async function req<T>(caminho: string, init: RequestInit = {}): Promise<T> {
 
 export type Usuario = { id: number; nome: string; email: string; papel: string; turmas: string[] };
 
+// O vídeo bloqueado chega só com nome e motivo: o backend não manda embed_url
+// para quem não pode assistir (ver services/acesso.py).
+export type Video = {
+  id: number; titulo: string; bloqueado: boolean; motivo?: string;
+  vimeo_id?: string; embed_url?: string; thumbnail_url?: string; duracao_segundos?: number;
+};
+
+export type Item = {
+  id: number; nome: string; ordem: number; status: string;
+  video_id: number; video?: Video | null;
+};
+
+export type SubModulo = { id: number; nome: string; tipo: string; ordem: number; itens: Item[] };
+export type Modulo = {
+  id: number; nome: string; ordem: number; turma: string; submodulos: SubModulo[];
+};
+
+// Questão existe para o simulado; o conteúdo do curso é vídeo.
 export type Questao = {
-  vinculo_id: number; questao_id: number; numero: number; turma: string; capitulo: string;
-  enunciado: string; alternativas: Record<string, string>; gabarito?: string;
-  dificuldade: string; topico: string | null; subtopico: string | null; status: string;
-  video: { vimeo_id: string; titulo: string; url: string; embed_url: string } | null;
+  questao_id: number; enunciado: string; alternativas: Record<string, string>;
+  gabarito?: string; dificuldade: string; status: string;
+  classificacao: { assunto: string; subassunto: string | null }[];
+  video_resolucao_id: number | null;
 };
 
 export type Rascunho = {
   rascunho_id: number; tipo: string; status: string; resumo: string;
-  turma: string | null; capitulo: string | null; criado_por: string; origem: string;
+  turma: string | null; modulo: string | null; submodulo: string | null;
+  criado_por: string; origem: string;
   criado_em: string; aprovado_por: string | null; aprovado_via: string | null;
   publicado_em: string | null;
-  questoes?: { questao_id: number; numero: number; capitulo: string; enunciado: string;
+  itens?: { item_id: number; nome: string; ordem: number; status: string;
+    video: { vimeo_id: string; titulo: string };
+    assuntos: { assunto: string; subassunto: string | null }[] }[];
+  questoes?: { questao_id: number; enunciado: string;
     alternativas: Record<string, string>; gabarito: string | null; completa: boolean;
     video: { vimeo_id: string; titulo: string } | null }[];
   simulado?: { simulado_id: number; titulo: string; turma: string;
@@ -104,11 +126,15 @@ export const api = {
 
   // admin
   turmas: () => req<any[]>("/admin/turmas"),
-  capitulos: () => req<{ id: number; nome: string }[]>("/admin/capitulos"),
-  questoes: (turma?: string, capitulo?: string) => {
+  modulos: (turma?: string) =>
+    req<Modulo[]>(`/admin/modulos${turma ? `?turma=${encodeURIComponent(turma)}` : ""}`),
+  assuntos: () =>
+    req<{ id: number; nome: string; subassuntos: { id: number; nome: string }[] }[]>(
+      "/admin/assuntos",
+    ),
+  questoes: (assunto?: string) => {
     const p = new URLSearchParams();
-    if (turma) p.set("turma", turma);
-    if (capitulo) p.set("capitulo", capitulo);
+    if (assunto) p.set("assunto", assunto);
     return req<Questao[]>(`/admin/questoes?${p}`);
   },
   rascunhos: (status?: string) =>
@@ -120,7 +146,8 @@ export const api = {
   estatisticas: (id: number) => req<any>(`/admin/simulados/${id}/estatisticas`),
 
   // aluno
-  conteudo: () => req<{ turma: string; capitulos: { capitulo: string; questoes: Questao[] }[] }[]>("/aluno/conteudo"),
+  conteudo: () =>
+    req<{ turma: string; turma_id: number; modulos: Modulo[] }[]>("/aluno/conteudo"),
   simulados: () => req<any[]>("/aluno/simulados"),
   simulado: (id: number) => req<any>(`/aluno/simulados/${id}`),
   responder: (id: number, questao_id: number, alternativa: string) =>

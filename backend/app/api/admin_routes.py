@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 from app.api.deps import operador_atual
 from app.db import get_db
 from app.identidade import Identidade
-from app.services import analytics, catalogo, publicacao, rascunhos, simulados
+from app.services import analytics, catalogo, publicacao, rascunhos, simulados, taxonomia
 from app.vimeo.client import get_cliente_vimeo
 
 router = APIRouter(prefix="/api/admin", tags=["admin"], dependencies=[Depends(operador_atual)])
@@ -23,21 +23,33 @@ def turmas(ident: Identidade = Depends(operador_atual), db: Session = Depends(ge
     return catalogo.listar_turmas(db, ident)
 
 
-@router.get("/capitulos")
-def capitulos(db: Session = Depends(get_db)) -> list[dict]:
-    return catalogo.listar_capitulos(db)
+@router.get("/modulos")
+def modulos(
+    turma: str | None = None,
+    ident: Identidade = Depends(operador_atual),
+    db: Session = Depends(get_db),
+) -> list[dict]:
+    """A árvore do curso: módulos, sub-módulos e itens de cada turma."""
+    return catalogo.listar_modulos(db, ident, turma)
+
+
+@router.get("/assuntos")
+def assuntos(db: Session = Depends(get_db)) -> list[dict]:
+    return taxonomia.listar_assuntos(db)
 
 
 @router.get("/questoes")
 def questoes(
-    turma: str | None = None,
-    capitulo: str | None = None,
+    assunto: str | None = None,
     status: str | None = None,
+    dificuldade: str | None = None,
     limite: int = 200,
     ident: Identidade = Depends(operador_atual),
     db: Session = Depends(get_db),
 ) -> list[dict]:
-    return catalogo.buscar_questoes(db, ident, turma, capitulo, status, limite)
+    """Acervo de questões de simulado — não as questões da apostila, que são
+    vídeos e aparecem em /api/modulos."""
+    return catalogo.buscar_questoes(db, ident, assunto, status, dificuldade, limite)
 
 
 @router.get("/rascunhos")
@@ -97,7 +109,8 @@ def estatisticas(
 
 class VimeoImportIn(BaseModel):
     turma: str
-    capitulo: str
+    modulo: str
+    submodulo: str
     videos: list[dict]
 
 

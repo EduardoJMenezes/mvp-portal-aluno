@@ -77,9 +77,27 @@ export default function AdminRascunhos() {
 
           {aberto?.rascunho_id === r.rascunho_id && (
             <div style={{ marginTop: 16, borderTop: "1px solid var(--borda)", paddingTop: 12 }}>
+              {aberto.itens?.map((item) => (
+                <div key={item.item_id} style={{ marginBottom: 12 }}>
+                  <strong>{item.nome}</strong>
+                  <span className={`etiqueta ${item.status.toLowerCase()}`} style={{ marginLeft: 8 }}>
+                    {item.status}
+                  </span>
+                  <div className="legenda mono" style={{ margin: 0 }}>
+                    🎬 vimeo {item.video.vimeo_id} — {item.video.titulo}
+                  </div>
+                  {item.assuntos.length > 0 && (
+                    <div className="legenda" style={{ margin: "2px 0 0" }}>
+                      🏷 {item.assuntos.map((a) =>
+                        a.subassunto ? `${a.assunto} › ${a.subassunto}` : a.assunto).join(", ")}
+                    </div>
+                  )}
+                </div>
+              ))}
+
               {aberto.questoes?.map((q) => (
                 <div key={q.questao_id} style={{ marginBottom: 14 }}>
-                  <strong>Q{String(q.numero).padStart(2, "0")}</strong> · {q.enunciado}
+                  {q.enunciado}
                   {q.video && <div className="legenda mono" style={{ margin: 0 }}>🎬 vimeo {q.video.vimeo_id} — {q.video.titulo}</div>}
                   {q.completa ? (
                     <div className="legenda" style={{ margin: "4px 0 0" }}>
@@ -87,7 +105,7 @@ export default function AdminRascunhos() {
                     </div>
                   ) : (
                     <div className="legenda" style={{ margin: "4px 0 0" }}>
-                      sem alternativas A–E — entra como questão com resolução em vídeo
+                      sem alternativas A–E — não pode entrar num simulado
                     </div>
                   )}
                 </div>

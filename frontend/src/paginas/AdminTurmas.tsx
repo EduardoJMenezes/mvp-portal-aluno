@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
-import { api, type Questao } from "../api";
+import { api, type Modulo } from "../api";
 
-// Dashboard > Turmas > Capítulos > Questões > Vídeo Vimeo (seção 10 do MVP).
+// Dashboard > Turmas > Módulos > Sub-módulos > Itens (seção 10 do MVP).
+// A árvore é a mesma que o aluno vê, com os rascunhos à mostra.
 export default function AdminTurmas() {
   const [turmas, setTurmas] = useState<any[]>([]);
   const [turma, setTurma] = useState<string>("");
-  const [questoes, setQuestoes] = useState<Questao[]>([]);
+  const [modulos, setModulos] = useState<Modulo[]>([]);
   const [erro, setErro] = useState("");
 
   useEffect(() => {
@@ -17,13 +18,8 @@ export default function AdminTurmas() {
 
   useEffect(() => {
     if (!turma) return;
-    api.questoes(turma).then(setQuestoes).catch((e) => setErro(e.message));
+    api.modulos(turma).then(setModulos).catch((e) => setErro(e.message));
   }, [turma]);
-
-  const porCapitulo = questoes.reduce<Record<string, Questao[]>>((acc, q) => {
-    (acc[q.capitulo] ??= []).push(q);
-    return acc;
-  }, {});
 
   return (
     <>
@@ -36,36 +32,37 @@ export default function AdminTurmas() {
       <div className="linha" style={{ marginBottom: 20 }}>
         {turmas.map((t) => (
           <button key={t.id} className={t.nome === turma ? "primario" : ""} onClick={() => setTurma(t.nome)}>
-            {t.nome} · {t.questoes_publicadas} publicadas
-            {t.questoes_em_rascunho > 0 && ` · ${t.questoes_em_rascunho} em rascunho`}
+            {t.nome} · {t.modulos} módulos · {t.itens_publicados} publicados
+            {t.itens_em_rascunho > 0 && ` · ${t.itens_em_rascunho} em rascunho`}
           </button>
         ))}
       </div>
 
-      {Object.keys(porCapitulo).length === 0 && <div className="vazio">Nenhuma questão nesta turma.</div>}
+      {modulos.length === 0 && <div className="vazio">Nenhum módulo nesta turma ainda.</div>}
 
-      {Object.entries(porCapitulo).map(([capitulo, lista]) => (
-        <div key={capitulo}>
-          <h3>{capitulo}</h3>
-          {lista.map((q) => (
-            <div key={q.vinculo_id} className="cartao">
+      {modulos.map((m) => (
+        <div key={m.id}>
+          <h3>{m.nome}</h3>
+          {m.submodulos.length === 0 && (
+            <div className="vazio">Sem sub-módulos. Crie um pelo MCP: criar_submodulo.</div>
+          )}
+          {m.submodulos.map((s) => (
+            <div key={s.id} className="cartao">
               <div className="entre">
-                <div style={{ flex: 1 }}>
-                  <h4>Q{String(q.numero).padStart(2, "0")} · {q.enunciado}</h4>
-                  <div className="legenda" style={{ margin: "4px 0 0" }}>
-                    {q.subtopico ?? q.topico ?? "—"} · {q.dificuldade.toLowerCase()}
-                    {q.gabarito && Object.keys(q.alternativas).length > 0 && ` · gabarito ${q.gabarito}`}
-                    {Object.keys(q.alternativas).length === 0 && " · sem alternativas (só vídeo)"}
-                  </div>
-                </div>
-                <span className={`etiqueta ${q.status.toLowerCase()}`}>{q.status}</span>
+                <h4>{s.nome}</h4>
+                <span className="legenda">{s.itens.length} item(ns) · {s.tipo.toLowerCase()}</span>
               </div>
-              {q.video && (
-                <div className="legenda" style={{ marginTop: 8 }}>
-                  🎬 <a href={q.video.url} target="_blank" rel="noreferrer">{q.video.titulo}</a>
-                  <span className="mono"> (vimeo {q.video.vimeo_id})</span>
+              {s.itens.length === 0 && <div className="legenda">Vazio.</div>}
+              {s.itens.map((item) => (
+                <div key={item.id} className="entre"
+                     style={{ borderTop: "1px solid var(--borda)", padding: "8px 0" }}>
+                  <div style={{ flex: 1 }}>
+                    <strong>{item.nome}</strong>
+                    <span className="legenda mono"> · posição {item.ordem}</span>
+                  </div>
+                  <span className={`etiqueta ${item.status.toLowerCase()}`}>{item.status}</span>
                 </div>
-              )}
+              ))}
             </div>
           ))}
         </div>

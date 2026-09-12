@@ -1,15 +1,27 @@
 """Modelo de dados da POC (seção 18 do MVP).
 
-Duas decisões que valem explicação:
+Quatro decisões que valem explicação. As três primeiras vêm de
+[docs/MODELO-CONTEUDO.md](../../docs/MODELO-CONTEUDO.md), escrito antes deste
+código:
 
-1. `Rascunho` é uma entidade de primeira classe. Tudo que a IA cria nasce
+1. **O conteúdo do curso é vídeo, organizado em módulo › sub-módulo › item.**
+   `Questao` — enunciado, alternativas, gabarito — existe só para o simulado.
+   A questão da apostila mora na apostila; aqui fica o vídeo da resolução dela.
+
+2. **Organização é da turma; acervo e taxonomia são globais.** `Modulo`
+   pertence a uma `Turma` e carrega o "K01"; `Video`, `Questao` e `Assunto`
+   atravessam turmas e anos. É por isso que o nome de um assunto nunca leva
+   numeração de capítulo: K03 é Estequiometria em 2026 e Tabela Periódica em
+   2025, e uma etiqueta presa a um ano não etiqueta nada.
+
+3. **Nada é apagado.** Remoção é `removido_em` preenchido. Em troca, toda
+   consulta precisa filtrar — ver `services/consultas.py`, que existe para que
+   esse filtro não seja escrito à mão em cada lugar.
+
+4. `Rascunho` é uma entidade de primeira classe. Tudo que a IA cria nasce
    apontando para um rascunho, e a publicação é uma transição desse rascunho —
    não de cada linha solta. É o que faz `publicar_rascunho(id)` ser uma
    operação atômica e auditável.
-
-2. Questão e vídeo são reaproveitáveis entre anos: quem amarra uma questão a
-   uma turma/capítulo é `TurmaQuestao`, não a própria questão. A organização
-   anual pertence à plataforma, não às pastas do Vimeo.
 """
 
 from __future__ import annotations
@@ -21,11 +33,13 @@ from sqlalchemy import (
     CheckConstraint,
     DateTime,
     ForeignKey,
+    Index,
     Integer,
     String,
     Text,
     UniqueConstraint,
     func,
+    text,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
@@ -53,8 +67,21 @@ class Status:
 
 
 class TipoRascunho:
+    ITENS = "ITENS"
     QUESTOES = "QUESTOES"
     SIMULADO = "SIMULADO"
+
+
+class TipoSubModulo:
+    """O que o sub-módulo guarda. Um sub-módulo é de um tipo só.
+
+    Hoje existe VIDEO. TEXTO e PDF estão aqui para dizer que a estrutura os
+    comporta — quando entrarem, o item ganha a coluna correspondente.
+    """
+
+    VIDEO = "VIDEO"
+
+    TODOS = (VIDEO,)
 
 
 class Dificuldade:
@@ -70,6 +97,33 @@ LETRAS = ("A", "B", "C", "D", "E")
 
 def _agora() -> Mapped[datetime]:
     return mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+def _vivo(nome: str, *colunas: str) -> Index:
+    """Unicidade que só vale entre os não removidos.
+
+    Com remoção lógica, um `unique` comum tornaria o nome de um módulo
+    removido impossível de reutilizar para sempre. O índice parcial resolve:
+    duas linhas podem repetir o nome desde que uma delas esteja removida.
+    """
+    return Index(nome, *colunas, unique=True, postgresql_where=text("removido_em IS NULL"))
+
+
+class Rastreavel:
+    """Quem mexeu por último, quando, e se está removido.
+
+    Editar e remover são operações diretas (não nascem como rascunho), então
+    é esta linha que guarda o rastro — em vez de uma tabela de auditoria, que
+    a §20 deixou fora do escopo.
+    """
+
+    alterado_por_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    alterado_em: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    removido_em: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    @property
+    def removido(self) -> bool:
+        return self.removido_em is not None
 
 
 # --- pessoas e turmas --------------------------------------------------------
@@ -96,14 +150,17 @@ class Usuario(Base):
         return self.papel in Papel.OPERADORES
 
 
-class Turma(Base):
+class Turma(Base, Rastreavel):
     __tablename__ = "classes"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    nome: Mapped[str] = mapped_column(String(120), unique=True, nullable=False)
+    nome: Mapped[str] = mapped_column(String(120), nullable=False)
     ano: Mapped[int] = mapped_column(Integer, nullable=False)
 
+    __table_args__ = (_vivo("uq_turma_nome", "nome"),)
+
     matriculas: Mapped[list[Matricula]] = relationship(back_populates="turma")
+    modulos: Mapped[list[Modulo]] = relationship(back_populates="turma", order_by="Modulo.ordem")
 
 
 class Matricula(Base):
@@ -120,17 +177,10 @@ class Matricula(Base):
     turma: Mapped[Turma] = relationship(back_populates="matriculas")
 
 
-class Capitulo(Base):
-    __tablename__ = "chapters"
-
-    id: Mapped[int] = mapped_column(primary_key=True)
-    nome: Mapped[str] = mapped_column(String(120), unique=True, nullable=False)
-
-
 # --- acervo ------------------------------------------------------------------
 
 
-class Video(Base):
+class Video(Base, Rastreavel):
     """Espelho local do mínimo necessário para exibir/relacionar um vídeo.
 
     O vídeo continua morando no Vimeo; aqui guardamos só o id e os metadados
@@ -140,57 +190,39 @@ class Video(Base):
     __tablename__ = "videos"
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    # Identidade externa, não nome editável: `unique` comum mesmo. Reimportar
+    # um vídeo removido reativa o registro em vez de criar outro.
     vimeo_id: Mapped[str] = mapped_column(String(60), unique=True, nullable=False)
     titulo: Mapped[str] = mapped_column(String(300), nullable=False)
     url: Mapped[str | None] = mapped_column(String(400))
     # Guardada como o Vimeo devolveu: para vídeo unlisted ela traz o hash de
-    # privacidade, sem o qual o player recusa tocar.
+    # privacidade, sem o qual o player recusa tocar. Nunca sai do backend para
+    # quem não tem acesso — ver `services/acesso.py`.
     embed_url: Mapped[str | None] = mapped_column(String(400))
     thumbnail_url: Mapped[str | None] = mapped_column(String(400))
     duracao_segundos: Mapped[int | None] = mapped_column(Integer)
     pasta_vimeo: Mapped[str | None] = mapped_column(String(200))
     criado_em: Mapped[datetime] = _agora()
 
-
-class Rascunho(Base):
-    __tablename__ = "drafts"
-
-    id: Mapped[int] = mapped_column(primary_key=True)
-    tipo: Mapped[str] = mapped_column(String(20), nullable=False)
-    turma_id: Mapped[int | None] = mapped_column(ForeignKey("classes.id"))
-    capitulo_id: Mapped[int | None] = mapped_column(ForeignKey("chapters.id"))
-    resumo: Mapped[str] = mapped_column(Text, nullable=False)
-    origem: Mapped[str] = mapped_column(String(40), nullable=False, default="MCP")
-    status: Mapped[str] = mapped_column(String(20), nullable=False, default=Status.RASCUNHO)
-
-    criado_por_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
-    criado_em: Mapped[datetime] = _agora()
-
-    # Quem carimbou a aprovação humana, e por qual canal. Sem estes três
-    # campos preenchidos nada sai de RASCUNHO — ver services/publicacao.py.
-    aprovado_por_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
-    aprovado_em: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    aprovado_via: Mapped[str | None] = mapped_column(String(40))
-    publicado_em: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-
-    __table_args__ = (
-        CheckConstraint("tipo in ('QUESTOES','SIMULADO')", name="ck_drafts_tipo"),
-        CheckConstraint("status in ('RASCUNHO','PUBLICADO')", name="ck_drafts_status"),
+    assuntos: Mapped[list[VideoAssunto]] = relationship(
+        back_populates="video", cascade="all, delete-orphan"
     )
 
-    turma: Mapped[Turma | None] = relationship()
-    capitulo: Mapped[Capitulo | None] = relationship()
-    criado_por: Mapped[Usuario] = relationship(foreign_keys=[criado_por_id])
-    aprovado_por: Mapped[Usuario | None] = relationship(foreign_keys=[aprovado_por_id])
 
+class Questao(Base, Rastreavel):
+    """Questão de simulado: enunciado, alternativas e gabarito.
 
-class Questao(Base):
+    **Não** é a questão da apostila — essa mora na apostila, e o que a
+    plataforma guarda dela é o vídeo da resolução, como item de sub-módulo.
+    """
+
     __tablename__ = "questions"
 
     id: Mapped[int] = mapped_column(primary_key=True)
     enunciado: Mapped[str] = mapped_column(Text, nullable=False)
     gabarito: Mapped[str] = mapped_column(String(1), nullable=False)
     dificuldade: Mapped[str] = mapped_column(String(10), nullable=False, default=Dificuldade.MEDIA)
+    # Vídeo da resolução desta questão, quando houver.
     video_id: Mapped[int | None] = mapped_column(ForeignKey("videos.id"))
     status: Mapped[str] = mapped_column(String(20), nullable=False, default=Status.RASCUNHO)
     rascunho_id: Mapped[int | None] = mapped_column(ForeignKey("drafts.id"))
@@ -208,7 +240,7 @@ class Questao(Base):
     alternativas: Mapped[list[Alternativa]] = relationship(
         back_populates="questao", cascade="all, delete-orphan", order_by="Alternativa.letra"
     )
-    classificacoes: Mapped[list[Classificacao]] = relationship(
+    assuntos: Mapped[list[QuestaoAssunto]] = relationship(
         back_populates="questao", cascade="all, delete-orphan"
     )
     video: Mapped[Video | None] = relationship()
@@ -230,52 +262,210 @@ class Alternativa(Base):
     questao: Mapped[Questao] = relationship(back_populates="alternativas")
 
 
-class Classificacao(Base):
-    """Tópico/subtópico da questão. Tabela à parte porque a taxonomia final
-    ainda não existe (seção 12) e vai crescer sem mexer em `questions`."""
+# --- taxonomia ---------------------------------------------------------------
 
-    __tablename__ = "question_classifications"
+
+class Assunto(Base, Rastreavel):
+    """Do que o conteúdo trata — a etiqueta, não o endereço.
+
+    Global de propósito: o mesmo assunto vale para 2025, 2026 e 2027. Por isso
+    o nome **nunca** carrega numeração de capítulo ("Estequiometria", não
+    "K03 - Estequiometria"): K03 é a posição na apostila de uma turma, e
+    apostilas mudam de um ano para o outro.
+    """
+
+    __tablename__ = "subjects"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    nome: Mapped[str] = mapped_column(String(120), nullable=False)
+    criado_em: Mapped[datetime] = _agora()
+
+    __table_args__ = (_vivo("uq_assunto_nome", "nome"),)
+
+    subassuntos: Mapped[list[SubAssunto]] = relationship(
+        back_populates="assunto", order_by="SubAssunto.nome"
+    )
+
+
+class SubAssunto(Base, Rastreavel):
+    __tablename__ = "subtopics"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    assunto_id: Mapped[int] = mapped_column(ForeignKey("subjects.id"), nullable=False)
+    nome: Mapped[str] = mapped_column(String(120), nullable=False)
+    criado_em: Mapped[datetime] = _agora()
+
+    __table_args__ = (_vivo("uq_subassunto_nome", "assunto_id", "nome"),)
+
+    assunto: Mapped[Assunto] = relationship(back_populates="subassuntos")
+
+
+class VideoAssunto(Base):
+    """Etiqueta de um vídeo. `subassunto_id` vazio = classificado só no nível
+    do assunto, que é o suficiente para a recomendação grossa."""
+
+    __tablename__ = "video_subjects"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    video_id: Mapped[int] = mapped_column(ForeignKey("videos.id"), nullable=False)
+    assunto_id: Mapped[int] = mapped_column(ForeignKey("subjects.id"), nullable=False)
+    subassunto_id: Mapped[int | None] = mapped_column(ForeignKey("subtopics.id"))
+
+    __table_args__ = (
+        UniqueConstraint("video_id", "assunto_id", "subassunto_id", name="uq_video_assunto"),
+    )
+
+    video: Mapped[Video] = relationship(back_populates="assuntos")
+    assunto: Mapped[Assunto] = relationship()
+    subassunto: Mapped[SubAssunto | None] = relationship()
+
+
+class QuestaoAssunto(Base):
+    """A mesma etiqueta na questão de simulado. É o que liga o erro do aluno
+    ao vídeo que explica aquilo — os dois lados usam a mesma taxonomia."""
+
+    __tablename__ = "question_subjects"
 
     id: Mapped[int] = mapped_column(primary_key=True)
     questao_id: Mapped[int] = mapped_column(ForeignKey("questions.id"), nullable=False)
-    topico: Mapped[str] = mapped_column(String(120), nullable=False)
-    subtopico: Mapped[str | None] = mapped_column(String(120))
+    assunto_id: Mapped[int] = mapped_column(ForeignKey("subjects.id"), nullable=False)
+    subassunto_id: Mapped[int | None] = mapped_column(ForeignKey("subtopics.id"))
 
-    questao: Mapped[Questao] = relationship(back_populates="classificacoes")
+    __table_args__ = (
+        UniqueConstraint("questao_id", "assunto_id", "subassunto_id", name="uq_questao_assunto"),
+    )
+
+    questao: Mapped[Questao] = relationship(back_populates="assuntos")
+    assunto: Mapped[Assunto] = relationship()
+    subassunto: Mapped[SubAssunto | None] = relationship()
 
 
-class TurmaQuestao(Base):
-    """Disponibilização de uma questão para uma turma, dentro de um capítulo.
+# --- organização do curso ----------------------------------------------------
 
-    É esta linha — e não a questão — que o aluno enxerga. A mesma questão pode
-    estar no capítulo 2 de 2026 e no capítulo 4 de 2027.
+
+class Modulo(Base, Rastreavel):
+    """O capítulo como a turma o enxerga: "K01 - Introdução à química orgânica".
+
+    Pertence a uma turma justamente porque a numeração é da apostila dela. Não
+    tem `status`: o módulo aparece para o aluno quando tem item publicado
+    dentro, e some quando não tem. Assim não existe o estado contraditório de
+    módulo oculto com item publicado.
     """
 
-    __tablename__ = "class_questions"
+    __tablename__ = "modules"
 
     id: Mapped[int] = mapped_column(primary_key=True)
     turma_id: Mapped[int] = mapped_column(ForeignKey("classes.id"), nullable=False)
-    capitulo_id: Mapped[int] = mapped_column(ForeignKey("chapters.id"), nullable=False)
-    questao_id: Mapped[int] = mapped_column(ForeignKey("questions.id"), nullable=False)
-    numero: Mapped[int] = mapped_column(Integer, nullable=False)
+    nome: Mapped[str] = mapped_column(String(160), nullable=False)
+    ordem: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    criado_em: Mapped[datetime] = _agora()
+
+    __table_args__ = (_vivo("uq_modulo_nome", "turma_id", "nome"),)
+
+    turma: Mapped[Turma] = relationship(back_populates="modulos")
+    submodulos: Mapped[list[SubModulo]] = relationship(
+        back_populates="modulo", order_by="SubModulo.ordem"
+    )
+
+
+class SubModulo(Base, Rastreavel):
+    """A seção dentro do módulo: "Aulas", "Questões da apostila".
+
+    O nome é do professor; o `tipo` é do sistema, e diz ao portal como
+    renderizar a lista. Um sub-módulo é de um tipo só — nada de PDF no meio
+    dos vídeos.
+    """
+
+    __tablename__ = "submodules"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    modulo_id: Mapped[int] = mapped_column(ForeignKey("modules.id"), nullable=False)
+    nome: Mapped[str] = mapped_column(String(160), nullable=False)
+    tipo: Mapped[str] = mapped_column(String(20), nullable=False, default=TipoSubModulo.VIDEO)
+    ordem: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    criado_em: Mapped[datetime] = _agora()
+
+    __table_args__ = (
+        CheckConstraint("tipo in ('VIDEO')", name="ck_submodules_tipo"),
+        _vivo("uq_submodulo_nome", "modulo_id", "nome"),
+    )
+
+    modulo: Mapped[Modulo] = relationship(back_populates="submodulos")
+    itens: Mapped[list[Item]] = relationship(back_populates="submodulo", order_by="Item.ordem")
+
+
+class Item(Base, Rastreavel):
+    """Uma linha na lista do aluno — hoje, sempre um vídeo.
+
+    `nome` é a identidade editorial ("Q04", "Aula 1 — cadeias carbônicas") e
+    `ordem` é a posição na tela. São coisas diferentes de propósito: o
+    `TurmaQuestao.numero` de antes acumulava as duas e impedia exibir a Q52
+    antes da Q04.
+
+    É esta linha que o aluno enxerga, e é nela que vive o `status`: publicar é
+    item a item, com uma tool de lote para quando forem vinte e um de uma vez.
+    """
+
+    __tablename__ = "items"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    submodulo_id: Mapped[int] = mapped_column(ForeignKey("submodules.id"), nullable=False)
+    video_id: Mapped[int] = mapped_column(ForeignKey("videos.id"), nullable=False)
+    nome: Mapped[str] = mapped_column(String(300), nullable=False)
+    ordem: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     status: Mapped[str] = mapped_column(String(20), nullable=False, default=Status.RASCUNHO)
     rascunho_id: Mapped[int | None] = mapped_column(ForeignKey("drafts.id"))
     criado_em: Mapped[datetime] = _agora()
 
     __table_args__ = (
-        UniqueConstraint("turma_id", "capitulo_id", "questao_id", name="uq_turma_questao"),
-        CheckConstraint("status in ('RASCUNHO','PUBLICADO')", name="ck_class_questions_status"),
+        CheckConstraint("status in ('RASCUNHO','PUBLICADO')", name="ck_items_status"),
+        _vivo("uq_item_video", "submodulo_id", "video_id"),
     )
 
-    turma: Mapped[Turma] = relationship()
-    capitulo: Mapped[Capitulo] = relationship()
-    questao: Mapped[Questao] = relationship()
+    submodulo: Mapped[SubModulo] = relationship(back_populates="itens")
+    video: Mapped[Video] = relationship()
+
+
+# --- rascunho ----------------------------------------------------------------
+
+
+class Rascunho(Base):
+    __tablename__ = "drafts"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    tipo: Mapped[str] = mapped_column(String(20), nullable=False)
+    turma_id: Mapped[int | None] = mapped_column(ForeignKey("classes.id"))
+    submodulo_id: Mapped[int | None] = mapped_column(ForeignKey("submodules.id"))
+    resumo: Mapped[str] = mapped_column(Text, nullable=False)
+    origem: Mapped[str] = mapped_column(String(40), nullable=False, default="MCP")
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default=Status.RASCUNHO)
+
+    criado_por_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    criado_em: Mapped[datetime] = _agora()
+
+    # A aprovação humana mora aqui, e é ela que `services/publicacao.py`
+    # exige antes de publicar. Não é uma checagem no cliente: é estado no
+    # banco, verificado a cada publicação.
+    aprovado_por_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    aprovado_em: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    aprovado_via: Mapped[str | None] = mapped_column(String(40))
+    publicado_em: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (
+        CheckConstraint("tipo in ('ITENS','QUESTOES','SIMULADO')", name="ck_drafts_tipo"),
+        CheckConstraint("status in ('RASCUNHO','PUBLICADO')", name="ck_drafts_status"),
+    )
+
+    turma: Mapped[Turma | None] = relationship()
+    submodulo: Mapped[SubModulo | None] = relationship()
+    criado_por: Mapped[Usuario] = relationship(foreign_keys=[criado_por_id])
+    aprovado_por: Mapped[Usuario | None] = relationship(foreign_keys=[aprovado_por_id])
 
 
 # --- simulados ---------------------------------------------------------------
 
 
-class Simulado(Base):
+class Simulado(Base, Rastreavel):
     __tablename__ = "exams"
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -339,7 +529,9 @@ class Resposta(Base):
 
     __table_args__ = (
         UniqueConstraint("tentativa_id", "questao_id", name="uq_resposta"),
-        CheckConstraint("alternativa_marcada in ('A','B','C','D','E')", name="ck_answers_letra"),
+        CheckConstraint(
+            "alternativa_marcada in ('A','B','C','D','E')", name="ck_answers_alternativa"
+        ),
     )
 
     tentativa: Mapped[Tentativa] = relationship(back_populates="respostas")

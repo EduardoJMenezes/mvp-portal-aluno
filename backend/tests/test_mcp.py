@@ -80,11 +80,17 @@ def test_tools_registradas_e_anotadas():
     tools = {t.name: t for t in asyncio.run(mcp._list_tools())}
 
     esperadas = {
-        "listar_turmas", "listar_capitulos", "buscar_questoes", "listar_videos_vimeo",
+        # consulta
+        "listar_turmas", "listar_modulos", "listar_assuntos", "buscar_questoes",
+        "listar_videos_vimeo", "listar_pastas_vimeo", "simular_importacao_vimeo",
         "listar_rascunhos", "detalhar_rascunho", "buscar_desempenho_aluno",
-        "buscar_estatisticas_simulado", "listar_simulados", "criar_questao_rascunho",
-        "importar_questoes_vimeo", "criar_simulado_rascunho", "publicar_rascunho",
-        "listar_pastas_vimeo", "simular_importacao_vimeo", "importar_pasta_vimeo_como_rascunho",
+        "buscar_estatisticas_simulado", "listar_simulados",
+        # proposta, que nasce em rascunho
+        "criar_questao_rascunho", "importar_videos_como_itens", "criar_simulado_rascunho",
+        "importar_pasta_vimeo_como_rascunho", "publicar_rascunho",
+        # CRUD do curso, que altera direto e confirma com o professor
+        "criar_modulo", "criar_submodulo", "editar_modulo", "editar_item",
+        "remover_do_curso", "cadastrar_assunto", "classificar_videos",
     }
     assert esperadas <= set(tools)
 
@@ -92,9 +98,11 @@ def test_tools_registradas_e_anotadas():
     sem_descricao = [n for n, t in tools.items() if not (t.description or "").strip()]
     assert sem_descricao == []
 
-    escritas = {"criar_questao_rascunho", "importar_questoes_vimeo",
+    escritas = {"criar_questao_rascunho", "importar_videos_como_itens",
                 "criar_simulado_rascunho", "publicar_rascunho",
-                "importar_pasta_vimeo_como_rascunho"}
+                "importar_pasta_vimeo_como_rascunho",
+                "criar_modulo", "criar_submodulo", "editar_modulo", "editar_item",
+                "remover_do_curso", "cadastrar_assunto", "classificar_videos"}
     for nome, tool in tools.items():
         esperado = nome not in escritas
         assert tool.annotations.read_only_hint is esperado, f"{nome} com read_only_hint errado"

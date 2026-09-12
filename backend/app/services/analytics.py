@@ -12,17 +12,17 @@ from sqlalchemy.orm import Session, selectinload
 from app.errors import NaoAutorizado, NaoEncontrado
 from app.identidade import Identidade
 from app.models import (
-    Classificacao,
     Matricula,
     Papel,
     Questao,
+    QuestaoAssunto,
     Resposta,
     Simulado,
     SimuladoQuestao,
     Tentativa,
-    TurmaQuestao,
     Usuario,
 )
+from app.services import acesso, taxonomia
 from app.services.catalogo import exigir_acesso_a_turma
 from app.services.simulados import resolver_simulado
 
@@ -49,20 +49,72 @@ def resolver_aluno(db: Session, referencia: str | int) -> Usuario:
     raise NaoEncontrado(f"Aluno '{referencia}' não encontrado. Alunos: {disponiveis}.")
 
 
+def _etiqueta_da_questao(db: Session, questao_id: int) -> QuestaoAssunto | None:
+    """A classificação da questão — assunto e, quando houver, sub-assunto."""
+    return db.scalar(select(QuestaoAssunto).where(QuestaoAssunto.questao_id == questao_id))
+
+
 def _topico_da_questao(db: Session, questao_id: int) -> str | None:
-    c = db.scalar(select(Classificacao).where(Classificacao.questao_id == questao_id))
-    if c is None:
+    """O rótulo que o aluno lê: o sub-assunto, se existir; senão o assunto."""
+    etiqueta = _etiqueta_da_questao(db, questao_id)
+    if etiqueta is None:
         return None
-    return c.subtopico or c.topico
+    if etiqueta.subassunto is not None:
+        return etiqueta.subassunto.nome
+    return etiqueta.assunto.nome
 
 
-def _numero_na_turma(db: Session, turma_id: int, questao_id: int) -> int | None:
-    v = db.scalar(
-        select(TurmaQuestao).where(
-            TurmaQuestao.turma_id == turma_id, TurmaQuestao.questao_id == questao_id
+def _recomendar_videos(
+    db: Session, ident: Identidade, respostas: list[Resposta], limite: int = 5
+) -> list[dict]:
+    """O elo que faltava: do erro do aluno para o vídeo que explica aquilo.
+
+    Vale o acervo inteiro, não só a turma dele. O vídeo de outro curso aparece
+    bloqueado — nome e aviso, sem nada do Vimeo —, porque esconder o material
+    que responde exatamente à dúvida seria pior do que mostrar que ele existe.
+    """
+    erradas = [r for r in respostas if not r.correta]
+    if not erradas:
+        return []
+
+    # Uma recomendação por etiqueta errada, da mais errada para a menos.
+    por_etiqueta: dict[tuple[int, int | None], int] = {}
+    for r in erradas:
+        etiqueta = _etiqueta_da_questao(db, r.questao_id)
+        if etiqueta is None:
+            continue
+        chave = (etiqueta.assunto_id, etiqueta.subassunto_id)
+        por_etiqueta[chave] = por_etiqueta.get(chave, 0) + 1
+
+    recomendacoes: list[dict] = []
+    for (assunto_id, subassunto_id), erros in sorted(
+        por_etiqueta.items(), key=lambda par: -par[1]
+    ):
+        videos = taxonomia.videos_que_explicam(db, assunto_id, subassunto_id, limite=limite)
+        if not videos:
+            continue
+        liberados = acesso.videos_liberados(db, ident, [v.id for v in videos])
+        recomendacoes.append(
+            {
+                "topico": _rotulo_da_etiqueta(db, assunto_id, subassunto_id),
+                "erros": erros,
+                "videos": [
+                    acesso.descrever_video(v, v.id in liberados) for v in videos
+                ],
+            }
         )
-    )
-    return v.numero if v else None
+    return recomendacoes
+
+
+def _rotulo_da_etiqueta(db: Session, assunto_id: int, subassunto_id: int | None) -> str:
+    from app.models import Assunto, SubAssunto
+
+    if subassunto_id is not None:
+        sub = db.get(SubAssunto, subassunto_id)
+        if sub is not None:
+            return sub.nome
+    assunto = db.get(Assunto, assunto_id)
+    return assunto.nome if assunto else "(sem assunto)"
 
 
 def desempenho_aluno(
@@ -116,7 +168,6 @@ def desempenho_aluno(
         "questoes": [
             {
                 "questao_id": r.questao_id,
-                "numero": _numero_na_turma(db, tentativa.simulado.turma_id, r.questao_id),
                 "enunciado": r.questao.enunciado,
                 "topico": _topico_da_questao(db, r.questao_id),
                 "marcada": r.alternativa_marcada,
@@ -139,6 +190,9 @@ def desempenho_aluno(
             }.items(),
             key=lambda kv: -kv[1],
         ),
+        # Onde o aluno vai para consertar o que errou. Vídeo que não é do
+        # curso dele vem bloqueado, com nome e aviso — nada do Vimeo.
+        "recomendacoes": _recomendar_videos(db, ident, list(respostas)),
     }
 
 
@@ -181,7 +235,7 @@ def estatisticas_simulado(db: Session, ident: Identidade, simulado: str | int) -
             {
                 "ordem": sq.ordem,
                 "questao_id": sq.questao_id,
-                "numero": _numero_na_turma(db, alvo.turma_id, sq.questao_id),
+                "ordem": sq.ordem,
                 "enunciado": sq.questao.enunciado,
                 "topico": _topico_da_questao(db, sq.questao_id),
                 "respostas": len(do_item),

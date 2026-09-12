@@ -5,11 +5,19 @@ Aqui está a metade "propõe" — e ela é estrutural, não uma recomendação d
 prompt: nenhuma função deste módulo aceita status como parâmetro, e todas
 gravam RASCUNHO. Não existe caminho, a partir das tools, que crie conteúdo já
 publicado. A metade "publica" está em publicacao.py.
+
+Duas famílias de proposta, que não se misturam mais:
+
+* **itens** — vídeos entrando num sub-módulo do curso. É o que a importação do
+  Vimeo produz, e o que o aluno acaba vendo na árvore do módulo;
+* **questões e simulados** — o instrumento de avaliação, com enunciado,
+  alternativas e gabarito. Questão não pertence a turma: quem pertence é o
+  simulado onde ela entra.
 """
 
 from __future__ import annotations
 
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
 from app.errors import RegraDeNegocio
@@ -17,19 +25,19 @@ from app.identidade import Identidade
 from app.models import (
     LETRAS,
     Alternativa,
-    Capitulo,
-    Classificacao,
     Dificuldade,
+    Item,
     Questao,
     Rascunho,
     Simulado,
     SimuladoQuestao,
     Status,
     TipoRascunho,
-    TurmaQuestao,
     Video,
 )
-from app.services.catalogo import resolver_capitulo, resolver_turma
+from app.services import estrutura, taxonomia
+from app.services.catalogo import resolver_turma
+from app.services.consultas import selecionar
 from app.vimeo.client import VideoVimeo
 
 
@@ -61,40 +69,22 @@ def _valida_dificuldade(dificuldade: str | None) -> str:
     return valor
 
 
-def _proximo_numero(db: Session, turma_id: int, capitulo_id: int) -> int:
-    atual = db.scalar(
-        select(func.max(TurmaQuestao.numero)).where(
-            TurmaQuestao.turma_id == turma_id, TurmaQuestao.capitulo_id == capitulo_id
-        )
-    )
-    return (atual or 0) + 1
-
-
-def _numero_pedido(item: dict) -> int | None:
-    """Número explícito do item, quando o chamador souber qual é.
-
-    Vem da leitura do título no Vimeo (`Q04` -> 4). Sem ele, a numeração segue
-    sequencial, como sempre foi.
-    """
-    bruto = item.get("numero")
-    if bruto in (None, ""):
-        return None
-    try:
-        numero = int(bruto)
-    except (TypeError, ValueError):
-        raise RegraDeNegocio(f"Número inválido para o vídeo {item.get('vimeo_id')}: {bruto!r}.") from None
-    if numero < 1:
-        raise RegraDeNegocio(f"O número da questão precisa ser positivo: {numero}.")
-    return numero
-
-
 def _grava_video(db: Session, vimeo: VideoVimeo | None) -> Video | None:
-    """Espelha o vídeo do Vimeo localmente, sem duplicar."""
+    """Espelha o vídeo do Vimeo localmente, sem duplicar.
+
+    Um vídeo removido logicamente e reimportado volta à vida em vez de virar
+    uma segunda linha: `vimeo_id` é identidade externa, não nome editável.
+    """
     if vimeo is None:
         return None
+
     existente = db.scalar(select(Video).where(Video.vimeo_id == vimeo.id))
     if existente:
+        existente.removido_em = None
+        if vimeo.embed_url:
+            existente.embed_url = vimeo.embed_url
         return existente
+
     video = Video(
         vimeo_id=vimeo.id,
         titulo=vimeo.titulo,
@@ -109,25 +99,161 @@ def _grava_video(db: Session, vimeo: VideoVimeo | None) -> Video | None:
     return video
 
 
-def _cria_questao(
+def _classificar(db: Session, ident: Identidade, alvo, assunto: str | None, subassunto: str | None,
+                 classificador) -> None:
+    """Etiqueta o alvo, quando o professor disse do que aquilo trata.
+
+    Assunto inexistente é erro, não criação silenciosa: um typo viraria um
+    assunto novo e a taxonomia apodreceria sozinha. Criar é explícito, por
+    `criar_assunto`.
+    """
+    if not assunto:
+        return
+    alvo_assunto = taxonomia.resolver_assunto(db, assunto)
+    alvo_sub = (
+        taxonomia.resolver_subassunto(db, alvo_assunto, subassunto) if subassunto else None
+    )
+    classificador(db, ident, alvo, alvo_assunto, alvo_sub)
+
+
+# --- itens do curso ----------------------------------------------------------
+
+
+def importar_videos_como_itens(
     db: Session,
     ident: Identidade,
-    rascunho: Rascunho,
-    turma_id: int,
-    capitulo_id: int,
+    turma: str | int,
+    modulo: str | int,
+    submodulo: str | int,
+    videos: list[dict],
+) -> dict:
+    """Cria, em rascunho, um item por vídeo informado.
+
+    Cada item precisa de `vimeo_id`. `nome` é opcional: sem ele vale o título
+    do vídeo, que é o que o professor reconhece ("Q04 — Estequiometria com
+    pureza"). `assunto`/`subassunto`, também opcionais, etiquetam o **vídeo** —
+    não o item —, porque a etiqueta é do conteúdo e atravessa turmas e anos.
+
+    Módulo e sub-módulo precisam existir: criá-los no meio de uma importação
+    esconderia do professor a decisão de como o curso está organizado.
+    """
+    ident.exigir_operador()
+    if not videos:
+        raise RegraDeNegocio("Nenhum vídeo informado para importar.")
+
+    alvo_turma = resolver_turma(db, turma)
+    alvo_modulo = estrutura.resolver_modulo(db, alvo_turma, modulo)
+    alvo_sub = estrutura.resolver_submodulo(db, alvo_modulo, submodulo)
+
+    rascunho = Rascunho(
+        tipo=TipoRascunho.ITENS,
+        turma_id=alvo_turma.id,
+        submodulo_id=alvo_sub.id,
+        resumo="",
+        origem=ident.canal,
+        criado_por_id=ident.usuario_id,
+    )
+    db.add(rascunho)
+    db.flush()
+
+    criados, erros = 0, []
+    for entrada in videos:
+        vimeo_id = str(entrada.get("vimeo_id") or "").strip()
+        if not vimeo_id:
+            erros.append(f"item sem vimeo_id: {entrada}")
+            continue
+
+        titulo = (entrada.get("titulo") or f"Vídeo {vimeo_id}").strip()
+        video = _grava_video(
+            db,
+            VideoVimeo(
+                id=vimeo_id,
+                titulo=titulo,
+                url=entrada.get("url"),
+                embed_url=entrada.get("embed_url"),
+                thumbnail_url=entrada.get("thumbnail_url"),
+                duracao_segundos=entrada.get("duracao_segundos"),
+                pasta=entrada.get("pasta"),
+            ),
+        )
+
+        try:
+            estrutura.criar_item(
+                db,
+                ident,
+                alvo_sub,
+                video,
+                nome=entrada.get("nome") or titulo,
+                status=Status.RASCUNHO,
+                rascunho_id=rascunho.id,
+            )
+            _classificar(
+                db,
+                ident,
+                video,
+                entrada.get("assunto"),
+                entrada.get("subassunto"),
+                taxonomia.classificar_video,
+            )
+        except RegraDeNegocio as e:
+            erros.append(f"{vimeo_id}: {e}")
+            continue
+        criados += 1
+
+    if criados == 0:
+        db.rollback()
+        raise RegraDeNegocio("Nenhum item pôde ser criado. " + " | ".join(erros))
+
+    rascunho.resumo = (
+        f"{criados} vídeo(s) para {alvo_turma.nome} / {alvo_modulo.nome} › {alvo_sub.nome}"
+    )
+    db.commit()
+
+    detalhe = detalhar_rascunho(db, ident, rascunho.id)
+    detalhe["erros"] = erros
+    return detalhe
+
+
+# --- questões e simulados ----------------------------------------------------
+
+
+def criar_questao_rascunho(
+    db: Session,
+    ident: Identidade,
     enunciado: str,
-    alternativas: dict[str, str] | None,
-    gabarito: str | None,
-    topico: str | None,
-    subtopico: str | None,
-    dificuldade: str | None,
-    video: Video | None,
-    numero: int,
-) -> Questao:
-    tem_conteudo = bool(alternativas) or bool(gabarito)
-    letras, gab = ({}, "A")
-    if tem_conteudo:
-        letras, gab = _valida_alternativas(alternativas or {}, gabarito or "")
+    alternativas: dict[str, str],
+    gabarito: str,
+    assunto: str | None = None,
+    subassunto: str | None = None,
+    dificuldade: str | None = None,
+    vimeo_id: str | None = None,
+) -> dict:
+    """Propõe uma questão para o acervo de simulado.
+
+    Sem turma: questão não pertence a turma nenhuma — quem pertence é o
+    simulado onde ela entra. `vimeo_id`, quando vem, é o vídeo da **resolução**
+    dela.
+    """
+    ident.exigir_operador()
+    if not (enunciado or "").strip():
+        raise RegraDeNegocio("Enunciado vazio.")
+
+    letras, gab = _valida_alternativas(alternativas, gabarito)
+
+    rascunho = Rascunho(
+        tipo=TipoRascunho.QUESTOES,
+        resumo="",
+        origem=ident.canal,
+        criado_por_id=ident.usuario_id,
+    )
+    db.add(rascunho)
+    db.flush()
+
+    video = None
+    if vimeo_id:
+        video = db.scalar(select(Video).where(Video.vimeo_id == str(vimeo_id)))
+        if video is None:
+            video = _grava_video(db, VideoVimeo(id=str(vimeo_id), titulo=f"Vídeo {vimeo_id}"))
 
     questao = Questao(
         enunciado=enunciado.strip(),
@@ -143,184 +269,13 @@ def _cria_questao(
 
     for letra, texto in letras.items():
         db.add(Alternativa(questao_id=questao.id, letra=letra, texto=texto))
-    if topico:
-        db.add(
-            Classificacao(questao_id=questao.id, topico=topico.strip(), subtopico=(subtopico or None))
-        )
 
-    db.add(
-        TurmaQuestao(
-            turma_id=turma_id,
-            capitulo_id=capitulo_id,
-            questao_id=questao.id,
-            numero=numero,
-            status=Status.RASCUNHO,
-            rascunho_id=rascunho.id,
-        )
-    )
-    return questao
+    _classificar(db, ident, questao, assunto, subassunto, taxonomia.classificar_questao)
 
-
-# --- operações expostas ------------------------------------------------------
-
-
-def criar_questao_rascunho(
-    db: Session,
-    ident: Identidade,
-    turma: str | int,
-    capitulo: str | int,
-    enunciado: str,
-    alternativas: dict[str, str],
-    gabarito: str,
-    topico: str | None = None,
-    subtopico: str | None = None,
-    dificuldade: str | None = None,
-    vimeo_id: str | None = None,
-) -> dict:
-    ident.exigir_operador()
-    if not (enunciado or "").strip():
-        raise RegraDeNegocio("Enunciado vazio.")
-
-    alvo_turma = resolver_turma(db, turma)
-    alvo_capitulo = resolver_capitulo(db, capitulo)
-
-    rascunho = Rascunho(
-        tipo=TipoRascunho.QUESTOES,
-        turma_id=alvo_turma.id,
-        capitulo_id=alvo_capitulo.id,
-        resumo="",
-        origem=ident.canal,
-        criado_por_id=ident.usuario_id,
-    )
-    db.add(rascunho)
-    db.flush()
-
-    video = None
-    if vimeo_id:
-        video = db.scalar(select(Video).where(Video.vimeo_id == str(vimeo_id)))
-        if video is None:
-            video = _grava_video(
-                db, VideoVimeo(id=str(vimeo_id), titulo=f"Vídeo {vimeo_id}")
-            )
-
-    numero = _proximo_numero(db, alvo_turma.id, alvo_capitulo.id)
-    _cria_questao(
-        db,
-        ident,
-        rascunho,
-        alvo_turma.id,
-        alvo_capitulo.id,
-        enunciado,
-        alternativas,
-        gabarito,
-        topico,
-        subtopico,
-        dificuldade,
-        video,
-        numero,
-    )
-
-    rascunho.resumo = f"1 questão para {alvo_turma.nome} / {alvo_capitulo.nome} (Q{numero:02d})"
+    etiqueta = f" — {assunto}" if assunto else ""
+    rascunho.resumo = f"1 questão de simulado{etiqueta}: {questao.enunciado[:60]}"
     db.commit()
     return detalhar_rascunho(db, ident, rascunho.id)
-
-
-def importar_questoes_vimeo(
-    db: Session,
-    ident: Identidade,
-    turma: str | int,
-    capitulo: str | int,
-    videos: list[dict],
-) -> dict:
-    """Cria, em rascunho, uma questão por vídeo informado.
-
-    Cada item precisa de `vimeo_id`; enunciado/alternativas/gabarito são
-    opcionais. Sem enunciado, usamos o título do vídeo — a POC demonstra
-    relacionar vídeo↔questão↔turma, não redigir a questão pelo aluno (redação
-    autoral por IA está fora de escopo, seção 24).
-
-    `numero` também é opcional, e quando vem manda: é o número da questão na
-    apostila, lido do título do vídeo (Q04, Q52). Sem ele, numeramos em
-    sequência. Usar o número da apostila evita a mesma questão ter dois nomes,
-    um nosso e um do professor.
-    """
-    ident.exigir_operador()
-    if not videos:
-        raise RegraDeNegocio("Nenhum vídeo informado para importar.")
-
-    alvo_turma = resolver_turma(db, turma)
-    alvo_capitulo = resolver_capitulo(db, capitulo)
-
-    rascunho = Rascunho(
-        tipo=TipoRascunho.QUESTOES,
-        turma_id=alvo_turma.id,
-        capitulo_id=alvo_capitulo.id,
-        resumo="",
-        origem=ident.canal,
-        criado_por_id=ident.usuario_id,
-    )
-    db.add(rascunho)
-    db.flush()
-
-    proximo_livre = _proximo_numero(db, alvo_turma.id, alvo_capitulo.id)
-    criadas, erros = 0, []
-    for item in videos:
-        vimeo_id = str(item.get("vimeo_id") or "").strip()
-        if not vimeo_id:
-            erros.append(f"item sem vimeo_id: {item}")
-            continue
-
-        titulo = (item.get("titulo") or f"Vídeo {vimeo_id}").strip()
-        video = _grava_video(
-            db,
-            VideoVimeo(
-                id=vimeo_id,
-                titulo=titulo,
-                url=item.get("url"),
-                embed_url=item.get("embed_url"),
-                thumbnail_url=item.get("thumbnail_url"),
-                duracao_segundos=item.get("duracao_segundos"),
-                pasta=item.get("pasta"),
-            ),
-        )
-        pedido = _numero_pedido(item)
-        numero = proximo_livre if pedido is None else pedido
-        try:
-            _cria_questao(
-                db,
-                ident,
-                rascunho,
-                alvo_turma.id,
-                alvo_capitulo.id,
-                (item.get("enunciado") or titulo),
-                item.get("alternativas"),
-                item.get("gabarito"),
-                item.get("topico") or alvo_capitulo.nome,
-                item.get("subtopico"),
-                item.get("dificuldade"),
-                video,
-                numero,
-            )
-        except RegraDeNegocio as e:
-            erros.append(f"{vimeo_id}: {e}")
-            continue
-        criadas += 1
-        proximo_livre = max(proximo_livre, numero) + 1
-
-    if criadas == 0:
-        db.rollback()
-        raise RegraDeNegocio("Nenhuma questão pôde ser criada. " + " | ".join(erros))
-
-    rascunho.resumo = (
-        f"{criadas} questão(ões) importadas do Vimeo para "
-        f"{alvo_turma.nome} / {alvo_capitulo.nome}"
-    )
-    db.commit()
-
-    detalhe = detalhar_rascunho(db, ident, rascunho.id)
-    detalhe["videos_associados"] = criadas
-    detalhe["erros"] = erros
-    return detalhe
 
 
 def criar_simulado_rascunho(
@@ -329,15 +284,11 @@ def criar_simulado_rascunho(
     turma: str | int,
     titulo: str,
     questoes: list[int],
-    capitulo: str | int | None = None,
 ) -> dict:
-    """Monta um simulado em rascunho a partir de questões já publicadas na turma.
+    """Monta um simulado em rascunho a partir de questões já publicadas.
 
-    `questoes` são os NÚMEROS das questões dentro do capítulo (Q01, Q03...) ou
-    os ids de questão — é o que o professor diz em voz alta. Como a numeração
-    recomeça a cada capítulo, `capitulo` desfaz a ambiguidade ("as questões 1,
-    3 e 5 de Estequiometria"). Só entram questões que a turma já enxerga e que
-    estão completas.
+    `questoes` são ids do acervo. Só entram questões publicadas e completas —
+    uma prova com questão pela metade não é uma prova.
     """
     ident.exigir_operador()
     if not (titulo or "").strip():
@@ -346,7 +297,6 @@ def criar_simulado_rascunho(
         raise RegraDeNegocio("Informe ao menos uma questão para o simulado.")
 
     alvo_turma = resolver_turma(db, turma)
-    alvo_capitulo = resolver_capitulo(db, capitulo) if capitulo is not None else None
 
     rascunho = Rascunho(
         tipo=TipoRascunho.SIMULADO,
@@ -369,57 +319,39 @@ def criar_simulado_rascunho(
     db.flush()
 
     for ordem, referencia in enumerate(questoes, start=1):
-        questao = _questao_do_simulado(db, alvo_turma.id, referencia, alvo_capitulo)
+        questao = _questao_do_simulado(db, referencia)
         db.add(SimuladoQuestao(simulado_id=simulado.id, questao_id=questao.id, ordem=ordem))
 
-    de_onde = f" ({alvo_capitulo.nome})" if alvo_capitulo else ""
     rascunho.resumo = (
-        f"Simulado '{simulado.titulo}' com {len(questoes)} questões{de_onde} — {alvo_turma.nome}"
+        f"Simulado '{simulado.titulo}' com {len(questoes)} questões — {alvo_turma.nome}"
     )
     db.commit()
     return detalhar_rascunho(db, ident, rascunho.id)
 
 
-def _questao_do_simulado(
-    db: Session, turma_id: int, referencia: int | str, capitulo: Capitulo | None = None
-) -> Questao:
-    """Resolve uma questão pelo número dentro do capítulo, ou pelo id."""
-    consulta = (
-        select(TurmaQuestao)
-        .options(
-            selectinload(TurmaQuestao.questao).selectinload(Questao.alternativas),
-            selectinload(TurmaQuestao.capitulo),
+def _questao_do_simulado(db: Session, referencia: int | str) -> Questao:
+    """Resolve uma questão do acervo pelo id, exigindo que esteja pronta."""
+    disponiveis = list(
+        db.scalars(
+            selecionar(Questao)
+            .options(selectinload(Questao.alternativas))
+            .where(Questao.status == Status.PUBLICADO)
         )
-        .where(TurmaQuestao.turma_id == turma_id, TurmaQuestao.status == Status.PUBLICADO)
     )
-    if capitulo is not None:
-        consulta = consulta.where(TurmaQuestao.capitulo_id == capitulo.id)
-    vinculos = db.scalars(consulta).all()
 
-    texto = str(referencia).strip().upper().removeprefix("Q").lstrip("0") or "0"
-    candidatos = [v for v in vinculos if str(v.numero) == texto]
+    texto = str(referencia).strip()
+    candidatos = [q for q in disponiveis if str(q.id) == texto]
     if not candidatos:
-        candidatos = [v for v in vinculos if str(v.questao_id) == texto]
-    if not candidatos:
-        disponiveis = (
-            ", ".join(f"{v.capitulo.nome} Q{v.numero:02d}" for v in vinculos)
-            or "(nenhuma publicada)"
-        )
-        onde = f" em {capitulo.nome}" if capitulo else " nesta turma"
+        lista = ", ".join(f"{q.id} ({q.enunciado[:30]}…)" for q in disponiveis) or "(nenhuma)"
         raise RegraDeNegocio(
-            f"Questão '{referencia}' não está publicada{onde}. Disponíveis: {disponiveis}."
-        )
-    if len(candidatos) > 1:
-        capitulos = ", ".join(sorted({v.capitulo.nome for v in candidatos}))
-        raise RegraDeNegocio(
-            f"'{referencia}' existe em mais de um capítulo ({capitulos}). "
-            "Informe o capítulo, ou use o id da questão."
+            f"Questão '{referencia}' não está no acervo publicado. Disponíveis: {lista}."
         )
 
-    questao = candidatos[0].questao
+    questao = candidatos[0]
     if len(questao.alternativas) < len(LETRAS):
         raise RegraDeNegocio(
-            f"A questão {referencia} ainda está sem as alternativas A-E e não pode ir para um simulado."
+            f"A questão {referencia} ainda está sem as alternativas A-E e não pode ir "
+            "para um simulado."
         )
     return questao
 
@@ -436,13 +368,15 @@ def listar_rascunhos(db: Session, ident: Identidade, status: str | None = None) 
 
 
 def _resumo_rascunho(db: Session, r: Rascunho) -> dict:
+    sub = r.submodulo
     return {
         "rascunho_id": r.id,
         "tipo": r.tipo,
         "status": r.status,
         "resumo": r.resumo,
         "turma": r.turma.nome if r.turma else None,
-        "capitulo": r.capitulo.nome if r.capitulo else None,
+        "modulo": sub.modulo.nome if sub else None,
+        "submodulo": sub.nome if sub else None,
         "criado_por": r.criado_por.nome,
         "origem": r.origem,
         "criado_em": r.criado_em.isoformat(),
@@ -462,32 +396,45 @@ def detalhar_rascunho(db: Session, ident: Identidade, rascunho_id: int) -> dict:
 
     dados = _resumo_rascunho(db, r)
 
-    vinculos = db.scalars(
-        select(TurmaQuestao)
-        .options(
-            selectinload(TurmaQuestao.questao).selectinload(Questao.alternativas),
-            selectinload(TurmaQuestao.questao).selectinload(Questao.video),
-            selectinload(TurmaQuestao.capitulo),
+    itens = list(
+        db.scalars(
+            selecionar(Item)
+            .options(selectinload(Item.video))
+            .where(Item.rascunho_id == r.id)
+            .order_by(Item.ordem)
         )
-        .where(TurmaQuestao.rascunho_id == r.id)
-        .order_by(TurmaQuestao.numero)
-    ).all()
+    )
+    dados["itens"] = [
+        {
+            "item_id": i.id,
+            "nome": i.nome,
+            "ordem": i.ordem,
+            "status": i.status,
+            "video": {"vimeo_id": i.video.vimeo_id, "titulo": i.video.titulo},
+            "assuntos": taxonomia.assuntos_do_video(db, i.video_id),
+        }
+        for i in itens
+    ]
+
+    questoes = list(
+        db.scalars(
+            selecionar(Questao)
+            .options(selectinload(Questao.alternativas), selectinload(Questao.video))
+            .where(Questao.rascunho_id == r.id)
+        )
+    )
     dados["questoes"] = [
         {
-            "questao_id": v.questao_id,
-            "numero": v.numero,
-            "capitulo": v.capitulo.nome,
-            "enunciado": v.questao.enunciado,
-            "alternativas": {a.letra: a.texto for a in v.questao.alternativas},
-            "gabarito": v.questao.gabarito if v.questao.alternativas else None,
-            "completa": len(v.questao.alternativas) == len(LETRAS),
+            "questao_id": q.id,
+            "enunciado": q.enunciado,
+            "alternativas": {a.letra: a.texto for a in q.alternativas},
+            "gabarito": q.gabarito if q.alternativas else None,
+            "completa": len(q.alternativas) == len(LETRAS),
             "video": (
-                {"vimeo_id": v.questao.video.vimeo_id, "titulo": v.questao.video.titulo}
-                if v.questao.video
-                else None
+                {"vimeo_id": q.video.vimeo_id, "titulo": q.video.titulo} if q.video else None
             ),
         }
-        for v in vinculos
+        for q in questoes
     ]
 
     simulado = db.scalar(

@@ -75,44 +75,35 @@ def listar_turmas() -> list[dict]:
     ("Extensivo 2027"), então normalmente basta chamar esta uma vez para saber
     o que existe.
 
-    Retorna [{id, nome, ano, alunos, questoes_publicadas, questoes_em_rascunho}].
+    Retorna [{id, nome, ano, alunos, modulos, itens_publicados, itens_em_rascunho}].
     """
     with _sessao() as (db, ident):
         return catalogo.listar_turmas(db, ident)
 
 
-@mcp.tool(name="listar_capitulos", annotations=SOMENTE_LEITURA)
-def listar_capitulos() -> list[dict]:
-    """Lista os capítulos/assuntos disponíveis (ex.: Atomística, Estequiometria).
-
-    Capítulos são compartilhados entre turmas: o que pertence a uma turma é o
-    vínculo turma+capítulo+questão, não o capítulo em si.
-    """
-    with _sessao() as (db, _ident):
-        return catalogo.listar_capitulos(db)
-
-
 @mcp.tool(name="buscar_questoes", annotations=SOMENTE_LEITURA)
 def buscar_questoes(
-    turma: Annotated[str | None, Field(description="Nome ou id da turma, ex.: 'Extensivo 2027'")] = None,
-    capitulo: Annotated[str | None, Field(description="Nome ou id do capítulo, ex.: 'Estequiometria'")] = None,
+    assunto: Annotated[
+        str | None, Field(description="Filtra pela etiqueta, ex.: 'Estequiometria'")
+    ] = None,
     status: Annotated[
         str | None, Field(description="'RASCUNHO' ou 'PUBLICADO'; vazio traz os dois")
     ] = None,
+    dificuldade: Annotated[str | None, Field(description="FACIL, MEDIA ou DIFICIL")] = None,
     limite: Annotated[int, Field(ge=1, le=200)] = 50,
 ) -> list[dict]:
-    """Busca questões pelo vínculo com a turma e o capítulo.
+    """Busca no acervo de questões de simulado — enunciado, alternativas, gabarito.
 
-    O que volta é o que ESTA identidade pode ver — a segregação por turma é
-    aplicada no backend, não aqui.
+    Não confunda com as "questões da apostila": essas são vídeos de resolução
+    e moram na árvore do curso, em `listar_modulos`. Aqui está só o que pode
+    virar prova.
 
-    Cada item traz numero (Q01, Q02...), enunciado, alternativas, gabarito,
-    dificuldade, tópico, status e o vídeo do Vimeo associado, quando houver.
-    Use o `numero` ao montar simulados; é assim que o professor se refere às
-    questões.
+    Questão não pertence a turma nenhuma — quem pertence é o simulado onde ela
+    entra —, então o filtro é por assunto, não por turma. Use o `questao_id`
+    ao montar simulados.
     """
     with _sessao() as (db, ident):
-        return catalogo.buscar_questoes(db, ident, turma, capitulo, status, limite)
+        return catalogo.buscar_questoes(db, ident, assunto, status, dificuldade, limite)
 
 
 @mcp.tool(name="listar_videos_vimeo", annotations={"read_only_hint": True, "open_world_hint": True})
@@ -130,7 +121,7 @@ async def listar_videos_vimeo(
     vídeos daquela pasta: id do Vimeo, título, link, duração e `embed_url`.
 
     É a porta de entrada do fluxo de importação: leia os vídeos aqui e depois
-    chame importar_questoes_vimeo com os que o professor confirmar. Repasse o
+    chame importar_videos_como_itens com os que o professor confirmar. Repasse o
     `embed_url` como veio — é ele que faz o vídeo tocar na tela do aluno.
     """
     identidade_da_sessao().exigir_operador()
@@ -170,18 +161,18 @@ async def _ler_plano(pasta: str):
         raise ToolError(str(e)) from e
 
 
-def _avaliar_plano(ident: Identidade, plano, turma, capitulo) -> dict:
+def _avaliar_plano(ident: Identidade, plano, turma, destinos) -> dict:
     with SessionLocal() as db:
         try:
-            return vimeo_importacao.avaliar(db, ident, plano, turma, capitulo)
+            return vimeo_importacao.avaliar(db, ident, plano, turma, destinos)
         except ErroDominio as e:
             raise ToolError(str(e)) from e
 
 
-def _aplicar_plano(ident: Identidade, plano, turma, capitulo) -> dict:
+def _aplicar_plano(ident: Identidade, plano, turma, destinos) -> dict:
     with SessionLocal() as db:
         try:
-            return vimeo_importacao.aplicar(db, ident, plano, turma, capitulo)
+            return vimeo_importacao.aplicar(db, ident, plano, turma, destinos)
         except ErroDominio as e:
             db.rollback()
             raise ToolError(str(e)) from e
@@ -232,20 +223,28 @@ async def listar_pastas_vimeo(
 async def simular_importacao_vimeo(
     pasta: Annotated[str, Field(description="Id da pasta no Vimeo, vindo de listar_pastas_vimeo")],
     turma: Annotated[str, Field(description="Nome ou id da turma, ex.: 'Extensivo 2026'")],
-    capitulo: Annotated[str, Field(description="Nome do capítulo, ex.: 'K03 - Estequiometria'")],
+    destinos: Annotated[
+        list[dict],
+        Field(
+            description=(
+                "Mesmo formato de importar_pasta_vimeo_como_rascunho: faixa, "
+                "modulo, submodulo e, opcionais, assunto e subassunto."
+            )
+        ),
+    ],
 ) -> dict:
     """Mostra o que a importação faria, sem gravar nada.
 
-    Devolve, questão por questão, o número lido do título (o acervo usa Q04,
-    Q52...) e a confiança dessa leitura, mais os vídeos que já estão no acervo,
-    os conflitos de numeração e os avisos — vídeo ainda processando, embed
-    restrito a domínios, e assim por diante.
+    Devolve, vídeo por vídeo, o número lido do título (o acervo usa Q04,
+    Q52...) e a confiança dessa leitura, para onde ele iria, quais números da
+    faixa não acharam vídeo, o que já está naquele sub-módulo e os avisos —
+    vídeo ainda processando, embed restrito a domínios, e assim por diante.
 
     Mostre este resumo ao professor antes de importar de fato.
     """
     ident = identidade_da_sessao()
     plano = await _ler_plano(pasta)
-    return await _em_thread(_avaliar_plano, ident, plano, turma, capitulo)
+    return await _em_thread(_avaliar_plano, ident, plano, turma, destinos)
 
 
 @mcp.tool(name="listar_rascunhos", annotations=SOMENTE_LEITURA)
@@ -315,15 +314,17 @@ def listar_simulados(
 
 @mcp.tool(name="criar_questao_rascunho", annotations=ESCREVE_RASCUNHO)
 def criar_questao_rascunho(
-    turma: Annotated[str, Field(description="Nome ou id da turma, ex.: 'Extensivo 2027'")],
-    capitulo: Annotated[str, Field(description="Nome ou id do capítulo, ex.: 'Estequiometria'")],
     enunciado: Annotated[str, Field(description="Texto da questão")],
     alternativas: Annotated[
         dict[str, str], Field(description='As cinco alternativas: {"A": "...", "B": "...", ... "E": "..."}')
     ],
     gabarito: Annotated[str, Field(description="Letra correta: A, B, C, D ou E")],
-    topico: Annotated[str | None, Field(description="Assunto, ex.: 'Reagente limitante'")] = None,
-    subtopico: str | None = None,
+    assunto: Annotated[
+        str | None, Field(description="Assunto já cadastrado, ex.: 'Estequiometria'")
+    ] = None,
+    subassunto: Annotated[
+        str | None, Field(description="Sub-assunto, ex.: 'Reagente limitante'")
+    ] = None,
     dificuldade: Annotated[
         str | None, Field(description="FACIL, MEDIA ou DIFICIL (padrão MEDIA)")
     ] = None,
@@ -331,49 +332,50 @@ def criar_questao_rascunho(
         str | None, Field(description="Id do vídeo do Vimeo com a resolução, se houver")
     ] = None,
 ) -> dict:
-    """Cadastra UMA questão como RASCUNHO na turma e no capítulo indicados.
+    """Cadastra UMA questão de simulado como RASCUNHO.
 
-    A questão NÃO fica visível para os alunos: nasce em rascunho e só aparece
-    depois que o professor aprovar. Apresente o retorno ao professor e espere
-    a decisão dele antes de chamar publicar_rascunho.
+    Sem turma: questão não pertence a turma nenhuma — quem pertence é o
+    simulado onde ela entra. O `assunto` é o que liga o erro do aluno aos
+    vídeos que explicam aquilo, então vale a pena preencher.
 
-    Exige as cinco alternativas (A-E) e o gabarito. Para cadastrar vários
-    vídeos de uma vez, prefira importar_questoes_vimeo.
+    A questão NÃO fica visível para ninguém: nasce em rascunho e só entra no
+    acervo depois que o professor aprovar. Apresente o retorno e espere a
+    decisão dele antes de chamar publicar_rascunho.
     """
     with _sessao() as (db, ident):
         return rascunhos.criar_questao_rascunho(
-            db, ident, turma, capitulo, enunciado, alternativas, gabarito,
-            topico, subtopico, dificuldade, vimeo_id,
+            db, ident, enunciado, alternativas, gabarito,
+            assunto, subassunto, dificuldade, vimeo_id,
         )
 
 
-@mcp.tool(name="importar_questoes_vimeo", annotations=ESCREVE_RASCUNHO)
-def importar_questoes_vimeo(
-    turma: Annotated[str, Field(description="Turma que vai receber o conteúdo, ex.: 'Extensivo 2027'")],
-    capitulo: Annotated[str, Field(description="Capítulo em que as questões entram")],
+@mcp.tool(name="importar_videos_como_itens", annotations=ESCREVE_RASCUNHO)
+def importar_videos_como_itens(
+    turma: Annotated[str, Field(description="Turma que vai receber o conteúdo")],
+    modulo: Annotated[str, Field(description="Módulo onde os vídeos entram, ex.: 'K01 - ...'")],
+    submodulo: Annotated[str, Field(description="Sub-módulo, ex.: 'Questões da apostila'")],
     videos: Annotated[
         list[dict],
         Field(
             description=(
                 "Um item por vídeo. Obrigatório: vimeo_id. Opcionais: titulo, url, "
-                "embed_url (repasse o que listar_videos_vimeo devolveu), enunciado, "
-                "alternativas ({'A': ...}), gabarito, topico, subtopico, dificuldade. "
-                "Sem enunciado, o título do vídeo é usado."
+                "embed_url (repasse o que listar_videos_vimeo devolveu), nome, "
+                "assunto, subassunto."
             )
         ),
     ],
 ) -> dict:
-    """Cria, em RASCUNHO, uma questão por vídeo do Vimeo, já vinculada à turma e ao capítulo.
+    """Cria, em RASCUNHO, um item por vídeo dentro de um sub-módulo.
 
-    É o fluxo principal: liste os vídeos com listar_videos_vimeo, confirme com
-    o professor quais entram, e chame esta tool com eles. Cada questão fica
-    numerada na sequência do capítulo e ligada ao vídeo da resolução.
+    É o CRUD de vídeo do curso: liste com listar_videos_vimeo, confirme com o
+    professor quais entram e onde, e chame esta tool. O `nome` do item, sem
+    ser informado, vem do título do Vimeo.
 
-    Nada é publicado. O retorno traz `questoes`, `videos_associados` e `erros`
-    — mostre esse resumo ao professor e pergunte se pode publicar.
+    O módulo e o sub-módulo precisam existir — use criar_modulo antes. Nada é
+    publicado: o retorno é um rascunho para o professor revisar.
     """
     with _sessao() as (db, ident):
-        return rascunhos.importar_questoes_vimeo(db, ident, turma, capitulo, videos)
+        return rascunhos.importar_videos_como_itens(db, ident, turma, modulo, submodulo, videos)
 
 
 @mcp.tool(
@@ -382,23 +384,35 @@ def importar_questoes_vimeo(
 )
 async def importar_pasta_vimeo_como_rascunho(
     pasta: Annotated[str, Field(description="Id da pasta no Vimeo, vindo de listar_pastas_vimeo")],
-    turma: Annotated[str, Field(description="Turma que recebe o capítulo, ex.: 'Extensivo 2026'")],
-    capitulo: Annotated[str, Field(description="Nome do capítulo, ex.: 'K03 - Estequiometria'")],
+    turma: Annotated[str, Field(description="Turma que recebe o conteúdo, ex.: 'Extensivo 2026'")],
+    destinos: Annotated[
+        list[dict],
+        Field(
+            description=(
+                "Onde cada faixa de vídeos entra. Um item por destino, com: "
+                "faixa ('1-14' ou '15,18,22'; vazio recolhe o resto), modulo, "
+                "submodulo e, opcionais, assunto e subassunto."
+            )
+        ),
+    ],
 ) -> dict:
-    """Importa uma pasta inteira do Vimeo como um capítulo, em RASCUNHO.
+    """Importa uma pasta do Vimeo distribuindo os vídeos pelos módulos, em RASCUNHO.
 
-    Cria o capítulo se ele ainda não existir e uma questão por vídeo, numerada
-    pelo número da apostila lido do título — não por uma contagem nossa, para
-    que aluno e professor chamem a questão pelo mesmo nome.
+    É o gesto que o professor faz em voz alta: "da 1 até a 14 é o K01, sub
+    Questões da apostila; 15, 18, 22 e 25 são o K02". A faixa fala dos números
+    da **apostila**, lidos do título do vídeo (Q04, Q52) — não da posição na
+    lista. Vídeo cujo título não traz número legível só entra num destino sem
+    faixa; do contrário sobra, e a tool avisa em vez de chutar.
 
-    Nada é publicado: o retorno é um rascunho para o professor revisar. Mostre
-    o resumo e pergunte antes de chamar publicar_rascunho.
+    Módulos e sub-módulos precisam existir antes (use criar_modulo). Cada
+    destino vira um rascunho próprio, para o professor poder liberar um
+    módulo e segurar outro.
 
     Rode `simular_importacao_vimeo` antes: é o mesmo trabalho, sem gravar.
     """
     ident = identidade_da_sessao()
     plano = await _ler_plano(pasta)
-    return await _em_thread(_aplicar_plano, ident, plano, turma, capitulo)
+    return await _em_thread(_aplicar_plano, ident, plano, turma, destinos)
 
 
 @mcp.tool(name="criar_simulado_rascunho", annotations=ESCREVE_RASCUNHO)
@@ -406,35 +420,27 @@ def criar_simulado_rascunho(
     turma: Annotated[str, Field(description="Turma para a qual o simulado será publicado")],
     titulo: Annotated[str, Field(description="Nome do simulado, ex.: 'Revisão de Estequiometria'")],
     questoes: Annotated[
-        list[str],
-        Field(description="Números das questões no capítulo (ex.: ['1','3','5'] ou ['Q01','Q03'])"),
+        list[int],
+        Field(description="Ids das questões do acervo, vindos de buscar_questoes"),
     ],
-    capitulo: Annotated[
-        str | None,
-        Field(description="Capítulo de onde vêm as questões, ex.: 'Estequiometria'"),
-    ] = None,
 ) -> dict:
-    """Monta um simulado em RASCUNHO com questões já publicadas na turma.
+    """Monta um simulado em RASCUNHO com questões já publicadas no acervo.
 
-    A numeração recomeça a cada capítulo, então informe `capitulo` quando o
-    professor disser "as questões 1, 3 e 5 de Estequiometria" — sem ele, uma
-    referência ambígua é recusada em vez de adivinhada.
-
-    Só entram questões que a turma já enxerga e que têm as cinco alternativas:
-    uma questão que só tem vídeo de resolução não pode ser respondida.
+    Só entram questões completas — com as cinco alternativas e gabarito. Uma
+    prova pela metade não é uma prova.
 
     O simulado não aparece para os alunos até ser publicado.
     """
     with _sessao() as (db, ident):
-        return rascunhos.criar_simulado_rascunho(db, ident, turma, titulo, questoes, capitulo)
+        return rascunhos.criar_simulado_rascunho(db, ident, turma, titulo, questoes)
 
 
 # --- publicação: exige aprovação humana --------------------------------------
 
 
-def _publicar(ident: Identidade, rascunho_id: int) -> dict:
+def _publicar(ident: Identidade, rascunho_id: int, itens: list[int] | None = None) -> dict:
     with SessionLocal() as db:
-        return publicacao.publicar_rascunho(db, ident, rascunho_id)
+        return publicacao.publicar_rascunho(db, ident, rascunho_id, itens)
 
 
 def _resumo(ident: Identidade, rascunho_id: int) -> str:
@@ -442,11 +448,13 @@ def _resumo(ident: Identidade, rascunho_id: int) -> str:
         return publicacao.resumo_para_confirmacao(db, ident, rascunho_id)
 
 
-def _confirmar_e_publicar(ident: Identidade, rascunho_id: int) -> dict:
+def _confirmar_e_publicar(
+    ident: Identidade, rascunho_id: int, itens: list[int] | None = None
+) -> dict:
     """Grava a aprovação vinda da confirmação do usuário e publica, numa transação."""
     with SessionLocal() as db:
         publicacao.registrar_confirmacao_do_cliente_mcp(db, ident, rascunho_id)
-        return publicacao.publicar_rascunho(db, ident, rascunho_id)
+        return publicacao.publicar_rascunho(db, ident, rascunho_id, itens)
 
 
 CHAVE_CONFIRMACAO = "confirmacao_publicacao"
@@ -498,8 +506,25 @@ def _recusado(rascunho_id: int) -> dict:
     name="publicar_rascunho",
     annotations={"read_only_hint": False, "destructive_hint": False, "idempotent_hint": True},
 )
-async def publicar_rascunho(rascunho_id: int, ctx: Context) -> dict | InputRequiredResult:
+async def publicar_rascunho(
+    rascunho_id: int,
+    ctx: Context,
+    itens: Annotated[
+        list[int] | None,
+        Field(
+            description=(
+                "Ids dos itens a liberar agora (de detalhar_rascunho). "
+                "Vazio publica o rascunho inteiro."
+            )
+        ),
+    ] = None,
+) -> dict | InputRequiredResult:
     """Publica um rascunho — depois que o professor aprovar, e só então.
+
+    Com `itens`, libera só aqueles e deixa o resto pendente: é assim que se
+    publica item a item sem abrir mão da aprovação, que fica gravada no
+    rascunho. Sem `itens`, publica tudo de uma vez — o caso da pasta do Vimeo
+    importada inteira.
 
     A aprovação não é opcional e não depende de você lembrar de pedir: o
     backend recusa publicar qualquer rascunho sem aprovação humana registrada.
@@ -525,13 +550,13 @@ async def publicar_rascunho(rascunho_id: int, ctx: Context) -> dict | InputRequi
         if not aceitou:
             return _recusado(alvo)
         try:
-            return await _em_thread(_confirmar_e_publicar, ident, alvo)
+            return await _em_thread(_confirmar_e_publicar, ident, alvo, itens)
         except ErroDominio as e:
             raise ToolError(str(e)) from e
 
     # Primeira rodada. Se um humano já aprovou no portal, publica direto.
     try:
-        return await _em_thread(_publicar, ident, alvo)
+        return await _em_thread(_publicar, ident, alvo, itens)
     except AprovacaoNecessaria:
         pass
     except ErroDominio as e:
@@ -559,6 +584,6 @@ async def publicar_rascunho(rascunho_id: int, ctx: Context) -> dict | InputRequi
         return _recusado(alvo)
 
     try:
-        return await _em_thread(_confirmar_e_publicar, ident, alvo)
+        return await _em_thread(_confirmar_e_publicar, ident, alvo, itens)
     except ErroDominio as e:
         raise ToolError(str(e)) from e

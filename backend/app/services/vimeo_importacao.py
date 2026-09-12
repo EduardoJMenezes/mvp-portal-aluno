@@ -27,10 +27,11 @@ from app.integracoes.vimeo import (
     TransporteVimeo,
     VideoVimeo,
 )
-from app.models import Capitulo, Questao, TurmaQuestao, Video
-from app.services import rascunhos
+from app.models import Item, SubModulo, Video
+from app.services import estrutura, rascunhos
 from app.services.catalogo import resolver_turma
-from app.services.nomes_vimeo import inferir_numero
+from app.services.consultas import selecionar
+from app.services.nomes_vimeo import inferir_numero, interpretar_faixa
 
 
 @dataclass
@@ -50,8 +51,15 @@ class ItemDoPlano:
     transcricao: str | None
     avisos: list[str] = field(default_factory=list)
 
-    def para_importacao(self) -> dict:
-        """O formato que `rascunhos.importar_questoes_vimeo` espera."""
+    def para_importacao(self, assunto: str | None = None, subassunto: str | None = None) -> dict:
+        """O formato que `rascunhos.importar_videos_como_itens` espera.
+
+        O `nome` do item nasce do título do Vimeo. Antes daqui saía um
+        enunciado sintético ("Questão 4 da apostila — resolução em vídeo"),
+        porque o vídeo precisava virar uma `Questao` para caber no modelo: a
+        questão da apostila mora na apostila, e o que a plataforma guarda é a
+        resolução em vídeo.
+        """
         return {
             "vimeo_id": self.vimeo_id,
             "titulo": self.titulo,
@@ -59,12 +67,9 @@ class ItemDoPlano:
             "embed_url": self.embed_url,
             "thumbnail_url": self.thumbnail_url,
             "duracao_segundos": self.duracao_segundos,
-            "numero": self.numero,
-            "enunciado": (
-                f"Questão {self.numero} da apostila — resolução em vídeo"
-                if self.numero
-                else f"Resolução em vídeo — {self.titulo}"
-            ),
+            "nome": self.titulo,
+            "assunto": assunto,
+            "subassunto": subassunto,
         }
 
     def resumo(self) -> dict:
@@ -143,84 +148,183 @@ async def ler_plano(pasta_id: str) -> PlanoDeImportacao:
     return PlanoDeImportacao(pasta_id=str(pasta_id), pasta_nome=pasta.nome, itens=itens)
 
 
-def avaliar(db: Session, ident: Identidade, plano: PlanoDeImportacao, turma: str | int, capitulo: str) -> dict:
+def _distribuir(
+    plano: PlanoDeImportacao, destinos: list[dict]
+) -> tuple[list[dict], list[ItemDoPlano]]:
+    """Casa cada vídeo com o destino cuja faixa contém o número dele.
+
+    É o gesto que o professor faz em voz alta: "da 1 até a 14 é o K01, sub
+    Questões da apostila; 15, 18, 22 e 25 são o K02". A faixa fala dos números
+    da apostila, lidos do título — não da posição na lista.
+
+    Um destino sem faixa recolhe o que sobrou, inclusive os vídeos cujo título
+    não trouxe número legível. Sem nenhum destino assim, esses vídeos ficam de
+    fora e a tool pergunta em vez de chutar.
+    """
+    if not destinos:
+        raise RegraDeNegocio(
+            "Informe ao menos um destino, ex.: faixa '1-14' para o módulo 'K01 - ...' "
+            "e sub-módulo 'Questões da apostila'."
+        )
+
+    coringas = [d for d in destinos if not str(d.get("faixa") or "").strip()]
+    if len(coringas) > 1:
+        raise RegraDeNegocio("Só um destino pode ficar sem faixa — ele recolhe o que sobrar.")
+
+    usados: set[str] = set()
+    distribuicao: list[dict] = []
+
+    for destino in destinos:
+        texto = str(destino.get("faixa") or "").strip()
+        if not texto:
+            continue
+        try:
+            numeros = interpretar_faixa(texto)
+        except ValueError as e:
+            raise RegraDeNegocio(str(e)) from None
+
+        escolhidos = [
+            item
+            for item in plano.itens
+            if item.numero in numeros and item.vimeo_id not in usados
+        ]
+        usados.update(item.vimeo_id for item in escolhidos)
+        faltando = sorted(numeros - {item.numero for item in escolhidos if item.numero})
+        distribuicao.append({"destino": destino, "itens": escolhidos, "nao_encontrados": faltando})
+
+    sobraram = [item for item in plano.itens if item.vimeo_id not in usados]
+    if coringas:
+        distribuicao.append({"destino": coringas[0], "itens": sobraram, "nao_encontrados": []})
+        sobraram = []
+
+    return distribuicao, sobraram
+
+
+def avaliar(
+    db: Session,
+    ident: Identidade,
+    plano: PlanoDeImportacao,
+    turma: str | int,
+    destinos: list[dict],
+) -> dict:
     """O que aconteceria se importássemos. Não grava nada (seção 53)."""
     ident.exigir_operador()
     alvo_turma = resolver_turma(db, turma)
-    nome_capitulo = str(capitulo).strip()
-    if not nome_capitulo:
-        raise RegraDeNegocio("Informe o nome do capítulo que vai receber os vídeos.")
-
-    existente = db.scalar(select(Capitulo).where(Capitulo.nome == nome_capitulo))
-    numeros_ocupados: dict[int, str] = {}
-    if existente is not None:
-        for numero, titulo in db.execute(
-            select(TurmaQuestao.numero, Video.titulo)
-            .join(Questao, Questao.id == TurmaQuestao.questao_id)
-            .outerjoin(Video, Video.id == Questao.video_id)
-            .where(TurmaQuestao.turma_id == alvo_turma.id, TurmaQuestao.capitulo_id == existente.id)
-        ):
-            numeros_ocupados[numero] = titulo or ""
+    distribuicao, sem_destino = _distribuir(plano, destinos)
 
     ids = [item.vimeo_id for item in plano.itens if item.vimeo_id]
     ja_no_acervo = set()
     if ids:
         ja_no_acervo = set(db.scalars(select(Video.vimeo_id).where(Video.vimeo_id.in_(ids))).all())
 
-    conflitos: list[str] = []
-    vistos: dict[int, str] = {}
-    for item in plano.itens:
-        if item.numero is None:
-            continue
-        if item.numero in vistos:
-            conflitos.append(
-                f"número {item.numero} aparece em dois vídeos: {vistos[item.numero]} e {item.titulo}"
-            )
-        vistos[item.numero] = item.titulo
-        if item.numero in numeros_ocupados:
-            conflitos.append(
-                f"número {item.numero} já existe neste capítulo da turma "
-                f"({numeros_ocupados[item.numero] or 'questão sem vídeo'})"
-            )
+    saida = []
+    for grupo in distribuicao:
+        destino = grupo["destino"]
+        alvo_modulo = estrutura.resolver_modulo(db, alvo_turma, destino["modulo"])
+        alvo_sub = estrutura.resolver_submodulo(db, alvo_modulo, destino["submodulo"])
+
+        ja_no_submodulo = set(
+            db.scalars(
+                selecionar(Video.vimeo_id)
+                .select_from(Item)
+                .join(Video, Video.id == Item.video_id)
+                .where(Item.submodulo_id == alvo_sub.id)
+            ).all()
+        )
+
+        saida.append(
+            {
+                "modulo": alvo_modulo.nome,
+                "submodulo": alvo_sub.nome,
+                "faixa": destino.get("faixa") or "(o que sobrar)",
+                "assunto": destino.get("assunto"),
+                "subassunto": destino.get("subassunto"),
+                "itens_que_serao_criados": len(
+                    [i for i in grupo["itens"] if i.vimeo_id not in ja_no_submodulo]
+                ),
+                "ja_neste_submodulo": sorted(
+                    i.vimeo_id for i in grupo["itens"] if i.vimeo_id in ja_no_submodulo
+                ),
+                "numeros_da_faixa_sem_video": grupo["nao_encontrados"],
+                "itens": [i.resumo() for i in grupo["itens"]],
+            }
+        )
 
     return {
         "pasta": {"id": plano.pasta_id, "nome": plano.pasta_nome},
         "turma": alvo_turma.nome,
-        "capitulo": {"nome": nome_capitulo, "ja_existe": existente is not None},
         "videos_na_pasta": len(plano.itens),
-        "questoes_que_serao_criadas": len(plano.itens),
         "videos_ja_no_acervo": sorted(ja_no_acervo),
-        "conflitos": conflitos,
-        "questoes": [item.resumo() for item in plano.itens],
+        "destinos": saida,
+        "sem_destino": [i.resumo() for i in sem_destino],
         "observacao": (
             "Nada foi gravado. Confirme com o professor e chame "
             "importar_pasta_vimeo_como_rascunho para criar o rascunho."
+            + (
+                f" Atenção: {len(sem_destino)} vídeo(s) ficaram sem destino — diga a faixa "
+                "deles ou informe um destino sem faixa."
+                if sem_destino
+                else ""
+            )
         ),
     }
 
 
-def aplicar(db: Session, ident: Identidade, plano: PlanoDeImportacao, turma: str | int, capitulo: str) -> dict:
-    """Grava o plano como RASCUNHO. Continua sem publicar nada."""
+def aplicar(
+    db: Session,
+    ident: Identidade,
+    plano: PlanoDeImportacao,
+    turma: str | int,
+    destinos: list[dict],
+) -> dict:
+    """Grava o plano como RASCUNHO. Continua sem publicar nada.
+
+    Um rascunho por destino: cada sub-módulo é um lote de aprovação próprio,
+    e o professor pode liberar o K01 e segurar o K02 sem depender de ter
+    importado em chamadas separadas.
+    """
     ident.exigir_operador()
     if not plano.itens:
         raise RegraDeNegocio(f"A pasta {plano.pasta_id} não tem vídeos para importar.")
 
     alvo_turma = resolver_turma(db, turma)
-    nome_capitulo = str(capitulo).strip()
-    alvo_capitulo = db.scalar(select(Capitulo).where(Capitulo.nome == nome_capitulo))
-    capitulo_criado = alvo_capitulo is None
-    if alvo_capitulo is None:
-        alvo_capitulo = Capitulo(nome=nome_capitulo)
-        db.add(alvo_capitulo)
-        db.flush()
+    distribuicao, sem_destino = _distribuir(plano, destinos)
 
-    detalhe = rascunhos.importar_questoes_vimeo(
-        db,
-        ident,
-        alvo_turma.id,
-        alvo_capitulo.id,
-        [item.para_importacao() for item in plano.itens],
-    )
-    detalhe["capitulo_criado"] = capitulo_criado
-    detalhe["pasta_vimeo"] = {"id": plano.pasta_id, "nome": plano.pasta_nome}
-    return detalhe
+    criados = []
+    for grupo in distribuicao:
+        if not grupo["itens"]:
+            continue
+        destino = grupo["destino"]
+        detalhe = rascunhos.importar_videos_como_itens(
+            db,
+            ident,
+            alvo_turma.id,
+            destino["modulo"],
+            destino["submodulo"],
+            [
+                item.para_importacao(destino.get("assunto"), destino.get("subassunto"))
+                for item in grupo["itens"]
+            ],
+        )
+        criados.append(detalhe)
+
+    if not criados:
+        raise RegraDeNegocio(
+            "Nenhum vídeo casou com os destinos informados. Confira as faixas contra os "
+            "números lidos dos títulos."
+        )
+
+    return {
+        "pasta_vimeo": {"id": plano.pasta_id, "nome": plano.pasta_nome},
+        "turma": alvo_turma.nome,
+        "rascunhos": criados,
+        "sem_destino": [i.resumo() for i in sem_destino],
+        "aviso": (
+            "Nada foi publicado. Cada rascunho precisa da aprovação do professor."
+            + (
+                f" {len(sem_destino)} vídeo(s) ficaram de fora por não casarem com nenhuma faixa."
+                if sem_destino
+                else ""
+            )
+        ),
+    }

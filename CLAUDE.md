@@ -79,6 +79,25 @@ Ensaio geral dos quatro fluxos do §21, contra o servidor no ar:
   porta a pessoa entrou — mantenha assim. Quem entra pelo GitHub só abre sessão
   se `MCP_OAUTH_OPERADORES` (ou o e-mail público) casar com um ADMIN ou
   GERENCIADOR.
+* **Nada é apagado; tudo é filtrado.** Remoção é `removido_em` preenchido
+  (`models.Rastreavel`). A consequência morde em silêncio: consulta sem o
+  filtro faz conteúdo removido reaparecer para o aluno. Use `selecionar()` e
+  `vivos()` de [services/consultas.py](backend/app/services/consultas.py) —
+  `select()` cru num service de conteúdo é bug, não estilo. E como `unique`
+  comum queimaria o nome de um módulo removido para sempre, a unicidade é
+  índice parcial (`_vivo()` em `models.py`).
+* **Conteúdo do curso é vídeo; `Questao` é só do simulado.** A questão da
+  apostila mora na apostila — o que a plataforma guarda dela é o vídeo da
+  resolução, como item de sub-módulo. Ver
+  [docs/MODELO-CONTEUDO.md](docs/MODELO-CONTEUDO.md).
+* **Módulo é endereço, assunto é etiqueta.** `Modulo` pertence à turma e
+  carrega o "K01"; `Assunto` é global e **nunca** leva numeração de capítulo —
+  K03 é Estequiometria em 2026 e Tabela Periódica em 2025.
+* **Editar e remover são diretos; publicar não.** As duas primeiras confirmam
+  com o professor pela tool ([mcp_server/confirmacao.py](backend/app/mcp_server/confirmacao.py))
+  e gravam `alterado_por_id`. Publicar continua exigindo aprovação humana em
+  `drafts.aprovado_por_id`, verificada no banco — inclusive quando se publica
+  item a item, que acontece de dentro de um rascunho já aprovado.
 * **Elicitation mudou no protocolo 2026-07-28.** Requisição iniciada pelo
   servidor não existe mais; o canal é `InputRequiredResult` (SEP-2322).
   `publicar_rascunho` implementa os dois caminhos — não simplifique para só um.

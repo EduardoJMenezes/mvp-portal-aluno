@@ -16,19 +16,24 @@ from sqlalchemy import select
 from app.db import SessionLocal, engine
 from app.models import (
     Alternativa,
+    Assunto,
     Base,
-    Capitulo,
-    Classificacao,
     Dificuldade,
+    Item,
     Matricula,
+    Modulo,
     Papel,
     Questao,
+    QuestaoAssunto,
     Status,
+    SubAssunto,
+    SubModulo,
+    TipoSubModulo,
     TokenMCP,
     Turma,
-    TurmaQuestao,
     Usuario,
     Video,
+    VideoAssunto,
 )
 from app.security import hash_senha, hash_token, novo_token_mcp
 
@@ -235,8 +240,21 @@ def povoar(reset: bool = False) -> None:
         }
         db.add_all(turmas.values())
 
-        capitulos = {nome: Capitulo(nome=nome) for nome in ("Atomística", "Estequiometria", "Cinética")}
-        db.add_all(capitulos.values())
+        # A taxonomia é global: "Estequiometria" vale para 2026 e 2027, e é
+        # ela que liga o erro do aluno ao vídeo que explica aquilo. O nome
+        # nunca leva o K0X — esse é o endereço na apostila de uma turma.
+        assuntos = {nome: Assunto(nome=nome) for nome in QUESTOES}
+        db.add_all(assuntos.values())
+        db.flush()
+
+        subassuntos: dict[tuple[str, str], SubAssunto] = {}
+        for assunto_nome, itens in QUESTOES.items():
+            for item in itens:
+                chave = (assunto_nome, item["subtopico"])
+                if chave not in subassuntos:
+                    sub = SubAssunto(assunto_id=assuntos[assunto_nome].id, nome=item["subtopico"])
+                    db.add(sub)
+                    subassuntos[chave] = sub
         db.flush()
 
         alunos = [
@@ -252,16 +270,34 @@ def povoar(reset: bool = False) -> None:
             db.flush()
             db.add(Matricula(usuario_id=aluno.id, turma_id=turmas[turma].id))
 
-        # Uma questão por linha do catálogo; o vínculo com a turma é quem
-        # decide onde ela aparece — a mesma questão serve a mais de um ano.
-        criadas: dict[str, list[Questao]] = {}
-        for capitulo_nome, itens in QUESTOES.items():
-            criadas[capitulo_nome] = []
+        # O acervo é global e reaproveitável: um vídeo por linha do catálogo,
+        # classificado uma vez. Onde ele aparece é decisão da turma, logo
+        # abaixo — e é isso que faz um vídeo do 2027 poder aparecer bloqueado
+        # para um aluno do 2026 que errou aquele assunto.
+        videos: dict[str, list[Video]] = {}
+        questoes: dict[str, list[Questao]] = {}
+
+        for assunto_nome, itens in QUESTOES.items():
+            videos[assunto_nome] = []
+            questoes[assunto_nome] = []
             for item in itens:
-                video = _video_demo(item["vimeo"], f"{capitulo_nome} — {item['subtopico']}", capitulo_nome)
+                video = _video_demo(
+                    item["vimeo"], f"{assunto_nome} — {item['subtopico']}", assunto_nome
+                )
                 db.add(video)
                 db.flush()
+                db.add(
+                    VideoAssunto(
+                        video_id=video.id,
+                        assunto_id=assuntos[assunto_nome].id,
+                        subassunto_id=subassuntos[(assunto_nome, item["subtopico"])].id,
+                    )
+                )
+                videos[assunto_nome].append(video)
 
+                # A questão com gabarito serve ao simulado, e só a ele: a
+                # questão da apostila mora na apostila, e o que entra no curso
+                # é o vídeo da resolução dela.
                 questao = Questao(
                     enunciado=item["enunciado"],
                     gabarito=item["gabarito"],
@@ -272,25 +308,59 @@ def povoar(reset: bool = False) -> None:
                 )
                 db.add(questao)
                 db.flush()
-
                 for letra, texto in item["alternativas"].items():
                     db.add(Alternativa(questao_id=questao.id, letra=letra, texto=texto))
                 db.add(
-                    Classificacao(
-                        questao_id=questao.id, topico=capitulo_nome, subtopico=item["subtopico"]
+                    QuestaoAssunto(
+                        questao_id=questao.id,
+                        assunto_id=assuntos[assunto_nome].id,
+                        subassunto_id=subassuntos[(assunto_nome, item["subtopico"])].id,
                     )
                 )
-                criadas[capitulo_nome].append(questao)
+                questoes[assunto_nome].append(questao)
 
+        # A organização é da turma: cada uma numera os próprios capítulos, com
+        # "Aulas" e "Questões da apostila" como sub-módulos — que é o formato
+        # das pastas do acervo real no Vimeo.
         for turma_nome, capitulos_da_turma in DISTRIBUICAO.items():
-            for capitulo_nome in capitulos_da_turma:
-                for numero, questao in enumerate(criadas[capitulo_nome], start=1):
+            for posicao, assunto_nome in enumerate(capitulos_da_turma, start=1):
+                modulo = Modulo(
+                    turma_id=turmas[turma_nome].id,
+                    nome=f"K{posicao:02d} - {assunto_nome}",
+                    ordem=posicao,
+                )
+                db.add(modulo)
+                db.flush()
+
+                aulas = SubModulo(
+                    modulo_id=modulo.id, nome="Aulas", tipo=TipoSubModulo.VIDEO, ordem=1
+                )
+                apostila = SubModulo(
+                    modulo_id=modulo.id,
+                    nome="Questões da apostila",
+                    tipo=TipoSubModulo.VIDEO,
+                    ordem=2,
+                )
+                db.add_all([aulas, apostila])
+                db.flush()
+
+                # Poucas aulas e longas; muitas questões e curtas.
+                db.add(
+                    Item(
+                        submodulo_id=aulas.id,
+                        video_id=videos[assunto_nome][0].id,
+                        nome=f"Aula 1 — {assunto_nome}",
+                        ordem=1,
+                        status=Status.PUBLICADO,
+                    )
+                )
+                for numero, video in enumerate(videos[assunto_nome], start=1):
                     db.add(
-                        TurmaQuestao(
-                            turma_id=turmas[turma_nome].id,
-                            capitulo_id=capitulos[capitulo_nome].id,
-                            questao_id=questao.id,
-                            numero=numero,
+                        Item(
+                            submodulo_id=apostila.id,
+                            video_id=video.id,
+                            nome=f"Q{numero:02d}",
+                            ordem=numero,
                             status=Status.PUBLICADO,
                         )
                     )

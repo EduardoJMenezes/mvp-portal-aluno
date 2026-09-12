@@ -58,3 +58,34 @@ def inferir_numero(titulo: str | None) -> NumeroInferido:
 def numero_do_titulo(titulo: str | None) -> int | None:
     """Só o número, para quem não precisa saber de onde ele veio."""
     return inferir_numero(titulo).numero
+
+
+def interpretar_faixa(texto: str) -> set[int]:
+    """Traduz "1-14", "15,18,22" ou "1-14, 20" no conjunto de números.
+
+    É assim que o professor fala ao montar o curso — "da questão 1 até a 14 é
+    o K01" —, então é assim que a tool aceita. Os números são os da apostila,
+    lidos do título do vídeo por `inferir_numero`, não a posição na lista.
+    """
+    numeros: set[int] = set()
+    for parte in str(texto or "").replace(";", ",").split(","):
+        parte = parte.strip().upper().replace("Q", "")
+        if not parte:
+            continue
+        if "-" in parte:
+            inicio, _, fim = parte.partition("-")
+            try:
+                a, b = int(inicio.strip()), int(fim.strip())
+            except ValueError:
+                raise ValueError(f"Faixa inválida: '{parte}'. Use algo como '1-14'.") from None
+            if a > b:
+                a, b = b, a
+            numeros.update(range(a, b + 1))
+        else:
+            try:
+                numeros.add(int(parte))
+            except ValueError:
+                raise ValueError(
+                    f"Número inválido: '{parte}'. Use '1-14' ou '15,18,22'."
+                ) from None
+    return numeros

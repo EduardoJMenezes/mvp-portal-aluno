@@ -28,8 +28,9 @@ from app.config import get_settings
 from app.db import engine
 from app.errors import AprovacaoNecessaria, NaoAutorizado, NaoEncontrado, RegraDeNegocio
 
-# Importar o módulo de tools registra todas elas na instância `mcp`.
+# Importar os módulos de tools registra todas elas na instância `mcp`.
 from app.mcp_server import tools as _tools  # noqa: F401
+from app.mcp_server import tools_estrutura as _tools_estrutura  # noqa: F401
 from app.mcp_server.server import mcp
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
