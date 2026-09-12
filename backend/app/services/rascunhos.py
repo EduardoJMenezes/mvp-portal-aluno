@@ -70,6 +70,24 @@ def _proximo_numero(db: Session, turma_id: int, capitulo_id: int) -> int:
     return (atual or 0) + 1
 
 
+def _numero_pedido(item: dict) -> int | None:
+    """Número explícito do item, quando o chamador souber qual é.
+
+    Vem da leitura do título no Vimeo (`Q04` -> 4). Sem ele, a numeração segue
+    sequencial, como sempre foi.
+    """
+    bruto = item.get("numero")
+    if bruto in (None, ""):
+        return None
+    try:
+        numero = int(bruto)
+    except (TypeError, ValueError):
+        raise RegraDeNegocio(f"Número inválido para o vídeo {item.get('vimeo_id')}: {bruto!r}.") from None
+    if numero < 1:
+        raise RegraDeNegocio(f"O número da questão precisa ser positivo: {numero}.")
+    return numero
+
+
 def _grava_video(db: Session, vimeo: VideoVimeo | None) -> Video | None:
     """Espelha o vídeo do Vimeo localmente, sem duplicar."""
     if vimeo is None:
@@ -220,6 +238,11 @@ def importar_questoes_vimeo(
     opcionais. Sem enunciado, usamos o título do vídeo — a POC demonstra
     relacionar vídeo↔questão↔turma, não redigir a questão pelo aluno (redação
     autoral por IA está fora de escopo, seção 24).
+
+    `numero` também é opcional, e quando vem manda: é o número da questão na
+    apostila, lido do título do vídeo (Q04, Q52). Sem ele, numeramos em
+    sequência. Usar o número da apostila evita a mesma questão ter dois nomes,
+    um nosso e um do professor.
     """
     ident.exigir_operador()
     if not videos:
@@ -239,7 +262,7 @@ def importar_questoes_vimeo(
     db.add(rascunho)
     db.flush()
 
-    numero = _proximo_numero(db, alvo_turma.id, alvo_capitulo.id)
+    proximo_livre = _proximo_numero(db, alvo_turma.id, alvo_capitulo.id)
     criadas, erros = 0, []
     for item in videos:
         vimeo_id = str(item.get("vimeo_id") or "").strip()
@@ -260,6 +283,8 @@ def importar_questoes_vimeo(
                 pasta=item.get("pasta"),
             ),
         )
+        pedido = _numero_pedido(item)
+        numero = proximo_livre if pedido is None else pedido
         try:
             _cria_questao(
                 db,
@@ -280,7 +305,7 @@ def importar_questoes_vimeo(
             erros.append(f"{vimeo_id}: {e}")
             continue
         criadas += 1
-        numero += 1
+        proximo_livre = max(proximo_livre, numero) + 1
 
     if criadas == 0:
         db.rollback()

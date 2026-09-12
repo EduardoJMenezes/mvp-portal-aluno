@@ -24,7 +24,15 @@ from app.errors import AprovacaoNecessaria, ErroDominio
 from app.identidade import Identidade
 from app.mcp_server.auth import identidade_da_sessao
 from app.mcp_server.server import mcp
-from app.services import analytics, catalogo, publicacao, rascunhos, simulados
+from app.integracoes.vimeo import VimeoErro
+from app.services import (
+    analytics,
+    catalogo,
+    publicacao,
+    rascunhos,
+    simulados,
+    vimeo_importacao,
+)
 from app.vimeo.client import get_cliente_vimeo
 
 logger = logging.getLogger("plataforma.mcp")
@@ -150,6 +158,94 @@ async def listar_videos_vimeo(
         }
     except ErroDominio as e:
         raise ToolError(str(e)) from e
+
+
+# --- importação a partir de uma pasta do Vimeo -------------------------------
+
+
+async def _ler_plano(pasta: str):
+    try:
+        return await vimeo_importacao.ler_plano(pasta)
+    except (ErroDominio, VimeoErro) as e:
+        raise ToolError(str(e)) from e
+
+
+def _avaliar_plano(ident: Identidade, plano, turma, capitulo) -> dict:
+    with SessionLocal() as db:
+        try:
+            return vimeo_importacao.avaliar(db, ident, plano, turma, capitulo)
+        except ErroDominio as e:
+            raise ToolError(str(e)) from e
+
+
+def _aplicar_plano(ident: Identidade, plano, turma, capitulo) -> dict:
+    with SessionLocal() as db:
+        try:
+            return vimeo_importacao.aplicar(db, ident, plano, turma, capitulo)
+        except ErroDominio as e:
+            db.rollback()
+            raise ToolError(str(e)) from e
+
+
+@mcp.tool(name="listar_pastas_vimeo", annotations={"read_only_hint": True, "open_world_hint": True})
+async def listar_pastas_vimeo(
+    busca: Annotated[
+        str | None, Field(description="Filtra pelo nome da pasta, ex.: 'K03', 'QUESTOES' ou '2026'")
+    ] = None,
+    limite: Annotated[int, Field(ge=1, le=200)] = 60,
+) -> dict:
+    """Lista as pastas do Vimeo com a hierarquia, para escolher o que importar.
+
+    O acervo tem centenas de pastas em vários níveis (o ano, depois EXTENSIVO,
+    depois QUESTÕES APOSTILA, e então K01, K02...). Cada item traz o id, o nome,
+    dentro de qual pasta ele está e quantos vídeos tem — contando ou não as
+    subpastas. É esse id que `simular_importacao_vimeo` e
+    `importar_pasta_vimeo_como_rascunho` pedem.
+    """
+    identidade_da_sessao().exigir_operador()
+    try:
+        async with vimeo_importacao.abrir_leitura() as leitura:
+            pastas = await leitura.listar_pastas()
+    except (ErroDominio, VimeoErro) as e:
+        raise ToolError(str(e)) from e
+
+    nomes = {pasta.uri: pasta.nome for pasta in pastas}
+    filtradas = [p for p in pastas if not busca or busca.lower() in (p.nome or "").lower()]
+    return {
+        "total_no_vimeo": len(pastas),
+        "mostrando": min(len(filtradas), limite),
+        "pastas": [
+            {
+                "id": pasta.id,
+                "nome": pasta.nome,
+                "dentro_de": nomes.get(pasta.pai_uri) if pasta.pai_uri else None,
+                "videos": pasta.total_videos,
+                "videos_com_subpastas": pasta.total_videos_com_subpastas,
+                "tem_subpasta": pasta.tem_subpasta,
+            }
+            for pasta in filtradas[:limite]
+        ],
+    }
+
+
+@mcp.tool(name="simular_importacao_vimeo", annotations={"read_only_hint": True, "open_world_hint": True})
+async def simular_importacao_vimeo(
+    pasta: Annotated[str, Field(description="Id da pasta no Vimeo, vindo de listar_pastas_vimeo")],
+    turma: Annotated[str, Field(description="Nome ou id da turma, ex.: 'Extensivo 2026'")],
+    capitulo: Annotated[str, Field(description="Nome do capítulo, ex.: 'K03 - Estequiometria'")],
+) -> dict:
+    """Mostra o que a importação faria, sem gravar nada.
+
+    Devolve, questão por questão, o número lido do título (o acervo usa Q04,
+    Q52...) e a confiança dessa leitura, mais os vídeos que já estão no acervo,
+    os conflitos de numeração e os avisos — vídeo ainda processando, embed
+    restrito a domínios, e assim por diante.
+
+    Mostre este resumo ao professor antes de importar de fato.
+    """
+    ident = identidade_da_sessao()
+    plano = await _ler_plano(pasta)
+    return await _em_thread(_avaliar_plano, ident, plano, turma, capitulo)
 
 
 @mcp.tool(name="listar_rascunhos", annotations=SOMENTE_LEITURA)
@@ -278,6 +374,31 @@ def importar_questoes_vimeo(
     """
     with _sessao() as (db, ident):
         return rascunhos.importar_questoes_vimeo(db, ident, turma, capitulo, videos)
+
+
+@mcp.tool(
+    name="importar_pasta_vimeo_como_rascunho",
+    annotations={"read_only_hint": False, "destructive_hint": False, "open_world_hint": True},
+)
+async def importar_pasta_vimeo_como_rascunho(
+    pasta: Annotated[str, Field(description="Id da pasta no Vimeo, vindo de listar_pastas_vimeo")],
+    turma: Annotated[str, Field(description="Turma que recebe o capítulo, ex.: 'Extensivo 2026'")],
+    capitulo: Annotated[str, Field(description="Nome do capítulo, ex.: 'K03 - Estequiometria'")],
+) -> dict:
+    """Importa uma pasta inteira do Vimeo como um capítulo, em RASCUNHO.
+
+    Cria o capítulo se ele ainda não existir e uma questão por vídeo, numerada
+    pelo número da apostila lido do título — não por uma contagem nossa, para
+    que aluno e professor chamem a questão pelo mesmo nome.
+
+    Nada é publicado: o retorno é um rascunho para o professor revisar. Mostre
+    o resumo e pergunte antes de chamar publicar_rascunho.
+
+    Rode `simular_importacao_vimeo` antes: é o mesmo trabalho, sem gravar.
+    """
+    ident = identidade_da_sessao()
+    plano = await _ler_plano(pasta)
+    return await _em_thread(_aplicar_plano, ident, plano, turma, capitulo)
 
 
 @mcp.tool(name="criar_simulado_rascunho", annotations=ESCREVE_RASCUNHO)

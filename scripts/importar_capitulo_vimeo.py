@@ -1,24 +1,23 @@
-"""Importa um capítulo do Vimeo para o portal, como RASCUNHO.
+"""Importa uma pasta do Vimeo para o portal, como RASCUNHO.
 
-Lê uma pasta do Vimeo, ordena os vídeos pelo número no título (Q52, Q04…) e
-cria uma questão por vídeo, em rascunho, pelo mesmo service que o MCP usa. Nada
-é publicado: quem publica é uma pessoa, no portal ou pela tool
-`publicar_rascunho`.
+É a mesma coisa que a tool `importar_pasta_vimeo_como_rascunho` do MCP faz,
+pela linha de comando: lê a pasta, ordena pelo número no título (o acervo usa
+Q04, Q52… e a API devolve fora de ordem) e cria uma questão por vídeo em
+rascunho. Nada é publicado; a aprovação continua sendo humana.
 
     DATABASE_URL=... VIMEO_ACCESS_TOKEN=... \
     python scripts/importar_capitulo_vimeo.py \
         --turma "Extensivo 2026" --capitulo "K03 - Estequiometria" \
         --pasta 27843651 --confirmo
 
-Sem `--confirmo` ele mostra o plano e não grava nada. No Vimeo, só faz leitura.
+Sem `--confirmo` ele mostra a simulação e não grava nada. No Vimeo, só lê.
 """
 
 from __future__ import annotations
 
 import argparse
 import asyncio
-import os
-import re
+import json
 import sys
 from pathlib import Path
 
@@ -27,76 +26,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "backend"))
 from sqlalchemy import select  # noqa: E402
 
 from app.db import SessionLocal  # noqa: E402
+from app.errors import ErroDominio  # noqa: E402
 from app.identidade import Canal, Identidade  # noqa: E402
-from app.integracoes.vimeo import (  # noqa: E402
-    CAMPOS_VIDEO_IMPORTACAO,
-    ClienteVimeoLeitura,
-    TransporteVimeo,
-)
-from app.models import Capitulo, Papel, Usuario  # noqa: E402
-from app.services import rascunhos  # noqa: E402
-from app.services.catalogo import resolver_turma  # noqa: E402
-
-# Os títulos do acervo são "Q52", "Q04"… O número é o da questão na apostila,
-# e a pasta não devolve os vídeos em ordem numérica.
-PADRAO_NUMERO = re.compile(r"\bQ\s*0*(\d+)", re.IGNORECASE)
-
-
-def numero_do_titulo(titulo: str | None) -> int | None:
-    encontrado = PADRAO_NUMERO.search(titulo or "")
-    return int(encontrado.group(1)) if encontrado else None
-
-
-async def ler_pasta(pasta: str, limite: int | None) -> list[dict]:
-    """Lê os vídeos da pasta e devolve na ordem do número do título."""
-    token = os.environ.get("VIMEO_ACCESS_TOKEN")
-    if not token:
-        raise SystemExit("Defina VIMEO_ACCESS_TOKEN (escopos public private).")
-
-    transporte = TransporteVimeo(token, agente="mvp-portal-aluno/0.1 (importacao)")
-    leitura = ClienteVimeoLeitura(transporte)
-    try:
-        pasta_info = await leitura.obter_pasta(pasta)
-        videos = await leitura.listar_videos_da_pasta(pasta, campos=CAMPOS_VIDEO_IMPORTACAO)
-    finally:
-        await transporte.aclose()
-
-    itens = []
-    for video in videos:
-        itens.append(
-            {
-                "vimeo_id": video.id,
-                "titulo": video.nome,
-                "url": video.link,
-                # Guardado como veio: sem o hash `?h=`, vídeo restrito não toca.
-                "embed_url": video.embed_url,
-                "thumbnail_url": video.thumbnail_url,
-                "duracao_segundos": video.duracao_segundos,
-                "pasta": pasta_info.nome,
-                "numero_no_titulo": numero_do_titulo(video.nome),
-                "publicavel": video.publicavel,
-                "privacidade": f"{video.privacidade_view}/{video.privacidade_embed}",
-                "transcricao": video.transcricao_status,
-            }
-        )
-
-    sem_numero = [i for i in itens if i["numero_no_titulo"] is None]
-    com_numero = sorted(
-        (i for i in itens if i["numero_no_titulo"] is not None), key=lambda i: i["numero_no_titulo"]
-    )
-    ordenados = com_numero + sem_numero
-    return ordenados[:limite] if limite else ordenados
-
-
-def garantir_capitulo(db, nome: str) -> Capitulo:
-    existente = db.scalar(select(Capitulo).where(Capitulo.nome == nome))
-    if existente:
-        return existente
-    capitulo = Capitulo(nome=nome)
-    db.add(capitulo)
-    db.flush()
-    print(f"   capítulo '{nome}' criado (id {capitulo.id})")
-    return capitulo
+from app.models import Papel, Usuario  # noqa: E402
+from app.services import vimeo_importacao  # noqa: E402
 
 
 def identidade_do_professor(db, email: str) -> Identidade:
@@ -114,51 +47,44 @@ def main() -> int:
     parser.add_argument("--capitulo", required=True, help='Nome do capítulo, ex.: "K03 - Estequiometria"')
     parser.add_argument("--pasta", required=True, help="ID da pasta no Vimeo")
     parser.add_argument("--professor", default="professor@escola.demo", help="E-mail do operador")
-    parser.add_argument("--limite", type=int, help="Importar no máximo N vídeos")
-    parser.add_argument("--confirmo", action="store_true", help="Sem isto, só mostra o plano")
+    parser.add_argument("--confirmo", action="store_true", help="Sem isto, só simula")
     args = parser.parse_args()
 
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
-    itens = asyncio.run(ler_pasta(args.pasta, args.limite))
-    print(f"\nPasta {args.pasta}: {len(itens)} vídeo(s), na ordem que serão importados:\n")
-    for posicao, item in enumerate(itens, start=1):
-        aviso = "" if item["publicavel"] else "  [NÃO REPRODUZÍVEL]"
+    plano = asyncio.run(vimeo_importacao.ler_plano(args.pasta))
+    print(f"\nPasta {plano.pasta_id} ({plano.pasta_nome}): {len(plano.itens)} vídeo(s)\n")
+    for item in plano.itens:
+        numero = f"Q{item.numero:02d}" if item.numero else "sem número"
+        avisos = f"  avisos: {'; '.join(item.avisos)}" if item.avisos else ""
         print(
-            f"  {posicao:>2}. {item['titulo']:<10} vimeo={item['vimeo_id']} "
-            f"num={item['numero_no_titulo']} dur={item['duracao_segundos']}s "
-            f"privacidade={item['privacidade']} transcrição={item['transcricao']}{aviso}"
+            f"  {numero:<11} {item.titulo:<10} vimeo={item.vimeo_id} "
+            f"dur={item.duracao_segundos}s confiança={item.confianca}{avisos}"
         )
 
-    if not args.confirmo:
-        print("\nNada foi gravado. Rode de novo com --confirmo para importar como rascunho.")
-        return 0
+    try:
+        with SessionLocal() as db:
+            ident = identidade_do_professor(db, args.professor)
+            simulacao = vimeo_importacao.avaliar(db, ident, plano, args.turma, args.capitulo)
+            print("\n=== simulação ===")
+            print(f"   turma: {simulacao['turma']}")
+            print(f"   capítulo: {simulacao['capitulo']['nome']} (já existe: {simulacao['capitulo']['ja_existe']})")
+            print(f"   questões a criar: {simulacao['questoes_que_serao_criadas']}")
+            print(f"   vídeos já no acervo: {simulacao['videos_ja_no_acervo'] or 'nenhum'}")
+            print(f"   conflitos: {simulacao['conflitos'] or 'nenhum'}")
 
-    with SessionLocal() as db:
-        ident = identidade_do_professor(db, args.professor)
-        turma = resolver_turma(db, args.turma)
-        capitulo = garantir_capitulo(db, args.capitulo)
-        db.commit()
+            if not args.confirmo:
+                print("\nNada foi gravado. Rode de novo com --confirmo para criar o rascunho.")
+                return 0
 
-        resultado = rascunhos.importar_questoes_vimeo(
-            db,
-            ident,
-            turma.id,
-            capitulo.id,
-            [
-                {k: v for k, v in item.items() if k in
-                 ("vimeo_id", "titulo", "url", "embed_url", "thumbnail_url", "duracao_segundos", "pasta")}
-                for item in itens
-            ],
-        )
+            resultado = vimeo_importacao.aplicar(db, ident, plano, args.turma, args.capitulo)
+    except ErroDominio as erro:
+        print(f"\nrecusado: {erro}")
+        return 1
 
     print("\n=== rascunho criado ===")
-    print(f"   id: {resultado.get('id')}")
-    print(f"   resumo: {resultado.get('resumo')}")
-    print(f"   questões: {resultado.get('videos_associados')}")
-    if resultado.get("erros"):
-        print(f"   erros: {resultado['erros']}")
+    print(json.dumps({k: v for k, v in resultado.items() if k != "itens"}, ensure_ascii=False, indent=2)[:800])
     print(
         "\nNada foi publicado. Para os alunos verem, aprove em Admin > Rascunhos no portal,"
         "\nou peça ao Claude pela tool publicar_rascunho."

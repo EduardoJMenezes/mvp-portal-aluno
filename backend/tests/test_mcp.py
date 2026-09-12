@@ -79,6 +79,7 @@ def test_tools_registradas_e_anotadas():
         "listar_rascunhos", "detalhar_rascunho", "buscar_desempenho_aluno",
         "buscar_estatisticas_simulado", "listar_simulados", "criar_questao_rascunho",
         "importar_questoes_vimeo", "criar_simulado_rascunho", "publicar_rascunho",
+        "listar_pastas_vimeo", "simular_importacao_vimeo", "importar_pasta_vimeo_como_rascunho",
     }
     assert esperadas <= set(tools)
 
@@ -87,7 +88,8 @@ def test_tools_registradas_e_anotadas():
     assert sem_descricao == []
 
     escritas = {"criar_questao_rascunho", "importar_questoes_vimeo",
-                "criar_simulado_rascunho", "publicar_rascunho"}
+                "criar_simulado_rascunho", "publicar_rascunho",
+                "importar_pasta_vimeo_como_rascunho"}
     for nome, tool in tools.items():
         esperado = nome not in escritas
         assert tool.annotations.read_only_hint is esperado, f"{nome} com read_only_hint errado"
