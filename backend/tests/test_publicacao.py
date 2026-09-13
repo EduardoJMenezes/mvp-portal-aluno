@@ -181,3 +181,29 @@ def test_aluno_nao_opera_o_mcp(db, mundo):
         rascunhos.criar_questao_rascunho(
             db, mundo["joao"], "Questão do aluno", {l: l for l in "ABCDE"}, "A",
         )
+
+
+def test_publicacao_recusada_nao_deixa_aprovacao_gravada(db, mundo):
+    """Aprovar e publicar é um gesto só: recusada a publicação, a aprovação sai junto.
+
+    Senão o rascunho corrigido depois pelo MCP sairia publicado sem ninguém
+    ter visto a correção — a aprovação era para aquela versão, naquela hora.
+    """
+    from datetime import UTC, datetime, timedelta
+
+    from app.services import simulados
+
+    sem_agenda = rascunhos.criar_simulado_rascunho(
+        db, mundo["professor_mcp"], ["Extensivo 2027"], "Prova", [mundo["questoes"][0].id]
+    )
+    rid = sem_agenda["rascunho_id"]
+    with pytest.raises(RegraDeNegocio):
+        publicacao.aprovar_e_publicar(db, mundo["professor"], rid)
+
+    agora = datetime.now(UTC)
+    simulados.editar_simulado(
+        db, mundo["professor_mcp"], sem_agenda["simulado"]["simulado_id"],
+        abre_em=agora + timedelta(hours=1), fecha_em=agora + timedelta(hours=2), duracao_minutos=60,
+    )
+    with pytest.raises(AprovacaoNecessaria):
+        publicacao.publicar_rascunho(db, mundo["professor_mcp"], rid)

@@ -278,8 +278,7 @@ def publicar(
     db: Session = Banco,
 ) -> dict:
     """Revisar e publicar: é aqui que a aprovação humana é carimbada."""
-    publicacao.aprovar_rascunho(db, ident, rascunho_id)
-    return publicacao.publicar_rascunho(db, ident, rascunho_id, dados.itens if dados else None)
+    return publicacao.aprovar_e_publicar(db, ident, rascunho_id, dados.itens if dados else None)
 
 
 @router.delete("/rascunhos/{rascunho_id}")

@@ -31,7 +31,7 @@ from datetime import UTC, datetime
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.errors import AprovacaoNecessaria, NaoEncontrado, RegraDeNegocio
+from app.errors import AprovacaoNecessaria, ErroDominio, NaoEncontrado, RegraDeNegocio
 from app.identidade import Identidade
 from app.models import LETRAS, Item, Questao, Rascunho, Simulado, Status
 from app.services.simulados import em_brasilia, pendencias_para_publicar
@@ -65,7 +65,11 @@ def _itens_do_rascunho(db: Session, rascunho_id: int, apenas_pendentes: bool = F
 
 
 def aprovar_rascunho(db: Session, ident: Identidade, rascunho_id: int) -> dict:
-    """Aprovação feita por um professor logado no portal."""
+    """Aprovação feita por um professor logado no portal.
+
+    Não faz commit: a aprovação é gravada junto com a publicação que ela
+    autoriza (ver `aprovar_e_publicar`).
+    """
     ident.exigir_operador()
     ident.exigir_humano_no_portal("Aprovar um rascunho")
 
@@ -74,7 +78,7 @@ def aprovar_rascunho(db: Session, ident: Identidade, rascunho_id: int) -> dict:
         raise RegraDeNegocio(f"Rascunho {rascunho_id} já foi publicado.")
 
     _marcar_aprovado(db, r, ident, ViaAprovacao.PORTAL)
-    db.commit()
+    db.flush()
     return {"rascunho_id": r.id, "aprovado_por": ident.nome, "via": r.aprovado_via}
 
 
@@ -183,7 +187,8 @@ def publicar_rascunho(
         if pendencias:
             raise RegraDeNegocio(
                 f"'{simulado.titulo}' ainda não pode ser publicado: {'; '.join(pendencias)}. "
-                "Resolva com editar_simulado e editar_questao (ou anexe a imagem) e tente de novo."
+                "Corrija pelo Claude (editar_simulado, editar_questao; a figura se anexa pela "
+                "API da questão) e publique de novo."
             )
 
     for item in escolhidos:
@@ -230,10 +235,22 @@ def publicar_rascunho(
     }
 
 
-def aprovar_e_publicar(db: Session, ident: Identidade, rascunho_id: int) -> dict:
-    """Um clique no portal: o professor revisou, aprova e publica."""
-    aprovar_rascunho(db, ident, rascunho_id)
-    return publicar_rascunho(db, ident, rascunho_id)
+def aprovar_e_publicar(
+    db: Session, ident: Identidade, rascunho_id: int, itens_ids: list[int] | None = None
+) -> dict:
+    """Um clique no portal: o professor revisou, aprova e publica — tudo ou nada.
+
+    Recusada a publicação (um simulado com pendência, por exemplo), a aprovação
+    sai junto. Ela valia para publicar aquela versão, naquela hora: se ficasse
+    gravada, o rascunho corrigido depois pelo MCP iria ao ar sem ninguém ter
+    visto a correção.
+    """
+    try:
+        aprovar_rascunho(db, ident, rascunho_id)
+        return publicar_rascunho(db, ident, rascunho_id, itens_ids)
+    except ErroDominio:
+        db.rollback()
+        raise
 
 
 def descartar_rascunho(db: Session, ident: Identidade, rascunho_id: int) -> dict:
