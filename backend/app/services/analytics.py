@@ -2,29 +2,25 @@
 
 O objetivo aqui não é dashboard: é entregar números corretos e já agregados o
 suficiente para o LLM transformar em análise em linguagem natural.
+
+Questão em branco conta como erro (docs/MODELO-SIMULADO.md). Por isso as contas
+partem das questões do simulado e de quem fez a prova — não só das respostas
+gravadas, que não sabem da questão que ficou sem resposta.
 """
 
 from __future__ import annotations
 
-from sqlalchemy import select
+from collections.abc import Iterable
+from datetime import UTC, datetime
+
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
-from app.errors import NaoAutorizado, NaoEncontrado
+from app.errors import NaoEncontrado
 from app.identidade import Identidade
-from app.models import (
-    Matricula,
-    Papel,
-    Questao,
-    QuestaoAssunto,
-    Resposta,
-    Simulado,
-    SimuladoQuestao,
-    Tentativa,
-    Usuario,
-)
+from app.models import Assunto, Matricula, Papel, QuestaoAssunto, SubAssunto, Tentativa, Usuario
 from app.services import acesso, taxonomia
-from app.services.catalogo import exigir_acesso_a_turma
-from app.services.simulados import resolver_simulado
+from app.services.simulados import Situacao, consolidar, resolver_simulado, situacao
 
 
 def resolver_aluno(db: Session, referencia: str | int) -> Usuario:
@@ -64,23 +60,35 @@ def _topico_da_questao(db: Session, questao_id: int) -> str | None:
     return etiqueta.assunto.nome
 
 
-def _recomendar_videos(
-    db: Session, ident: Identidade, respostas: list[Resposta], limite: int = 5
+def _rotulo_da_etiqueta(db: Session, assunto_id: int, subassunto_id: int | None) -> str:
+    if subassunto_id is not None:
+        sub = db.get(SubAssunto, subassunto_id)
+        if sub is not None:
+            return sub.nome
+    assunto = db.get(Assunto, assunto_id)
+    return assunto.nome if assunto else "(sem assunto)"
+
+
+def recomendar_videos(
+    db: Session,
+    ident: Identidade,
+    questoes_erradas: Iterable[int],
+    limite: int = 5,
+    agora: datetime | None = None,
 ) -> list[dict]:
     """O elo que faltava: do erro do aluno para o vídeo que explica aquilo.
+
+    Um tópico por etiqueta errada, do mais errado para o menos — é a análise
+    que o aluno lê no resultado. O tópico entra mesmo sem vídeo: saber onde foi
+    pior já é metade da análise.
 
     Vale o acervo inteiro, não só a turma dele. O vídeo de outro curso aparece
     bloqueado — nome e aviso, sem nada do Vimeo —, porque esconder o material
     que responde exatamente à dúvida seria pior do que mostrar que ele existe.
     """
-    erradas = [r for r in respostas if not r.correta]
-    if not erradas:
-        return []
-
-    # Uma recomendação por etiqueta errada, da mais errada para a menos.
     por_etiqueta: dict[tuple[int, int | None], int] = {}
-    for r in erradas:
-        etiqueta = _etiqueta_da_questao(db, r.questao_id)
+    for questao_id in questoes_erradas:
+        etiqueta = _etiqueta_da_questao(db, questao_id)
         if etiqueta is None:
             continue
         chave = (etiqueta.assunto_id, etiqueta.subassunto_id)
@@ -91,156 +99,166 @@ def _recomendar_videos(
         por_etiqueta.items(), key=lambda par: -par[1]
     ):
         videos = taxonomia.videos_que_explicam(db, assunto_id, subassunto_id, limite=limite)
-        if not videos:
-            continue
-        liberados = acesso.videos_liberados(db, ident, [v.id for v in videos])
+        liberados = acesso.videos_liberados(db, ident, [v.id for v in videos], agora=agora)
         recomendacoes.append(
             {
                 "topico": _rotulo_da_etiqueta(db, assunto_id, subassunto_id),
                 "erros": erros,
-                "videos": [
-                    acesso.descrever_video(v, v.id in liberados) for v in videos
-                ],
+                "videos": [acesso.descrever_video(v, v.id in liberados) for v in videos],
             }
         )
     return recomendacoes
 
 
-def _rotulo_da_etiqueta(db: Session, assunto_id: int, subassunto_id: int | None) -> str:
-    from app.models import Assunto, SubAssunto
-
-    if subassunto_id is not None:
-        sub = db.get(SubAssunto, subassunto_id)
-        if sub is not None:
-            return sub.nome
-    assunto = db.get(Assunto, assunto_id)
-    return assunto.nome if assunto else "(sem assunto)"
-
-
 def desempenho_aluno(
-    db: Session, ident: Identidade, aluno: str | int, simulado: str | int | None = None
+    db: Session,
+    ident: Identidade,
+    aluno: str | int,
+    simulado: str | int | None = None,
+    agora: datetime | None = None,
 ) -> dict:
-    """Como um aluno foi — no último simulado respondido, ou num específico."""
-    alvo = resolver_aluno(db, aluno)
+    """Como um aluno foi — no último simulado que começou, ou num específico.
 
-    # Aluno só consulta o próprio desempenho; operador consulta qualquer um.
-    if ident.e_aluno and ident.usuario_id != alvo.id:
-        raise NaoAutorizado("Você só pode consultar o seu próprio desempenho.")
+    É a visão do professor, e vale a qualquer momento. O aluno vê o próprio
+    resultado por `simulados.resultado`, que só abre quando o simulado fecha.
+    """
+    ident.exigir_operador()
+    agora = agora or datetime.now(UTC)
+    alvo = resolver_aluno(db, aluno)
 
     consulta = (
         select(Tentativa)
-        .options(selectinload(Tentativa.simulado))
+        .options(selectinload(Tentativa.respostas))
         .where(Tentativa.aluno_id == alvo.id)
         .order_by(Tentativa.iniciado_em.desc())
     )
     if simulado is not None:
         consulta = consulta.where(Tentativa.simulado_id == resolver_simulado(db, simulado).id)
 
-    tentativas = db.scalars(consulta).all()
-    if not tentativas:
+    tentativa = db.scalars(consulta).first()
+    if tentativa is None:
         return {
             "aluno": alvo.nome,
             "encontrou_dados": False,
-            "mensagem": f"{alvo.nome} ainda não respondeu nenhum simulado.",
+            "mensagem": f"{alvo.nome} ainda não fez nenhum simulado.",
         }
 
-    tentativa = tentativas[0]
-    exigir_acesso_a_turma(db, ident, tentativa.simulado.turma)
+    s = tentativa.simulado
+    entregue = consolidar(tentativa, agora)
+    db.commit()
 
-    respostas = db.scalars(
-        select(Resposta)
-        .options(selectinload(Resposta.questao))
-        .where(Resposta.tentativa_id == tentativa.id)
-    ).all()
-    acertos = sum(1 for r in respostas if r.correta)
-    total = len(tentativa.simulado.questoes)
+    marcadas = {r.questao_id: r for r in tentativa.respostas}
+    questoes = []
+    for sq in s.questoes:
+        r = marcadas.get(sq.questao_id)
+        questoes.append(
+            {
+                "ordem": sq.ordem,
+                "questao_id": sq.questao_id,
+                "enunciado": sq.questao.enunciado,
+                "topico": _topico_da_questao(db, sq.questao_id),
+                "marcada": r.alternativa_marcada if r else None,
+                "gabarito": sq.questao.gabarito,
+                "correta": bool(r and r.correta),
+            }
+        )
 
+    erradas = [q for q in questoes if not q["correta"]]
+    erros_por_topico: dict[str, int] = {}
+    for q in erradas:
+        if q["topico"]:
+            erros_por_topico[q["topico"]] = erros_por_topico.get(q["topico"], 0) + 1
+
+    total = len(questoes)
+    acertos = total - len(erradas)
     return {
         "aluno": alvo.nome,
         "encontrou_dados": True,
-        "simulado": tentativa.simulado.titulo,
-        "simulado_id": tentativa.simulado_id,
-        "turma": tentativa.simulado.turma.nome,
-        "finalizado": bool(tentativa.finalizado_em),
+        "simulado": s.titulo,
+        "simulado_id": s.id,
+        "turmas": [t.nome for t in s.turmas],
+        "situacao": situacao(s, agora),
+        "entregue": entregue,
+        "entregue_automaticamente": tentativa.entregue_automaticamente,
         "acertos": acertos,
+        "em_branco": sum(1 for q in questoes if q["marcada"] is None),
         "total_questoes": total,
         "percentual": round(100 * acertos / total, 1) if total else 0.0,
-        "questoes": [
-            {
-                "questao_id": r.questao_id,
-                "enunciado": r.questao.enunciado,
-                "topico": _topico_da_questao(db, r.questao_id),
-                "marcada": r.alternativa_marcada,
-                "gabarito": r.questao.gabarito,
-                "correta": r.correta,
-            }
-            for r in respostas
-        ],
-        "erros_por_topico": sorted(
-            {
-                t: sum(
-                    1
-                    for r in respostas
-                    if not r.correta and _topico_da_questao(db, r.questao_id) == t
-                )
-                for t in {
-                    _topico_da_questao(db, r.questao_id) for r in respostas if not r.correta
-                }
-                if t
-            }.items(),
-            key=lambda kv: -kv[1],
-        ),
+        "questoes": questoes,
+        "erros_por_topico": sorted(erros_por_topico.items(), key=lambda kv: -kv[1]),
         # Onde o aluno vai para consertar o que errou. Vídeo que não é do
         # curso dele vem bloqueado, com nome e aviso — nada do Vimeo.
-        "recomendacoes": _recomendar_videos(db, ident, list(respostas)),
+        "recomendacoes": recomendar_videos(
+            db, ident, [q["questao_id"] for q in erradas], agora=agora
+        ),
     }
 
 
-def estatisticas_simulado(db: Session, ident: Identidade, simulado: str | int) -> dict:
-    """Desempenho da turma inteira, questão a questão."""
+def estatisticas_simulado(
+    db: Session, ident: Identidade, simulado: str | int, agora: datetime | None = None
+) -> dict:
+    """Desempenho de quem fez o simulado, questão a questão.
+
+    Antes do fechamento os números saem marcados como parciais: ainda há prova
+    em andamento.
+    """
     ident.exigir_operador()
+    agora = agora or datetime.now(UTC)
     alvo = resolver_simulado(db, simulado)
-    exigir_acesso_a_turma(db, ident, alvo.turma)
 
-    tentativas = db.scalars(select(Tentativa).where(Tentativa.simulado_id == alvo.id)).all()
-    matriculados = len(db.scalars(select(Matricula.id).where(Matricula.turma_id == alvo.turma_id)).all())
-
-    questoes = db.scalars(
-        select(SimuladoQuestao)
-        .options(selectinload(SimuladoQuestao.questao).selectinload(Questao.classificacoes))
-        .where(SimuladoQuestao.simulado_id == alvo.id)
-        .order_by(SimuladoQuestao.ordem)
+    turma_ids = [t.id for t in alvo.turmas] or [-1]
+    matriculados = int(
+        db.scalar(
+            select(func.count(func.distinct(Matricula.usuario_id))).where(
+                Matricula.turma_id.in_(turma_ids)
+            )
+        )
+        or 0
+    )
+    tentativas = db.scalars(
+        select(Tentativa)
+        .options(selectinload(Tentativa.respostas), selectinload(Tentativa.aluno))
+        .where(Tentativa.simulado_id == alvo.id)
     ).all()
+    for t in tentativas:
+        consolidar(t, agora)
+    db.commit()
 
+    base = {
+        "simulado": alvo.titulo,
+        "simulado_id": alvo.id,
+        "turmas": [t.nome for t in alvo.turmas],
+        "situacao": situacao(alvo, agora),
+        "parcial": situacao(alvo, agora) != Situacao.ENCERRADO,
+        "alunos_matriculados": matriculados,
+        "alunos_responderam": len(tentativas),
+    }
     if not tentativas:
         return {
-            "simulado": alvo.titulo,
-            "turma": alvo.turma.nome,
-            "alunos_matriculados": matriculados,
-            "alunos_responderam": 0,
+            **base,
             "encontrou_dados": False,
-            "mensagem": "Nenhum aluno respondeu este simulado ainda.",
+            "mensagem": "Nenhum aluno começou este simulado ainda.",
         }
 
-    ids_tentativas = [t.id for t in tentativas]
-    respostas = db.scalars(
-        select(Resposta).where(Resposta.tentativa_id.in_(ids_tentativas))
-    ).all()
+    participantes = len(tentativas)
+    total = len(alvo.questoes)
+    respostas = [r for t in tentativas for r in t.respostas]
 
     por_questao = []
-    for sq in questoes:
+    for sq in alvo.questoes:
         do_item = [r for r in respostas if r.questao_id == sq.questao_id]
         acertos = sum(1 for r in do_item if r.correta)
         por_questao.append(
             {
                 "ordem": sq.ordem,
                 "questao_id": sq.questao_id,
-                "ordem": sq.ordem,
                 "enunciado": sq.questao.enunciado,
                 "topico": _topico_da_questao(db, sq.questao_id),
-                "respostas": len(do_item),
+                "gabarito": sq.questao.gabarito,
                 "acertos": acertos,
-                "percentual_acerto": round(100 * acertos / len(do_item), 1) if do_item else None,
+                "em_branco": participantes - len(do_item),
+                # A base é quem fez a prova: em branco conta como erro.
+                "percentual_acerto": round(100 * acertos / participantes, 1),
                 "distribuicao": {
                     letra: sum(1 for r in do_item if r.alternativa_marcada == letra)
                     for letra in sorted({r.alternativa_marcada for r in do_item})
@@ -250,30 +268,23 @@ def estatisticas_simulado(db: Session, ident: Identidade, simulado: str | int) -
 
     por_aluno = []
     for t in tentativas:
-        do_aluno = [r for r in respostas if r.tentativa_id == t.id]
-        acertos = sum(1 for r in do_aluno if r.correta)
+        acertos = sum(1 for r in t.respostas if r.correta)
         por_aluno.append(
             {
                 "aluno": t.aluno.nome,
                 "acertos": acertos,
-                "total": len(questoes),
-                "percentual": round(100 * acertos / len(questoes), 1) if questoes else 0.0,
-                "finalizado": bool(t.finalizado_em),
+                "total": total,
+                "percentual": round(100 * acertos / total, 1) if total else 0.0,
+                "entregue": t.finalizado_em is not None,
             }
         )
 
-    media = round(sum(a["percentual"] for a in por_aluno) / len(por_aluno), 1) if por_aluno else 0.0
-
-    com_dados = [q for q in por_questao if q["percentual_acerto"] is not None]
-    pior = min(com_dados, key=lambda q: q["percentual_acerto"], default=None)
+    media = round(sum(a["percentual"] for a in por_aluno) / participantes, 1)
+    pior = min(por_questao, key=lambda q: q["percentual_acerto"], default=None)
 
     return {
-        "simulado": alvo.titulo,
-        "simulado_id": alvo.id,
-        "turma": alvo.turma.nome,
+        **base,
         "encontrou_dados": True,
-        "alunos_matriculados": matriculados,
-        "alunos_responderam": len(tentativas),
         "media_percentual": media,
         "por_questao": por_questao,
         "por_aluno": sorted(por_aluno, key=lambda a: -a["percentual"]),

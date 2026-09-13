@@ -315,9 +315,17 @@ está lá hoje é semente e teste.
 ## Em aberto
 
 1. **Unidade de venda**, quando houver pagamento.
-3. **Um sub-módulo pode ter item de mais de um tipo** (um PDF no meio dos
-   vídeos), ou o tipo do sub-módulo manda em todos?
-5. **Começar uma turma nova.** Com módulo pertencendo à turma, montar o
+2. **Começar uma turma nova.** Com módulo pertencendo à turma, montar o
    Extensivo 2027 é recriar vinte módulos e centenas de itens. Uma tool que
    duplique a estrutura de outra turma resolve sem mexer no modelo — mas
    alguém precisa lembrar de escrevê-la antes de janeiro.
+
+Decidido desde a primeira versão: **um sub-módulo é de um tipo só** — nada de
+PDF no meio dos vídeos.
+
+## Melhoria anotada
+
+**Questão da apostila cadastrada junto do vídeo de resolução**, com o item
+ganhando uma questão opcional (`itens.questao_id`). Resolve a classificação dos
+vídeos pelo conteúdo, em vez de por módulo. Detalhes em
+[MODELO-SIMULADO.md](MODELO-SIMULADO.md#questão-da-apostila-cadastrada-junto-do-vídeo-de-resolução).

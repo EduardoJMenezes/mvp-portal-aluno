@@ -7,13 +7,14 @@ services deixam a identidade ver (seção 11).
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends
+from fastapi.responses import Response
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.api.deps import usuario_atual
 from app.db import get_db
 from app.identidade import Identidade
-from app.services import analytics, catalogo, simulados
+from app.services import catalogo, questoes, simulados
 
 router = APIRouter(prefix="/api/aluno", tags=["aluno"])
 
@@ -52,19 +53,40 @@ def responder(
     return simulados.responder(db, ident, simulado_id, dados.questao_id, dados.alternativa)
 
 
-@router.post("/simulados/{simulado_id}/finalizar")
-def finalizar(
+@router.post("/simulados/{simulado_id}/entregar")
+def entregar(
     simulado_id: int,
     ident: Identidade = Depends(usuario_atual),
     db: Session = Depends(get_db),
 ) -> dict:
-    return simulados.finalizar(db, ident, simulado_id)
+    """Entrega a prova. O recibo diz quando sai o resultado — não o resultado."""
+    return simulados.entregar(db, ident, simulado_id)
 
 
-@router.get("/desempenho")
-def desempenho(
-    simulado: str | None = None,
+@router.get("/simulados/{simulado_id}/resultado")
+def resultado(
+    simulado_id: int,
     ident: Identidade = Depends(usuario_atual),
     db: Session = Depends(get_db),
 ) -> dict:
-    return analytics.desempenho_aluno(db, ident, ident.usuario_id, simulado)
+    """Nota, posição, gabarito, resolução e análise — só depois do fechamento."""
+    return simulados.resultado(db, ident, simulado_id)
+
+
+@router.get("/questoes/{questao_id}/imagem", response_class=Response)
+def imagem_da_questao(
+    questao_id: int,
+    ident: Identidade = Depends(usuario_atual),
+    db: Session = Depends(get_db),
+) -> Response:
+    """A figura da questão, para quem já começou a prova que a tem.
+
+    Vem por aqui, com o token, e não por URL pública: antes de a prova abrir,
+    a figura adiantaria a questão.
+    """
+    figura = questoes.imagem_da_questao(db, ident, questao_id)
+    return Response(
+        figura.conteudo,
+        media_type=figura.tipo,
+        headers={"X-Content-Type-Options": "nosniff", "Cache-Control": "private, max-age=3600"},
+    )

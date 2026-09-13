@@ -148,18 +148,20 @@ rascunho sem aprovação humana gravada no banco. Detalhe das quatro camadas em
 
 | tool | o que faz |
 |---|---|
-| `listar_turmas` | turmas, com alunos e contagem de questões |
-| `listar_capitulos` | capítulos disponíveis |
-| `buscar_questoes` | questões por turma/capítulo/status |
-| `listar_videos_vimeo` | pastas e vídeos do acervo no Vimeo |
-| `listar_rascunhos` | propostas pendentes |
-| `detalhar_rascunho` | o conteúdo de uma proposta, para revisão |
-| `buscar_desempenho_aluno` | como um aluno foi, questão a questão |
-| `buscar_estatisticas_simulado` | desempenho da turma e maior dificuldade |
-| `listar_simulados` | simulados e suas tentativas |
-| `criar_questao_rascunho` | cadastra uma questão **em rascunho** |
-| `importar_questoes_vimeo` | uma questão por vídeo, **em rascunho** |
-| `criar_simulado_rascunho` | monta um simulado **em rascunho** |
+| `listar_turmas`, `listar_modulos`, `listar_assuntos` | turmas, a árvore do curso e a taxonomia |
+| `listar_pastas_vimeo`, `listar_videos_vimeo` | o acervo no Vimeo, só leitura |
+| `simular_importacao_vimeo` | o que a importação de uma pasta faria, sem gravar |
+| `importar_pasta_vimeo_como_rascunho`, `importar_videos_como_itens` | vídeos entrando no curso **em rascunho** |
+| `criar_modulo`, `criar_submodulo`, `editar_modulo`, `editar_item`, `remover_do_curso` | CRUD do curso, direto, com preview no chat |
+| `cadastrar_assunto`, `classificar_videos` | taxonomia e etiqueta dos vídeos |
+| `buscar_questoes`, `detalhar_questao` | o acervo de questões de simulado |
+| `criar_questao_rascunho` | uma questão avulsa **em rascunho** |
+| `criar_simulado_rascunho` | simulado, agenda e questões novas **num rascunho só**, com a resolução casada da pasta do Vimeo |
+| `editar_questao`, `remover_questao`, `editar_simulado`, `remover_simulado` | ajuste direto, com preview no chat e a trava de prova aberta |
+| `listar_simulados`, `detalhar_simulado` | simulados com turmas, agenda e situação |
+| `buscar_ranking_simulado` | o ranking completo, só do professor |
+| `buscar_desempenho_aluno`, `buscar_estatisticas_simulado` | desempenho do aluno e de quem fez a prova |
+| `listar_rascunhos`, `detalhar_rascunho` | propostas pendentes, para revisão |
 | `publicar_rascunho` | publica, após confirmação humana |
 
 As tools aceitam nomes ("Extensivo 2027", "Estequiometria", "João") e resolvem

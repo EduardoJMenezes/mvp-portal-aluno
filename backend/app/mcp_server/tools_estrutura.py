@@ -20,13 +20,10 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastmcp.exceptions import ToolError
 from pydantic import Field
 
-from app.errors import ErroDominio
 from app.mcp_server.server import mcp
 from app.mcp_server.tools import SOMENTE_LEITURA, _sessao
-from app.models import TipoSubModulo
 from app.services import catalogo, estrutura, taxonomia
 
 ALTERA = {"read_only_hint": False, "destructive_hint": False, "open_world_hint": False}
@@ -92,21 +89,8 @@ def criar_modulo(
     `submodulos`, nasce com 'Aulas' e 'Questões da apostila'. Módulo novo nasce
     vazio: nada aparece para o aluno até haver item publicado dentro.
     """
-    nomes_sub = submodulos or ["Aulas", "Questões da apostila"]
     with _sessao() as (db, ident):
-        alvo = catalogo.resolver_turma(db, turma)
-        modulo = estrutura.criar_modulo(db, ident, alvo, nome)
-        criados = [
-            estrutura.criar_submodulo(db, ident, modulo, s, TipoSubModulo.VIDEO, ordem=n)
-            for n, s in enumerate(nomes_sub, start=1)
-        ]
-        db.commit()
-        return {
-            "modulo": modulo.nome,
-            "turma": alvo.nome,
-            "submodulos": [s.nome for s in criados],
-            "mensagem": "Módulo criado, ainda sem nenhum vídeo.",
-        }
+        return estrutura.criar_modulo_na_turma(db, ident, turma, nome, submodulos)
 
 
 @mcp.tool(name="criar_submodulo", annotations=ALTERA)
@@ -125,11 +109,7 @@ def criar_submodulo(
     curtos) sem precisar de duas estruturas diferentes.
     """
     with _sessao() as (db, ident):
-        t = catalogo.resolver_turma(db, turma)
-        m = estrutura.resolver_modulo(db, t, modulo)
-        sub = estrutura.criar_submodulo(db, ident, m, nome)
-        db.commit()
-        return {"submodulo": sub.nome, "modulo": m.nome, "turma": t.nome}
+        return estrutura.criar_submodulo_no_modulo(db, ident, turma, modulo, nome)
 
 
 @mcp.tool(name="editar_modulo", annotations=ALTERA)
@@ -145,14 +125,8 @@ def editar_modulo(
     ok dele.** A alteração vale na hora, inclusive para os alunos. Quem mexeu
     fica registrado no próprio módulo.
     """
-    if novo_nome is None and nova_ordem is None:
-        raise ToolError("Diga o que mudar: novo_nome, nova_ordem, ou os dois.")
     with _sessao() as (db, ident):
-        t = catalogo.resolver_turma(db, turma)
-        m = estrutura.resolver_modulo(db, t, modulo)
-        estrutura.editar_modulo(db, ident, m, nome=novo_nome, ordem=nova_ordem)
-        db.commit()
-        return {"modulo": m.nome, "ordem": m.ordem, "turma": t.nome}
+        return estrutura.editar_modulo_da_turma(db, ident, turma, modulo, novo_nome, nova_ordem)
 
 
 @mcp.tool(name="editar_item", annotations=ALTERA)
@@ -176,19 +150,10 @@ def editar_item(
     `ordem` é a posição na tela — são coisas diferentes, e é por isso que dá
     para exibir a Q52 antes da Q04 sem renumerar nada.
     """
-    if novo_nome is None and nova_ordem is None and mover_para_submodulo is None:
-        raise ToolError("Diga o que mudar: novo_nome, nova_ordem ou mover_para_submodulo.")
     with _sessao() as (db, ident):
-        t = catalogo.resolver_turma(db, turma)
-        m = estrutura.resolver_modulo(db, t, modulo)
-        s = estrutura.resolver_submodulo(db, m, submodulo)
-        alvo = estrutura.resolver_item(db, s, item)
-        if mover_para_submodulo:
-            destino = estrutura.resolver_submodulo(db, m, mover_para_submodulo)
-            estrutura.mover_item(db, ident, alvo, destino)
-        estrutura.editar_item(db, ident, alvo, nome=novo_nome, ordem=nova_ordem)
-        db.commit()
-        return {"item": alvo.nome, "ordem": alvo.ordem, "submodulo": alvo.submodulo.nome}
+        return estrutura.editar_item_do_curso(
+            db, ident, turma, modulo, submodulo, item, novo_nome, nova_ordem, mover_para_submodulo
+        )
 
 
 @mcp.tool(name="remover_do_curso", annotations=REMOVE)
@@ -213,18 +178,7 @@ def remover_do_curso(
     restaurado.
     """
     with _sessao() as (db, ident):
-        t = catalogo.resolver_turma(db, turma)
-        m = estrutura.resolver_modulo(db, t, modulo)
-        if submodulo is None:
-            saida = estrutura.remover_modulo(db, ident, m)
-        else:
-            s = estrutura.resolver_submodulo(db, m, submodulo)
-            if item is None:
-                saida = estrutura.remover_submodulo(db, ident, s)
-            else:
-                saida = estrutura.remover_item(db, ident, estrutura.resolver_item(db, s, item))
-        db.commit()
-        return saida
+        return estrutura.remover_do_curso(db, ident, turma, modulo, submodulo, item)
 
 
 # --- taxonomia ---------------------------------------------------------------
@@ -248,10 +202,7 @@ def cadastrar_assunto(
     exatamente o que a etiqueta existe para evitar.
     """
     with _sessao() as (db, ident):
-        assunto = taxonomia.criar_assunto(db, ident, nome)
-        criados = [taxonomia.criar_subassunto(db, ident, assunto, s) for s in subassuntos or []]
-        db.commit()
-        return {"assunto": assunto.nome, "subassuntos": [s.nome for s in criados]}
+        return taxonomia.cadastrar_assunto(db, ident, nome, subassuntos)
 
 
 @mcp.tool(name="classificar_videos", annotations=ALTERA)
@@ -280,34 +231,7 @@ def classificar_videos(
     ensina a mesma coisa, então classificar uma vez basta. É por ela que a
     análise do aluno encontra o que explica o erro dele.
     """
-    from app.services.nomes_vimeo import interpretar_faixa
-
     with _sessao() as (db, ident):
-        t = catalogo.resolver_turma(db, turma)
-        m = estrutura.resolver_modulo(db, t, modulo)
-        s = estrutura.resolver_submodulo(db, m, submodulo)
-        escolhidos = [i for i in s.itens if i.removido_em is None]
-        if itens:
-            try:
-                numeros = interpretar_faixa(itens)
-            except ValueError as e:
-                raise ErroDominio(str(e)) from None
-            escolhidos = [
-                i for i in escolhidos
-                if int("".join(c for c in i.nome if c.isdigit()) or 0) in numeros
-            ]
-        if not escolhidos:
-            raise ErroDominio("Nenhum item casou com a faixa informada.")
-
-        alvo_assunto = taxonomia.resolver_assunto(db, assunto)
-        alvo_sub = (
-            taxonomia.resolver_subassunto(db, alvo_assunto, subassunto) if subassunto else None
+        return estrutura.classificar_itens(
+            db, ident, turma, modulo, submodulo, assunto, subassunto, itens
         )
-        for escolhido in escolhidos:
-            taxonomia.classificar_video(db, ident, escolhido.video, alvo_assunto, alvo_sub)
-        db.commit()
-        return {
-            "videos_classificados": [i.nome for i in escolhidos],
-            "assunto": alvo_assunto.nome,
-            "subassunto": alvo_sub.nome if alvo_sub else None,
-        }

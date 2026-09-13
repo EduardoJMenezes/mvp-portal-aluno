@@ -3,8 +3,10 @@
 Duas responsabilidades que andam juntas:
 
 * **A decisão.** Um só lugar responde "esta pessoa pode assistir este vídeo?".
-  Hoje a resposta sai da matrícula; quando existir compra, ganha mais uma
-  fonte aqui dentro, e nenhum service precisa saber disso.
+  Hoje a resposta sai de duas fontes: a matrícula, para o vídeo do curso, e a
+  prova feita, para a resolução das questões de um simulado que já fechou.
+  Quando existir compra, ganha mais uma fonte aqui dentro, e nenhum service
+  precisa saber disso.
 * **O que sai no lugar.** Vídeo bloqueado devolve o nome e mais nada — sem
   `embed_url`, sem thumbnail, sem duração.
 
@@ -18,17 +20,32 @@ havendo nada no payload, não há o que vazar.
 from __future__ import annotations
 
 from collections.abc import Iterable
+from datetime import UTC, datetime
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.identidade import Identidade
-from app.models import Item, Matricula, Modulo, Status, SubModulo, Video
+from app.models import (
+    Item,
+    Matricula,
+    Modulo,
+    Questao,
+    Simulado,
+    SimuladoQuestao,
+    Status,
+    SubModulo,
+    Tentativa,
+    Video,
+)
 from app.services.consultas import selecionar, vivos
 
 MOTIVO_BLOQUEIO = "Não incluído no seu plano"
 
 
-def videos_liberados(db: Session, ident: Identidade, video_ids: Iterable[int]) -> set[int]:
+def videos_liberados(
+    db: Session, ident: Identidade, video_ids: Iterable[int], agora: datetime | None = None
+) -> set[int]:
     """Quais destes vídeos esta pessoa pode assistir.
 
     Em lote de propósito: a tela do aluno pergunta por dezenas de uma vez, e
@@ -42,7 +59,7 @@ def videos_liberados(db: Session, ident: Identidade, video_ids: Iterable[int]) -
     if ident.e_operador:
         return ids
 
-    stmt = (
+    do_curso = (
         selecionar(Item.video_id)
         .join(SubModulo, SubModulo.id == Item.submodulo_id)
         .join(Modulo, Modulo.id == SubModulo.modulo_id)
@@ -53,7 +70,25 @@ def videos_liberados(db: Session, ident: Identidade, video_ids: Iterable[int]) -
             Matricula.usuario_id == ident.usuario_id,
         )
     )
-    return set(db.scalars(vivos(stmt, Item, SubModulo, Modulo)).all())
+
+    # A resolução vem com o resultado: para quem fez a prova, depois que ela
+    # fecha. Antes disso, o vídeo seria o gabarito com narração.
+    de_prova_feita = (
+        select(Questao.video_id)
+        .join(SimuladoQuestao, SimuladoQuestao.questao_id == Questao.id)
+        .join(Simulado, Simulado.id == SimuladoQuestao.simulado_id)
+        .join(Tentativa, Tentativa.simulado_id == Simulado.id)
+        .where(
+            Questao.video_id.in_(ids),
+            Tentativa.aluno_id == ident.usuario_id,
+            Simulado.status == Status.PUBLICADO,
+            Simulado.fecha_em <= (agora or datetime.now(UTC)),
+        )
+    )
+
+    return set(db.scalars(vivos(do_curso, Item, SubModulo, Modulo)).all()) | set(
+        db.scalars(vivos(de_prova_feita, Simulado)).all()
+    )
 
 
 def pode_assistir(db: Session, ident: Identidade, video_id: int) -> bool:

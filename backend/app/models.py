@@ -35,6 +35,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    LargeBinary,
     String,
     Text,
     UniqueConstraint,
@@ -209,11 +210,32 @@ class Video(Base, Rastreavel):
     )
 
 
+class Imagem(Base):
+    """Arquivo anexado a uma questão — a figura que não deu para transcrever.
+
+    ponytail: bytes no próprio Postgres. Serve para a POC; com volume, vira
+    bucket e esta tabela guarda só a chave.
+    """
+
+    __tablename__ = "images"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    conteudo: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    tipo: Mapped[str] = mapped_column(String(60), nullable=False)
+    nome: Mapped[str | None] = mapped_column(String(200))
+    criado_em: Mapped[datetime] = _agora()
+
+
 class Questao(Base, Rastreavel):
     """Questão de simulado: enunciado, alternativas e gabarito.
 
     **Não** é a questão da apostila — essa mora na apostila, e o que a
     plataforma guarda dela é o vídeo da resolução, como item de sub-módulo.
+
+    Enunciado e alternativas são texto formatado (Markdown, fórmulas em LaTeX):
+    é como o Claude transcreve tabela e equação. A figura que não dá para
+    transcrever vira `imagem_pendente`, e o simulado não publica enquanto ela
+    não for anexada.
     """
 
     __tablename__ = "questions"
@@ -222,6 +244,10 @@ class Questao(Base, Rastreavel):
     enunciado: Mapped[str] = mapped_column(Text, nullable=False)
     gabarito: Mapped[str] = mapped_column(String(1), nullable=False)
     dificuldade: Mapped[str] = mapped_column(String(10), nullable=False, default=Dificuldade.MEDIA)
+    imagem_pendente: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("false")
+    )
+    imagem_id: Mapped[int | None] = mapped_column(ForeignKey("images.id"))
     # Vídeo da resolução desta questão, quando houver.
     video_id: Mapped[int | None] = mapped_column(ForeignKey("videos.id"))
     status: Mapped[str] = mapped_column(String(20), nullable=False, default=Status.RASCUNHO)
@@ -244,6 +270,7 @@ class Questao(Base, Rastreavel):
         back_populates="questao", cascade="all, delete-orphan"
     )
     video: Mapped[Video | None] = relationship()
+    imagem: Mapped[Imagem | None] = relationship()
 
 
 class Alternativa(Base):
@@ -466,11 +493,19 @@ class Rascunho(Base):
 
 
 class Simulado(Base, Rastreavel):
+    """A prova: uma janela só (`abre_em` → `fecha_em`) e um tempo de prova.
+
+    Vale para uma ou mais turmas, com um ranking só entre os participantes de
+    todas elas. A agenda é opcional no rascunho e obrigatória para publicar.
+    """
+
     __tablename__ = "exams"
 
     id: Mapped[int] = mapped_column(primary_key=True)
     titulo: Mapped[str] = mapped_column(String(200), nullable=False)
-    turma_id: Mapped[int] = mapped_column(ForeignKey("classes.id"), nullable=False)
+    abre_em: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    fecha_em: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    duracao_minutos: Mapped[int | None] = mapped_column(Integer)
     status: Mapped[str] = mapped_column(String(20), nullable=False, default=Status.RASCUNHO)
     rascunho_id: Mapped[int | None] = mapped_column(ForeignKey("drafts.id"))
     criado_por_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
@@ -479,10 +514,20 @@ class Simulado(Base, Rastreavel):
 
     __table_args__ = (CheckConstraint("status in ('RASCUNHO','PUBLICADO')", name="ck_exams_status"),)
 
-    turma: Mapped[Turma] = relationship()
+    turmas: Mapped[list[Turma]] = relationship(secondary="exam_classes", order_by="Turma.nome")
     questoes: Mapped[list[SimuladoQuestao]] = relationship(
         back_populates="simulado", cascade="all, delete-orphan", order_by="SimuladoQuestao.ordem"
     )
+
+
+class SimuladoTurma(Base):
+    __tablename__ = "exam_classes"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    simulado_id: Mapped[int] = mapped_column(ForeignKey("exams.id"), nullable=False)
+    turma_id: Mapped[int] = mapped_column(ForeignKey("classes.id"), nullable=False)
+
+    __table_args__ = (UniqueConstraint("simulado_id", "turma_id", name="uq_simulado_turma"),)
 
 
 class SimuladoQuestao(Base):
@@ -500,13 +545,24 @@ class SimuladoQuestao(Base):
 
 
 class Tentativa(Base):
+    """A prova de um aluno. Existir já é "ter feito": entra no ranking.
+
+    `prazo_em` é o que vier primeiro entre início + duração e o fechamento do
+    simulado. Passou do prazo sem entregar, a entrega é automática — decidida
+    na próxima consulta, sem job agendado.
+    """
+
     __tablename__ = "exam_attempts"
 
     id: Mapped[int] = mapped_column(primary_key=True)
     simulado_id: Mapped[int] = mapped_column(ForeignKey("exams.id"), nullable=False)
     aluno_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
     iniciado_em: Mapped[datetime] = _agora()
+    prazo_em: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     finalizado_em: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    entregue_automaticamente: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("false")
+    )
 
     __table_args__ = (UniqueConstraint("simulado_id", "aluno_id", name="uq_tentativa"),)
 

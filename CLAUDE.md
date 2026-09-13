@@ -106,8 +106,16 @@ Ensaio geral dos quatro fluxos do §21, contra o servidor no ar:
 * **`api.vimeo.com` costuma estar bloqueado em rede corporativa.** Ver
   [docs/VIMEO.md](docs/VIMEO.md). Sem token, o backend cai no acervo de
   demonstração embutido, e a POC roda inteira assim.
-* **Sem migrações**: o schema vem de `create_all`. Mudou `models.py`? Rode
-  `python -m app.seed --reset`.
+* **Produção tem curso real: nunca `seed --reset` lá.** Mudança de schema é
+  migração leve em [app/migracoes.py](backend/app/migracoes.py) — `create_all`
+  para tabela nova, `ALTER ... IF NOT EXISTS` para o resto, idempotente —, e o
+  Dockerfile roda `python -m app.migracoes` antes de subir o servidor a cada
+  deploy. Mudou `models.py`? Acrescente a alteração ao fim de `ALTERACOES`.
+* **Simulado: o relógio entra como parâmetro.** Os services de
+  [simulados.py](backend/app/services/simulados.py) recebem `agora`; não há job
+  de entrega automática — a tentativa vencida é consolidada na próxima consulta.
+  O resultado só sai depois do fechamento, e quem recusa é o backend. Ver
+  [docs/MODELO-SIMULADO.md](docs/MODELO-SIMULADO.md).
 
 ## Nunca
 

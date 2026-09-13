@@ -34,6 +34,7 @@ from sqlalchemy.orm import Session
 from app.errors import AprovacaoNecessaria, NaoEncontrado, RegraDeNegocio
 from app.identidade import Identidade
 from app.models import LETRAS, Item, Questao, Rascunho, Simulado, Status
+from app.services.simulados import em_brasilia, pendencias_para_publicar
 
 
 class ViaAprovacao:
@@ -110,6 +111,11 @@ def resumo_para_confirmacao(db: Session, ident: Identidade, rascunho_id: int) ->
 
     simulado = d.get("simulado")
     if simulado:
+        linhas.append(f"Turmas: {', '.join(simulado['turmas'])}")
+        linhas.append(
+            f"Abre {simulado['abre_em'] or '(sem data)'}, fecha {simulado['fecha_em'] or '(sem data)'}, "
+            f"{simulado['duracao_minutos'] or '?'} min de prova"
+        )
         for q in simulado["questoes"]:
             linhas.append(f"  {q['ordem']}. {q['enunciado'][:70]}")
 
@@ -149,7 +155,9 @@ def publicar_rascunho(
     questoes = db.scalars(
         select(Questao).where(Questao.rascunho_id == r.id, Questao.removido_em.is_(None))
     ).all()
-    simulado = db.scalar(select(Simulado).where(Simulado.rascunho_id == r.id))
+    simulado = db.scalar(
+        select(Simulado).where(Simulado.rascunho_id == r.id, Simulado.removido_em.is_(None))
+    )
 
     if not pendentes and not questoes and simulado is None:
         raise RegraDeNegocio(f"Rascunho {rascunho_id} está vazio; não há o que publicar.")
@@ -167,6 +175,17 @@ def publicar_rascunho(
         escolhidos = pendentes
 
     agora = datetime.now(UTC)
+
+    # Antes de mudar qualquer status: simulado com pendência não vai ao ar, e
+    # a prova sem agenda ou com figura faltando não pode chegar ao aluno.
+    if simulado is not None and itens_ids is None:
+        pendencias = pendencias_para_publicar(simulado, agora)
+        if pendencias:
+            raise RegraDeNegocio(
+                f"'{simulado.titulo}' ainda não pode ser publicado: {'; '.join(pendencias)}. "
+                "Resolva com editar_simulado e editar_questao (ou anexe a imagem) e tente de novo."
+            )
+
     for item in escolhidos:
         item.status = Status.PUBLICADO
         item.alterado_por_id = ident.usuario_id
@@ -179,8 +198,6 @@ def publicar_rascunho(
         for q in questoes:
             q.status = Status.PUBLICADO
         if simulado is not None:
-            if not simulado.questoes:
-                raise RegraDeNegocio("Simulado sem questões; não é possível publicar.")
             simulado.status = Status.PUBLICADO
             simulado.publicado_em = agora
 
@@ -203,7 +220,10 @@ def publicar_rascunho(
         "aprovado_por": r.aprovado_por.nome,
         "aprovado_via": r.aprovado_via,
         "mensagem": (
-            f"Publicado. O conteúdo já aparece para os alunos de "
+            f"Publicado. '{simulado.titulo}' abre em {em_brasilia(simulado.abre_em)} e fecha em "
+            f"{em_brasilia(simulado.fecha_em)} para {', '.join(x.nome for x in simulado.turmas)}."
+            if simulado and publicou_resto
+            else f"Publicado. O conteúdo já aparece para os alunos de "
             f"{r.turma.nome if r.turma else 'sua turma'}."
             + (f" Sobraram {len(sobraram)} item(ns) neste rascunho." if sobraram else "")
         ),

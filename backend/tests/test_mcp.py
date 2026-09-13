@@ -11,6 +11,7 @@ from app.mcp_server.server import mcp
 # Importar os módulos de tools é o que dispara os decorators que registram tudo.
 import app.mcp_server.tools  # noqa: F401  isort:skip
 import app.mcp_server.tools_estrutura  # noqa: F401  isort:skip
+import app.mcp_server.tools_simulado  # noqa: F401  isort:skip
 from app.models import Papel, TokenMCP, Usuario
 from app.security import hash_senha, hash_token, novo_token_mcp
 
@@ -18,6 +19,7 @@ from app.security import hash_senha, hash_token, novo_token_mcp
 ALTERAM_NA_HORA = {
     "criar_modulo", "criar_submodulo", "editar_modulo", "editar_item",
     "remover_do_curso", "cadastrar_assunto", "classificar_videos",
+    "editar_questao", "remover_questao", "editar_simulado", "remover_simulado",
 }
 
 
@@ -92,7 +94,8 @@ def test_tools_registradas_e_anotadas():
         "listar_turmas", "listar_modulos", "listar_assuntos", "buscar_questoes",
         "listar_videos_vimeo", "listar_pastas_vimeo", "simular_importacao_vimeo",
         "listar_rascunhos", "detalhar_rascunho", "buscar_desempenho_aluno",
-        "buscar_estatisticas_simulado", "listar_simulados",
+        "buscar_estatisticas_simulado", "listar_simulados", "detalhar_questao",
+        "detalhar_simulado", "buscar_ranking_simulado",
         # proposta, que nasce em rascunho
         "criar_questao_rascunho", "importar_videos_como_itens", "criar_simulado_rascunho",
         "importar_pasta_vimeo_como_rascunho", "publicar_rascunho",
@@ -182,3 +185,45 @@ def test_cliente_vimeo_le_o_embed_da_api():
 
     assert video.id == "76979871"
     assert video.embed_url == "https://player.vimeo.com/video/76979871?h=8272103f6e"
+
+
+async def test_simulado_pelo_mcp_nasce_num_rascunho_e_se_ajusta_na_hora(db, mundo, monkeypatch):
+    """As tools do simulado de ponta a ponta, com o professor já identificado."""
+    from fastmcp import Client
+
+    import app.mcp_server.tools as tools
+    import app.mcp_server.tools_simulado as tools_simulado
+
+    for modulo in (tools, tools_simulado):
+        monkeypatch.setattr(modulo, "identidade_da_sessao", lambda: mundo["professor_mcp"])
+    nova = {"enunciado": "Figura", "alternativas": {l: l for l in "ABCDE"}, "gabarito": "A",
+            "imagem_pendente": True}
+
+    async with Client(mcp) as cliente:
+        async def tool(nome, **argumentos):
+            return (await cliente.call_tool(nome, argumentos)).data
+
+        criado = await tool(
+            "criar_simulado_rascunho", turmas=["Extensivo 2027"], titulo="Simulado 30",
+            questoes=[mundo["questoes"][0].id, nova], abre_em="2030-01-10T14:00",
+            fecha_em="2030-01-10T18:00", duracao_minutos=90,
+        )
+        sid = criado["simulado"]["simulado_id"]
+        assert criado["simulado"]["abre_em"] == "10/01/2030 às 14:00"
+        assert criado["simulado"]["pendencias_para_publicar"] == [
+            "questões com imagem pendente: [2]"
+        ]
+
+        editado = await tool("editar_simulado", simulado="Simulado 30",
+                             questoes=[mundo["questoes"][1].id, mundo["questoes"][0].id])
+        assert editado["total_questoes"] == 2
+
+        detalhe = await tool("detalhar_simulado", simulado=str(sid))
+        assert detalhe["pendencias_para_publicar"] == [], "a questão com figura saiu da prova"
+
+        with pytest.raises(Exception) as erro:
+            await tool("editar_questao", questao=999999, gabarito="A")
+        assert "Questão 999999 não existe" in str(erro.value)
+
+        ranking = await tool("buscar_ranking_simulado", simulado="Simulado 30")
+        assert ranking["participantes"] == 0 and ranking["parcial"] is True

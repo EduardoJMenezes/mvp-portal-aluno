@@ -27,10 +27,12 @@ from app.api import admin_routes, aluno_routes, auth_routes
 from app.config import get_settings
 from app.db import engine
 from app.errors import AprovacaoNecessaria, NaoAutorizado, NaoEncontrado, RegraDeNegocio
+from app.integracoes.vimeo import VimeoErro
 
 # Importar os módulos de tools registra todas elas na instância `mcp`.
 from app.mcp_server import tools as _tools  # noqa: F401
 from app.mcp_server import tools_estrutura as _tools_estrutura  # noqa: F401
+from app.mcp_server import tools_simulado as _tools_simulado  # noqa: F401
 from app.mcp_server.server import mcp
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -98,6 +100,13 @@ def _aprovacao(_: Request, exc: AprovacaoNecessaria) -> JSONResponse:
 @api.exception_handler(RegraDeNegocio)
 def _regra(_: Request, exc: RegraDeNegocio) -> JSONResponse:
     return JSONResponse(status_code=400, content={"detail": str(exc)})
+
+
+@api.exception_handler(VimeoErro)
+def _vimeo(_: Request, exc: VimeoErro) -> JSONResponse:
+    # Falha do lado do Vimeo (fora do ar, token sem escopo, pasta que não existe):
+    # a mensagem já é escrita para gente, e o problema não é deste servidor.
+    return JSONResponse(status_code=502, content={"detail": str(exc)})
 
 
 # Os dois handlers abaixo existem porque o portal mostra `detail` ao usuário.

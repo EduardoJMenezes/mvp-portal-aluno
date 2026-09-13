@@ -250,8 +250,8 @@ def classificar_questao(
     if ja_existe is not None:
         return ja_existe
 
-    vinculo = QuestaoAssunto(questao_id=questao.id, assunto_id=assunto.id, subassunto_id=sub_id)
-    db.add(vinculo)
+    vinculo = QuestaoAssunto(assunto_id=assunto.id, subassunto_id=sub_id)
+    questao.assuntos.append(vinculo)  # pela coleção, para ela não ficar velha na sessão
     tocar(ident, questao)
     db.flush()
     return vinculo
@@ -288,6 +288,17 @@ def assuntos_do_video(db: Session, video_id: int) -> list[dict]:
             "subassunto": v.subassunto.nome if v.subassunto else None,
         }
         for v in vinculos
+        if v.assunto.removido_em is None
+    ]
+
+
+def assuntos_da_questao(questao: Questao) -> list[dict]:
+    return [
+        {
+            "assunto": v.assunto.nome,
+            "subassunto": v.subassunto.nome if v.subassunto else None,
+        }
+        for v in questao.assuntos
         if v.assunto.removido_em is None
     ]
 
@@ -356,3 +367,17 @@ def onde_o_video_aparece(db: Session, video_id: int) -> list[dict]:
         }
         for item, sub, modulo in db.execute(vivos(stmt, SubModulo, Modulo)).all()
     ]
+
+
+def cadastrar_assunto(
+    db: Session, ident: Identidade, nome: str, subassuntos: list[str] | None = None
+) -> dict:
+    """O assunto e, de uma vez, os sub-assuntos dele. Repetir não duplica."""
+    assunto = criar_assunto(db, ident, nome)
+    criados = [criar_subassunto(db, ident, assunto, s) for s in subassuntos or []]
+    db.commit()
+    return {
+        "assunto_id": assunto.id,
+        "assunto": assunto.nome,
+        "subassuntos": [s.nome for s in criados],
+    }

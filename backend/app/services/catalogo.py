@@ -196,7 +196,7 @@ def conteudo_do_aluno(db: Session, ident: Identidade) -> list[dict]:
 # --- questões (acervo de simulado) -------------------------------------------
 
 
-def _questao_para_dict(db: Session, questao: Questao, incluir_gabarito: bool) -> dict:
+def descrever_questao(db: Session, questao: Questao, incluir_gabarito: bool) -> dict:
     dados = {
         "questao_id": questao.id,
         "enunciado": questao.enunciado,
@@ -206,13 +206,9 @@ def _questao_para_dict(db: Session, questao: Questao, incluir_gabarito: bool) ->
         "assuntos": taxonomia.assuntos_do_video(db, questao.video_id)
         if questao.video_id
         else [],
-        "classificacao": [
-            {
-                "assunto": v.assunto.nome,
-                "subassunto": v.subassunto.nome if v.subassunto else None,
-            }
-            for v in questao.assuntos
-        ],
+        "classificacao": taxonomia.assuntos_da_questao(questao),
+        "imagem_pendente": questao.imagem_pendente,
+        "tem_imagem": questao.imagem_id is not None,
         "video_resolucao_id": questao.video_id,
     }
     if incluir_gabarito:
@@ -259,4 +255,4 @@ def buscar_questoes(
         consulta = consulta.where(Questao.dificuldade == dificuldade.upper())
 
     questoes = list(db.scalars(consulta.limit(limite)))
-    return [_questao_para_dict(db, q, incluir_gabarito=True) for q in questoes]
+    return [descrever_questao(db, q, incluir_gabarito=True) for q in questoes]

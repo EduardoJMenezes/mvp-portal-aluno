@@ -10,6 +10,8 @@ mais delicado: o card aparece, mas **sem nada do Vimeo** — sem `embed_url` nã
 há devtools que libere o acervo.
 """
 
+from datetime import UTC, datetime, timedelta
+
 import pytest
 
 from app.errors import NaoAutorizado
@@ -85,8 +87,13 @@ def test_item_removido_some_da_tela_do_aluno(db, mundo):
 
 
 def _simulado(db, mundo, titulo="Prova 1"):
+    agora = datetime.now(UTC)
     ids = [q.id for q in mundo["questoes"][:2]]
-    return rascunhos.criar_simulado_rascunho(db, mundo["professor_mcp"], "Extensivo 2027", titulo, ids)
+    return rascunhos.criar_simulado_rascunho(
+        db, mundo["professor_mcp"], ["Extensivo 2027"], titulo, ids,
+        abre_em=agora - timedelta(hours=1), fecha_em=agora + timedelta(hours=1),
+        duracao_minutos=60,
+    )
 
 
 def test_simulado_publicado_so_aparece_para_a_turma_certa(db, mundo):

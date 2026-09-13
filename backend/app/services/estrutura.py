@@ -412,3 +412,135 @@ def reordenar(db: Session, ident: Identidade, itens_em_ordem: list[Item]) -> lis
     tocar(ident, *itens_em_ordem)
     db.flush()
     return itens_em_ordem
+
+
+# --- operações por referência ------------------------------------------------
+#
+# O que as bordas chamam. A tool fala nomes ("Extensivo 2026", "K01") e o
+# front novo vai falar ids — as duas coisas resolvem aqui, e o MCP e o REST
+# fazem exatamente a mesma operação.
+
+SUBMODULOS_PADRAO = ("Aulas", "Questões da apostila")
+
+
+def _alvos(db: Session, turma, modulo=None, submodulo=None, item=None) -> tuple:
+    from app.services.catalogo import resolver_turma
+
+    t = resolver_turma(db, turma)
+    m = resolver_modulo(db, t, modulo) if modulo is not None else None
+    s = resolver_submodulo(db, m, submodulo) if submodulo is not None else None
+    i = resolver_item(db, s, item) if item is not None else None
+    return t, m, s, i
+
+
+def criar_modulo_na_turma(
+    db: Session, ident: Identidade, turma, nome: str, submodulos: list[str] | None = None
+) -> dict:
+    """Cria o módulo com os sub-módulos dele; sem lista, os dois de sempre."""
+    t, *_ = _alvos(db, turma)
+    modulo = criar_modulo(db, ident, t, nome)
+    criados = [
+        criar_submodulo(db, ident, modulo, s, TipoSubModulo.VIDEO, ordem=n)
+        for n, s in enumerate(submodulos or SUBMODULOS_PADRAO, start=1)
+    ]
+    db.commit()
+    return {
+        "modulo_id": modulo.id,
+        "modulo": modulo.nome,
+        "turma": t.nome,
+        "submodulos": [s.nome for s in criados],
+        "mensagem": "Módulo criado, ainda sem nenhum vídeo.",
+    }
+
+
+def criar_submodulo_no_modulo(db: Session, ident: Identidade, turma, modulo, nome: str) -> dict:
+    t, m, *_ = _alvos(db, turma, modulo)
+    sub = criar_submodulo(db, ident, m, nome)
+    db.commit()
+    return {"submodulo_id": sub.id, "submodulo": sub.nome, "modulo": m.nome, "turma": t.nome}
+
+
+def editar_modulo_da_turma(
+    db: Session, ident: Identidade, turma, modulo, nome: str | None = None, ordem: int | None = None
+) -> dict:
+    if nome is None and ordem is None:
+        raise RegraDeNegocio("Diga o que mudar: nome, ordem, ou os dois.")
+    t, m, *_ = _alvos(db, turma, modulo)
+    editar_modulo(db, ident, m, nome=nome, ordem=ordem)
+    db.commit()
+    return {"modulo": m.nome, "ordem": m.ordem, "turma": t.nome}
+
+
+def editar_item_do_curso(
+    db: Session,
+    ident: Identidade,
+    turma,
+    modulo,
+    submodulo,
+    item,
+    nome: str | None = None,
+    ordem: int | None = None,
+    mover_para_submodulo: str | int | None = None,
+) -> dict:
+    if nome is None and ordem is None and mover_para_submodulo is None:
+        raise RegraDeNegocio("Diga o que mudar: nome, ordem ou mover_para_submodulo.")
+    _, m, _, alvo = _alvos(db, turma, modulo, submodulo, item)
+    if mover_para_submodulo is not None:
+        mover_item(db, ident, alvo, resolver_submodulo(db, m, mover_para_submodulo))
+    editar_item(db, ident, alvo, nome=nome, ordem=ordem)
+    db.commit()
+    return {"item": alvo.nome, "ordem": alvo.ordem, "submodulo": alvo.submodulo.nome}
+
+
+def remover_do_curso(
+    db: Session, ident: Identidade, turma, modulo, submodulo=None, item=None
+) -> dict:
+    """Remove o mais específico que vier: o item, o sub-módulo ou o módulo."""
+    if item is not None and submodulo is None:
+        # Sem esta checagem, "remova a Q04" sem o sub-módulo removeria o módulo.
+        raise RegraDeNegocio("Para remover um item, diga também o sub-módulo dele.")
+    _, m, s, i = _alvos(db, turma, modulo, submodulo, item)
+    saida = remover_item(db, ident, i) if i else (
+        remover_submodulo(db, ident, s) if s else remover_modulo(db, ident, m)
+    )
+    db.commit()
+    return saida
+
+
+def classificar_itens(
+    db: Session,
+    ident: Identidade,
+    turma,
+    modulo,
+    submodulo,
+    assunto: str | int,
+    subassunto: str | int | None = None,
+    itens: str | None = None,
+) -> dict:
+    """Etiqueta os vídeos de um sub-módulo, todos ou por faixa ('Q01-Q03')."""
+    from app.services import taxonomia
+    from app.services.nomes_vimeo import interpretar_faixa
+
+    _, _, s, _ = _alvos(db, turma, modulo, submodulo)
+    escolhidos = [i for i in s.itens if i.removido_em is None]
+    if itens:
+        try:
+            numeros = interpretar_faixa(itens)
+        except ValueError as e:
+            raise RegraDeNegocio(str(e)) from None
+        escolhidos = [
+            i for i in escolhidos if int("".join(c for c in i.nome if c.isdigit()) or 0) in numeros
+        ]
+    if not escolhidos:
+        raise RegraDeNegocio("Nenhum item casou com a faixa informada.")
+
+    alvo_assunto = taxonomia.resolver_assunto(db, assunto)
+    alvo_sub = taxonomia.resolver_subassunto(db, alvo_assunto, subassunto) if subassunto else None
+    for escolhido in escolhidos:
+        taxonomia.classificar_video(db, ident, escolhido.video, alvo_assunto, alvo_sub)
+    db.commit()
+    return {
+        "videos_classificados": [i.nome for i in escolhidos],
+        "assunto": alvo_assunto.nome,
+        "subassunto": alvo_sub.nome if alvo_sub else None,
+    }

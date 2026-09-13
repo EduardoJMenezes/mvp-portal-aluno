@@ -7,6 +7,7 @@ que o portal REST chama (seção 19).
 
 from __future__ import annotations
 
+import functools
 import logging
 from contextlib import contextmanager
 from typing import Annotated, Any
@@ -62,6 +63,36 @@ def _sessao():
 def _em_thread(funcao, *args) -> Any:
     """Roda um trecho síncrono de banco fora do event loop (tools async)."""
     return anyio.to_thread.run_sync(funcao, *args)
+
+
+def _no_banco(ident: Identidade, funcao, *args, **kwargs) -> Any:
+    with SessionLocal() as db:
+        try:
+            return funcao(db, ident, *args, **kwargs)
+        except ErroDominio as e:
+            db.rollback()
+            raise ToolError(str(e)) from e
+
+
+async def _service(ident: Identidade, funcao, *args, **kwargs) -> Any:
+    """Chama um service de dentro de uma tool async: sessão própria, fora do loop."""
+    return await anyio.to_thread.run_sync(
+        functools.partial(_no_banco, ident, funcao, *args, **kwargs)
+    )
+
+
+async def _resolucao_do_vimeo(vimeo_id: str | None) -> dict | None:
+    try:
+        return await vimeo_importacao.resolucao(vimeo_id)
+    except ErroDominio as e:
+        raise ToolError(str(e)) from e
+
+
+async def _questoes_com_resolucao(questoes: list | None) -> list | None:
+    try:
+        return await vimeo_importacao.questoes_com_resolucao(questoes)
+    except ErroDominio as e:
+        raise ToolError(str(e)) from e
 
 
 # --- consulta ----------------------------------------------------------------
@@ -195,28 +226,9 @@ async def listar_pastas_vimeo(
     """
     identidade_da_sessao().exigir_operador()
     try:
-        async with vimeo_importacao.abrir_leitura() as leitura:
-            pastas = await leitura.listar_pastas()
+        return await vimeo_importacao.listar_pastas(busca, limite)
     except (ErroDominio, VimeoErro) as e:
         raise ToolError(str(e)) from e
-
-    nomes = {pasta.uri: pasta.nome for pasta in pastas}
-    filtradas = [p for p in pastas if not busca or busca.lower() in (p.nome or "").lower()]
-    return {
-        "total_no_vimeo": len(pastas),
-        "mostrando": min(len(filtradas), limite),
-        "pastas": [
-            {
-                "id": pasta.id,
-                "nome": pasta.nome,
-                "dentro_de": nomes.get(pasta.pai_uri) if pasta.pai_uri else None,
-                "videos": pasta.total_videos,
-                "videos_com_subpastas": pasta.total_videos_com_subpastas,
-                "tem_subpasta": pasta.tem_subpasta,
-            }
-            for pasta in filtradas[:limite]
-        ],
-    }
 
 
 @mcp.tool(name="simular_importacao_vimeo", annotations={"read_only_hint": True, "open_world_hint": True})
@@ -290,11 +302,12 @@ def buscar_desempenho_aluno(
 def buscar_estatisticas_simulado(
     simulado: Annotated[str, Field(description="Título ou id do simulado")],
 ) -> dict:
-    """Desempenho da turma inteira num simulado.
+    """Desempenho de quem fez o simulado, somando todas as turmas dele.
 
     Traz média, resultado por aluno, percentual de acerto por questão com a
     distribuição das alternativas marcadas, e `maior_dificuldade` — a questão
-    com pior aproveitamento e o tópico dela.
+    com pior aproveitamento e o tópico dela. Em branco conta como erro. Com o
+    simulado ainda aberto, `parcial: true`: os números mudam até fechar.
     """
     with _sessao() as (db, ident):
         return analytics.estatisticas_simulado(db, ident, simulado)
@@ -304,7 +317,12 @@ def buscar_estatisticas_simulado(
 def listar_simulados(
     turma: Annotated[str | None, Field(description="Nome ou id da turma")] = None,
 ) -> list[dict]:
-    """Lista simulados, com status (RASCUNHO/PUBLICADO) e quantas tentativas cada um teve."""
+    """Lista simulados: turmas, agenda, situação e quantos alunos começaram.
+
+    `situacao` é RASCUNHO, AGENDADO (publicado, ainda não abriu), ABERTO ou
+    ENCERRADO. Datas saem no horário de Brasília. `tentativas` conta quem
+    começou a prova — é quem entra no ranking.
+    """
     with _sessao() as (db, ident):
         return simulados.listar_simulados(db, ident, turma)
 
@@ -313,8 +331,8 @@ def listar_simulados(
 
 
 @mcp.tool(name="criar_questao_rascunho", annotations=ESCREVE_RASCUNHO)
-def criar_questao_rascunho(
-    enunciado: Annotated[str, Field(description="Texto da questão")],
+async def criar_questao_rascunho(
+    enunciado: Annotated[str, Field(description="Texto da questão, em Markdown com LaTeX")],
     alternativas: Annotated[
         dict[str, str], Field(description='As cinco alternativas: {"A": "...", "B": "...", ... "E": "..."}')
     ],
@@ -331,22 +349,27 @@ def criar_questao_rascunho(
     vimeo_id: Annotated[
         str | None, Field(description="Id do vídeo do Vimeo com a resolução, se houver")
     ] = None,
+    imagem_pendente: Annotated[
+        bool, Field(description="true quando há figura que não deu para transcrever")
+    ] = False,
 ) -> dict:
-    """Cadastra UMA questão de simulado como RASCUNHO.
+    """Cadastra UMA questão de simulado, avulsa, como RASCUNHO.
+
+    Para montar uma prova, prefira criar_simulado_rascunho com as questões
+    novas dentro: é um rascunho só, em vez de um por questão.
 
     Sem turma: questão não pertence a turma nenhuma — quem pertence é o
-    simulado onde ela entra. O `assunto` é o que liga o erro do aluno aos
-    vídeos que explicam aquilo, então vale a pena preencher.
+    simulado onde ela entra.
 
     A questão NÃO fica visível para ninguém: nasce em rascunho e só entra no
     acervo depois que o professor aprovar. Apresente o retorno e espere a
     decisão dele antes de chamar publicar_rascunho.
     """
-    with _sessao() as (db, ident):
-        return rascunhos.criar_questao_rascunho(
-            db, ident, enunciado, alternativas, gabarito,
-            assunto, subassunto, dificuldade, vimeo_id,
-        )
+    ident = identidade_da_sessao()
+    return await _service(
+        ident, rascunhos.criar_questao_rascunho, enunciado, alternativas, gabarito,
+        assunto, subassunto, dificuldade, await _resolucao_do_vimeo(vimeo_id), imagem_pendente,
+    )
 
 
 @mcp.tool(name="importar_videos_como_itens", annotations=ESCREVE_RASCUNHO)
@@ -415,24 +438,75 @@ async def importar_pasta_vimeo_como_rascunho(
     return await _em_thread(_aplicar_plano, ident, plano, turma, destinos)
 
 
-@mcp.tool(name="criar_simulado_rascunho", annotations=ESCREVE_RASCUNHO)
-def criar_simulado_rascunho(
-    turma: Annotated[str, Field(description="Turma para a qual o simulado será publicado")],
-    titulo: Annotated[str, Field(description="Nome do simulado, ex.: 'Revisão de Estequiometria'")],
-    questoes: Annotated[
-        list[int],
-        Field(description="Ids das questões do acervo, vindos de buscar_questoes"),
+@mcp.tool(
+    name="criar_simulado_rascunho",
+    annotations={"read_only_hint": False, "destructive_hint": False, "open_world_hint": True},
+)
+async def criar_simulado_rascunho(
+    turmas: Annotated[
+        list[str], Field(description="Turmas que fazem a prova, ex.: ['Extensivo 2026']")
     ],
+    titulo: Annotated[str, Field(description="Nome do simulado, ex.: 'Simulado 30'")],
+    questoes: Annotated[
+        list[int | dict],
+        Field(
+            description=(
+                "Na ordem da prova. Cada uma é o id de uma questão publicada (buscar_questoes) "
+                "ou a questão nova inteira: {enunciado, alternativas: {A..E}, gabarito, "
+                "assunto, subassunto, dificuldade, imagem_pendente, numero, vimeo_id}. "
+                "`numero` é o da prova, quando não for a posição (ex.: 91 no ENEM)."
+            )
+        ),
+    ],
+    abre_em: Annotated[
+        str | None, Field(description="Abertura, no horário de Brasília: '2026-10-10T14:00'")
+    ] = None,
+    fecha_em: Annotated[
+        str | None, Field(description="Fechamento, no horário de Brasília: '2026-10-10T18:00'")
+    ] = None,
+    duracao_minutos: Annotated[
+        int | None, Field(ge=1, description="Tempo de prova, contado de quando o aluno começa")
+    ] = None,
+    pasta_resolucao: Annotated[
+        str | None,
+        Field(
+            description=(
+                "Id da pasta do Vimeo com os vídeos de resolução (listar_pastas_vimeo). "
+                "Casa pelo número do título: o vídeo Q07 vai para a questão 7."
+            )
+        ),
+    ] = None,
 ) -> dict:
-    """Monta um simulado em RASCUNHO com questões já publicadas no acervo.
+    """Monta um simulado em RASCUNHO — e as questões novas dele, no mesmo rascunho.
 
-    Só entram questões completas — com as cinco alternativas e gabarito. Uma
-    prova pela metade não é uma prova.
+    É o fluxo do print ou do PDF que o professor manda no chat: transcreva as
+    questões e crie tudo numa chamada só. Um simulado de 15 questões é um
+    preview e um ok, não dezesseis rascunhos.
 
-    O simulado não aparece para os alunos até ser publicado.
+    Transcreva tudo o que der para replicar em texto: enunciado e alternativas
+    em Markdown, tabela como tabela Markdown, fórmula em LaTeX entre $...$.
+    Figura sem letras nem números que importem não se transcreve: marque
+    `imagem_pendente: true` — o professor anexa pela plataforma, e o simulado
+    não publica antes disso. Proponha assunto e sub-assunto de cada questão
+    (listar_assuntos): é o que liga o erro do aluno ao vídeo que explica.
+
+    A resolução vem do Vimeo, da pasta que o professor disser — não adivinhe a
+    pasta. Agenda é uma janela só (abre_em → fecha_em, horário de Brasília), e o
+    tempo de prova conta de quando cada aluno começa; pode ficar para
+    editar_simulado, mas sem ela o simulado não publica.
+
+    Nada aparece para os alunos até publicar_rascunho. Mostre o detalhe
+    devolvido — questões, gabaritos, resoluções casadas e
+    `pendencias_para_publicar` — e espere o ok do professor.
     """
-    with _sessao() as (db, ident):
-        return rascunhos.criar_simulado_rascunho(db, ident, turma, titulo, questoes)
+    ident = identidade_da_sessao()
+    resolucoes = None
+    if pasta_resolucao:
+        resolucoes = vimeo_importacao.resolucoes_por_numero(await _ler_plano(pasta_resolucao))
+    return await _service(
+        ident, rascunhos.criar_simulado_rascunho, turmas, titulo,
+        await _questoes_com_resolucao(questoes), abre_em, fecha_em, duracao_minutos, resolucoes,
+    )
 
 
 # --- publicação: exige aprovação humana --------------------------------------

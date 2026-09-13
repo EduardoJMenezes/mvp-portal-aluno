@@ -22,6 +22,7 @@ from app.config import get_settings
 from app.errors import RegraDeNegocio
 from app.identidade import Identidade
 from app.integracoes.vimeo import (
+    VimeoErro,
     CAMPOS_VIDEO_IMPORTACAO,
     ClienteVimeoLeitura,
     TransporteVimeo,
@@ -103,6 +104,87 @@ async def abrir_leitura():
         yield ClienteVimeoLeitura(transporte)
     finally:
         await transporte.aclose()
+
+
+async def listar_pastas(busca: str | None = None, limite: int = 60) -> dict:
+    """As pastas do Vimeo com a hierarquia — de onde sai o id que a importação pede."""
+    async with abrir_leitura() as leitura:
+        pastas = await leitura.listar_pastas()
+
+    nomes = {pasta.uri: pasta.nome for pasta in pastas}
+    filtradas = [p for p in pastas if not busca or busca.lower() in (p.nome or "").lower()]
+    return {
+        "total_no_vimeo": len(pastas),
+        "mostrando": min(len(filtradas), limite),
+        "pastas": [
+            {
+                "id": pasta.id,
+                "nome": pasta.nome,
+                "dentro_de": nomes.get(pasta.pai_uri) if pasta.pai_uri else None,
+                "videos": pasta.total_videos,
+                "videos_com_subpastas": pasta.total_videos_com_subpastas,
+                "tem_subpasta": pasta.tem_subpasta,
+            }
+            for pasta in filtradas[:limite]
+        ],
+    }
+
+
+async def ler_video(vimeo_id: str) -> dict:
+    """Um vídeo avulso, no formato das tools — com o `embed_url` que faz tocar."""
+    async with abrir_leitura() as leitura:
+        video = await leitura.obter_video(vimeo_id, campos=CAMPOS_VIDEO_IMPORTACAO)
+    return {
+        "vimeo_id": video.id or vimeo_id,
+        "titulo": video.nome or f"Vídeo {vimeo_id}",
+        "url": video.link,
+        "embed_url": video.embed_url,
+        "thumbnail_url": video.thumbnail_url,
+        "duracao_segundos": video.duracao_segundos,
+    }
+
+
+async def resolucao(vimeo_id: str | None) -> dict | None:
+    """O vídeo da resolução como o player precisa: com o `embed_url` do Vimeo.
+
+    Só o id não basta — vídeo unlisted não toca sem o hash que vem no embed.
+    `None` é "não mexa"; vazio é "sem resolução". Sem Vimeo configurado (o
+    acervo de demonstração), segue só com o id.
+    """
+    if vimeo_id is None:
+        return None
+    vimeo_id = str(vimeo_id).strip()
+    if not vimeo_id or not get_settings().vimeo_real:
+        return {"vimeo_id": vimeo_id}
+    try:
+        return await ler_video(vimeo_id)
+    except VimeoErro as e:
+        raise RegraDeNegocio(f"Vídeo {vimeo_id} do Vimeo: {e}") from e
+
+
+async def questoes_com_resolucao(questoes: list | None) -> list | None:
+    """Questão nova que cita `vimeo_id` ganha o vídeo inteiro, lido do Vimeo."""
+    if questoes is None:
+        return None
+    return [
+        {**q, "resolucao": await resolucao(q["vimeo_id"])}
+        if isinstance(q, dict) and q.get("vimeo_id")
+        else q
+        for q in questoes
+    ]
+
+
+def resolucoes_por_numero(plano: PlanoDeImportacao) -> dict[int, dict]:
+    """Os vídeos de resolução de uma pasta, pelo número lido do título.
+
+    É o casamento do simulado: a questão 7 recebe o vídeo "Q07". Número
+    repetido fica com o primeiro, na ordem em que o plano já vem.
+    """
+    resolucoes: dict[int, dict] = {}
+    for item in plano.itens:
+        if item.numero is not None:
+            resolucoes.setdefault(item.numero, item.para_importacao())
+    return resolucoes
 
 
 def _avisos_do_video(video: VideoVimeo, numero: int | None) -> list[str]:
