@@ -187,8 +187,7 @@ def publicar_rascunho(
         if pendencias:
             raise RegraDeNegocio(
                 f"'{simulado.titulo}' ainda não pode ser publicado: {'; '.join(pendencias)}. "
-                "Corrija pelo Claude (editar_simulado, editar_questao; a figura se anexa pela "
-                "API da questão) e publique de novo."
+                "Peça ao Claude para acertar isso e publique de novo."
             )
 
     for item in escolhidos:
