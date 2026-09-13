@@ -44,9 +44,12 @@ export function paraHtml(texto: string): string {
     );
     return `%%F${formulas.length - 1}%%`;
   });
-  return (markdown.parse(semFormulas) as string).replace(
-    /%%F(\d+)%%/g, (_, i: string) => formulas[Number(i)],
-  );
+  return (markdown.parse(semFormulas) as string)
+    .replace(/%%F(\d+)%%/g, (_, i: string) => formulas[Number(i)])
+    // Figura sozinha no parágrafo ocupa a linha; no meio do texto (a seta de
+    // uma equação), fica na altura dele.
+    .replace(/<p>\s*<img class="figura"/g, '<p><img class="figura sozinha"')
+    .replace(/(<img class="figura sozinha"[^>]*>)\s*(?=\S)(?!<\/p>)/g, (img) => img.replace(" sozinha", ""));
 }
 
 // A figura só sai com o token — antes de a prova abrir ela adiantaria a

@@ -154,6 +154,6 @@ iframe { border: 0; border-radius: 8px; width: 100%; aspect-ratio: 16/9; backgro
   display: inline-block; padding: 2px 8px; border-radius: 6px; font-size: 13px;
   color: var(--rascunho); background: var(--rascunho-fundo); border: 1px dashed var(--rascunho);
 }
-.texto img.figura { display: block; max-width: 100%; margin: 8px 0; }
-.texto td img.figura, .alternativa img.figura { display: inline-block; margin: 0; vertical-align: middle; }
+.texto img.figura { display: inline-block; vertical-align: middle; max-width: 100%; max-height: 2.2em; }
+.texto img.figura.sozinha { display: block; max-height: none; margin: 8px 0; }
 .resolucao { margin-top: 12px; padding: 10px 12px; border-left: 3px solid var(--borda); background: var(--fundo); }

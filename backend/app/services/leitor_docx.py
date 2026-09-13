@@ -407,10 +407,14 @@ def converter_formatos_antigos(figuras: dict[str, Figura]) -> list[str]:
                 caminho = Path(pasta) / f"figura{n}.{figura.origem}"
                 caminho.write_bytes(figura.conteudo)
                 entradas.append(str(caminho))
+            # Folha A4 em dobro (96 dpi × 2): a tabela que vinha de "Equação 3.0"
+            # sai legível. O branco em volta é recortado logo abaixo.
+            png_em_dobro = ('png:draw_png_Export:{"PixelWidth":{"type":"long","value":"1588"},'
+                            '"PixelHeight":{"type":"long","value":"2246"}}')
             subprocess.run(
                 [soffice, "--headless", "--norestore",
                  f"-env:UserInstallation={(Path(pasta) / 'perfil').as_uri()}",
-                 "--convert-to", "png", "--outdir", pasta, *entradas],
+                 "--convert-to", png_em_dobro, "--outdir", pasta, *entradas],
                 capture_output=True, timeout=180, check=False,
             )
             for n, figura in enumerate(antigas):
