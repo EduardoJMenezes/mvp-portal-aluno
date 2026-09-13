@@ -81,6 +81,10 @@ Conteúdo novo nasce como RASCUNHO:
   3. mostrar ao professor o que foi proposto e perguntar;
   4. só então publicar_rascunho.
 
+Simulado que já está num .docx: importar_simulado_docx gera um link de envio —
+o arquivo não passa pelo chat. Quando o professor avisar que enviou, revise com
+revisar_importacao, que mostra as questões e as figuras.
+
 Simulado vindo de print ou PDF: transcreva as questões e crie o simulado e as
 questões novas numa chamada só de criar_simulado_rascunho. A resolução vem da
 pasta do Vimeo que o professor indicar. O resultado de cada aluno só sai quando
