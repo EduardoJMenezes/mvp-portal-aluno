@@ -6,13 +6,17 @@ import circular com o `main`.
 
 from __future__ import annotations
 
+import logging
 import os
 
 from fastmcp import FastMCP
 from fastmcp.exceptions import NotFoundError, ToolError, ValidationError
+from fastmcp.server.dependencies import get_http_headers
 from fastmcp.server.middleware import Middleware
 
 from app.mcp_server.auth import construir_auth
+
+logger = logging.getLogger("plataforma.mcp")
 
 RECONECTAR = (
     "peça ao usuário para reconectar o conector deste servidor "
@@ -59,6 +63,23 @@ class CatalogoDesatualizado(Middleware):
                 log_level=e.log_level,
             ) from e
 
+
+class RegistroDeChamadas(Middleware):
+    """Loga o método de cada mensagem MCP e, numa chamada, o nome da tool.
+
+    O log do uvicorn só mostra "POST /mcp": não dava para saber se o claude.ai
+    buscou a lista de ferramentas nem qual tool o modelo escolheu. O agente
+    separa o claude.ai do Claude Code. Argumentos ficam de fora — trazem nome
+    de aluno.
+    """
+
+    async def on_message(self, context, call_next):
+        tool = getattr(context.message, "name", "") if context.method == "tools/call" else ""
+        agente = get_http_headers().get("user-agent", "-")
+        logger.info("mcp %s %s [%s]", context.method, tool, agente)
+        return await call_next(context)
+
+
 # Estas instruções são a camada de bom comportamento — úteis, e insuficientes
 # por si só. A garantia de verdade está no backend: publicar exige aprovação
 # humana gravada em drafts.aprovado_por_id (ver services/publicacao.py).
@@ -81,8 +102,10 @@ Conteúdo novo nasce como RASCUNHO:
   3. mostrar ao professor o que foi proposto e perguntar;
   4. só então publicar_rascunho.
 
-Simulado que já está num .docx: importar_simulado_docx gera um link de envio —
-o arquivo não passa pelo chat. Quando o professor avisar que enviou, revise com
+Simulado novo chega num arquivo do professor — no Vimeo ficam só os vídeos de
+resolução. Pedido para importar ou subir um simulado, sem nada anexado no chat,
+é o .docx da equipe: chame importar_simulado_docx, que gera um link de envio (o
+arquivo não passa pelo chat). Quando o professor avisar que enviou, revise com
 revisar_importacao, que mostra as questões e as figuras.
 
 Simulado vindo de print ou PDF: transcreva as questões e crie o simulado e as
@@ -109,5 +132,5 @@ mcp = FastMCP(
     version=os.getenv("MCP_SERVER_VERSION", "0.1.0"),
     instructions=INSTRUCOES,
     auth=construir_auth(),
-    middleware=[CatalogoDesatualizado()],
+    middleware=[RegistroDeChamadas(), CatalogoDesatualizado()],
 )

@@ -41,11 +41,13 @@ def importar_simulado_docx(
         Field(description="Id da pasta do Vimeo com os vídeos de resolução, se o professor disser"),
     ] = None,
 ) -> dict:
-    """Gera o link para o professor enviar o .docx de um simulado.
+    """Importa um simulado de um arquivo .docx (Word): gera o link para o professor enviar o arquivo.
 
-    Use quando o simulado já está montado num documento do Word — com as
-    questões numeradas, alternativas a) a e), gabarito e resolução. Para print,
-    PDF ou questão solta, use criar_simulado_rascunho.
+    É o caminho quando o professor pede para importar ou subir um simulado
+    ("importa o SIMULADO 03 para o Extensivo 2026") sem anexar nada: o simulado
+    da equipe está num documento do Word — questões numeradas, alternativas a)
+    a e), gabarito e resolução — e ainda não existe na plataforma nem no Vimeo.
+    Para print, PDF ou questão solta, use criar_simulado_rascunho.
 
     O arquivo não passa pelo chat: devolva o link ao professor (vale 30
     minutos, uso único). Ele abre, envia o .docx e avisa aqui. O servidor lê o

@@ -173,6 +173,30 @@ async def test_cliente_com_lista_de_ferramentas_velha_e_avisado():
     assert "desatualizada" in str(mudou.value)
 
 
+async def test_log_mostra_qual_tool_o_cliente_chamou_sem_os_argumentos(caplog):
+    """O log do uvicorn só diz "POST /mcp"; sem isto não se vê o que o modelo escolheu."""
+    from fastmcp import Client, FastMCP
+
+    from app.mcp_server.server import RegistroDeChamadas
+
+    assert any(isinstance(m, RegistroDeChamadas) for m in mcp.middleware)
+
+    servidor = FastMCP("teste", middleware=[RegistroDeChamadas()])
+
+    @servidor.tool(name="buscar_desempenho_aluno")
+    def buscar(aluno: str) -> str:
+        return "ok"
+
+    with caplog.at_level("INFO", logger="plataforma.mcp"):
+        async with Client(servidor) as cliente:
+            await cliente.list_tools()
+            await cliente.call_tool("buscar_desempenho_aluno", {"aluno": "João"})
+
+    assert "mcp tools/list" in caplog.text
+    assert "mcp tools/call buscar_desempenho_aluno" in caplog.text
+    assert "João" not in caplog.text
+
+
 def test_cliente_vimeo_le_o_embed_da_api():
     """O campo player_embed_url da API vira o embed_url do nosso domínio."""
     from app.vimeo.client import _para_video

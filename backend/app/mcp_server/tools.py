@@ -329,6 +329,10 @@ def listar_simulados(
     `situacao` é RASCUNHO, AGENDADO (publicado, ainda não abriu), ABERTO ou
     ENCERRADO. Datas saem no horário de Brasília. `tentativas` conta quem
     começou a prova — é quem entra no ranking.
+
+    Simulado que o professor cita e não está aqui ainda não foi montado — não
+    procure no Vimeo, que só tem os vídeos de resolução. Se ele está num .docx,
+    importar_simulado_docx; se veio em print ou PDF, criar_simulado_rascunho.
     """
     with _sessao() as (db, ident):
         return simulados.listar_simulados(db, ident, turma)
