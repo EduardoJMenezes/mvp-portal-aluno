@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, type Rascunho } from "../api";
+import { TextoFormatado } from "../Questao";
 
 // A tela que prova a regra da seção 6: o que a IA propôs fica aqui, parado,
 // até um humano aprovar.
@@ -95,29 +96,49 @@ export default function AdminRascunhos() {
                 </div>
               ))}
 
-              {aberto.questoes?.map((q) => (
-                <div key={q.questao_id} style={{ marginBottom: 14 }}>
-                  {q.enunciado}
-                  {q.video && <div className="legenda mono" style={{ margin: 0 }}>🎬 vimeo {q.video.vimeo_id} — {q.video.titulo}</div>}
-                  {q.completa ? (
-                    <div className="legenda" style={{ margin: "4px 0 0" }}>
-                      {Object.entries(q.alternativas).map(([l, t]) => `${l}) ${t}`).join("  ")} · gabarito {q.gabarito}
+              {aberto.simulado && (
+                <div style={{ marginBottom: 14 }}>
+                  <strong>{aberto.simulado.titulo}</strong> — {aberto.simulado.turmas.join(", ")}
+                  <div className="legenda" style={{ margin: 0 }}>
+                    abre {aberto.simulado.abre_em ?? "—"} · fecha {aberto.simulado.fecha_em ?? "—"} ·{" "}
+                    {aberto.simulado.duracao_minutos ?? "—"} min de prova
+                  </div>
+                  {aberto.simulado.pendencias_para_publicar.length > 0 && (
+                    <div className="erro" style={{ margin: "8px 0 0" }}>
+                      Ainda não publica: {aberto.simulado.pendencias_para_publicar.join("; ")}.
                     </div>
-                  ) : (
+                  )}
+                  <ol style={{ margin: "6px 0 0", paddingLeft: 20 }}>
+                    {aberto.simulado.questoes.map((q) => (
+                      <li key={q.questao_id}>
+                        gabarito {q.gabarito}{q.nova ? "" : " · do acervo"}
+                        {q.imagem_pendente ? " · 🖼 imagem pendente" : ""}
+                        {q.resolucao ? ` · 🎬 ${q.resolucao}` : " · sem resolução"}
+                      </li>
+                    ))}
+                  </ol>
+                </div>
+              )}
+              {aberto.questoes?.map((q) => (
+                <div key={q.questao_id} className="cartao">
+                  <TextoFormatado texto={q.enunciado} />
+                  {q.completa ? Object.entries(q.alternativas).map(([l, t]) => (
+                    <div key={l} className={`alternativa fixa ${l === q.gabarito ? "gabarito" : ""}`}>
+                      <span className="letra">{l}</span>
+                      <TextoFormatado texto={t} />
+                    </div>
+                  )) : (
                     <div className="legenda" style={{ margin: "4px 0 0" }}>
                       sem alternativas A–E — não pode entrar num simulado
                     </div>
                   )}
+                  <div className="legenda" style={{ margin: "6px 0 0" }}>
+                    {q.classificacao.map((c) => c.subassunto ? `${c.assunto} › ${c.subassunto}` : c.assunto).join(", ") || "sem classificação"}
+                    {q.imagem_pendente && " · 🖼 imagem pendente"}
+                    {q.video && ` · 🎬 vimeo ${q.video.vimeo_id} — ${q.video.titulo}`}
+                  </div>
                 </div>
               ))}
-              {aberto.simulado && (
-                <div>
-                  <strong>{aberto.simulado.titulo}</strong> — {aberto.simulado.turma}
-                  <ol style={{ margin: "6px 0 0", paddingLeft: 20 }}>
-                    {aberto.simulado.questoes.map((q) => <li key={q.questao_id}>{q.enunciado}</li>)}
-                  </ol>
-                </div>
-              )}
             </div>
           )}
         </div>

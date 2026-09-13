@@ -111,9 +111,13 @@ export type Rascunho = {
     assuntos: { assunto: string; subassunto: string | null }[] }[];
   questoes?: { questao_id: number; enunciado: string;
     alternativas: Record<string, string>; gabarito: string | null; completa: boolean;
+    imagem_pendente: boolean; classificacao: { assunto: string; subassunto: string | null }[];
     video: { vimeo_id: string; titulo: string } | null }[];
-  simulado?: { simulado_id: number; titulo: string; turma: string;
-    questoes: { ordem: number; questao_id: number; enunciado: string }[] };
+  simulado?: { simulado_id: number; titulo: string; turmas: string[];
+    abre_em: string | null; fecha_em: string | null; duracao_minutos: number | null;
+    pendencias_para_publicar: string[];
+    questoes: { ordem: number; questao_id: number; enunciado: string; gabarito: string;
+      nova: boolean; imagem_pendente: boolean; resolucao: string | null }[] };
   aviso?: string;
 };
 
@@ -154,5 +158,25 @@ export const api = {
     req<any>(`/aluno/simulados/${id}/responder`, {
       method: "POST", body: JSON.stringify({ questao_id, alternativa }),
     }),
-  finalizar: (id: number) => req<any>(`/aluno/simulados/${id}/finalizar`, { method: "POST" }),
+  entregar: (id: number) => req<any>(`/aluno/simulados/${id}/entregar`, { method: "POST" }),
+  // Só depois do fechamento: antes, o backend recusa.
+  resultado: (id: number) => req<any>(`/aluno/simulados/${id}/resultado`),
+
+  // A figura vem como arquivo, não JSON; a tela recebe um endereço local para o <img>.
+  imagem: async (questaoId: number) => {
+    const resposta = await fetch(`${BASE}/aluno/questoes/${questaoId}/imagem`, {
+      headers: { authorization: `Bearer ${token()}` },
+    });
+    if (!resposta.ok) throw new Error(await mensagemDeErro(resposta));
+    return URL.createObjectURL(await resposta.blob());
+  },
 };
+
+// Agenda e prazos saem do backend em ISO; na tela, sempre no horário de Brasília.
+const FORMATO_BRASILIA = new Intl.DateTimeFormat("pt-BR", {
+  timeZone: "America/Sao_Paulo", dateStyle: "short", timeStyle: "short",
+});
+
+export function emBrasilia(iso?: string | null): string {
+  return iso ? FORMATO_BRASILIA.format(new Date(iso)).replace(", ", " às ") : "—";
+}

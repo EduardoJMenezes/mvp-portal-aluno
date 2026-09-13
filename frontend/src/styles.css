@@ -126,3 +126,26 @@ th { color: var(--tinta-fraca); font-weight: 600; font-size: 12px; text-transfor
 
 iframe { border: 0; border-radius: 8px; width: 100%; aspect-ratio: 16/9; background: #000; }
 .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+
+/* Texto formatado da questão: Markdown com tabela e fórmula. */
+.texto p { margin: 0 0 8px; }
+.texto p:last-child { margin-bottom: 0; }
+.texto table { width: auto; margin: 8px 0; }
+.texto th, .texto td { border: 1px solid var(--borda); padding: 4px 10px; text-transform: none; }
+.texto .katex-display { margin: 8px 0; overflow-x: auto; overflow-y: hidden; }
+.cartao > .texto { margin-bottom: 12px; }
+.alternativa .texto { flex: 1; min-width: 0; }
+.figura { display: block; max-width: 100%; margin: 0 0 12px; border-radius: 6px; }
+
+.cronometro {
+  font: 600 22px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+  padding: 8px 12px; border-radius: 8px; background: var(--papel); border: 1px solid var(--borda);
+}
+.cronometro.acabando { color: var(--erro); border-color: #fecdca; background: #fef3f2; }
+
+.placar { display: flex; gap: 24px; flex-wrap: wrap; font-size: 15px; }
+.placar strong { font-size: 22px; }
+.alternativa.fixa { cursor: default; }
+.alternativa.fixa:hover { border-color: var(--borda); }
+.alternativa.gabarito { border-color: var(--publicado); background: var(--publicado-fundo); }
+.alternativa.errada { border-color: #fecdca; background: #fef3f2; }

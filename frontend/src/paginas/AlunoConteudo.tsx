@@ -47,7 +47,7 @@ export default function AlunoConteudo() {
   );
 }
 
-function ItemDoCurso({ item, aberto, aoAlternar }: {
+export function ItemDoCurso({ item, aberto, aoAlternar }: {
   item: any; aberto: boolean; aoAlternar: () => void;
 }) {
   const video = item.video;

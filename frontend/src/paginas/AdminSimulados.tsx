@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api } from "../api";
+import { api, emBrasilia } from "../api";
 
 export default function AdminSimulados() {
   const [lista, setLista] = useState<any[]>([]);
@@ -29,11 +29,15 @@ export default function AdminSimulados() {
             <div>
               <h4>{s.titulo}</h4>
               <div className="legenda" style={{ margin: 0 }}>
-                {s.turma} · {s.questoes} questões · {s.tentativas} tentativa(s)
+                {s.turmas.join(", ")} · {s.total_questoes} questões · {s.tentativas} começaram
+              </div>
+              <div className="legenda" style={{ margin: 0 }}>
+                abre {emBrasilia(s.abre_em)} · fecha {emBrasilia(s.fecha_em)} ·{" "}
+                {s.duracao_minutos ?? "—"} min de prova
               </div>
             </div>
             <div className="linha">
-              <span className={`etiqueta ${s.status.toLowerCase()}`}>{s.status}</span>
+              <span className={`etiqueta ${s.status.toLowerCase()}`}>{s.situacao}</span>
               {s.status === "PUBLICADO" && (
                 <button onClick={() => ver(s.simulado_id)}>
                   {stats?.simulado_id === s.simulado_id ? "Fechar" : "Estatísticas"}
@@ -49,8 +53,8 @@ export default function AdminSimulados() {
               ) : (
                 <>
                   <p className="legenda">
-                    {stats.alunos_responderam} de {stats.alunos_matriculados} alunos responderam ·
-                    média {stats.media_percentual}%
+                    {stats.alunos_responderam} de {stats.alunos_matriculados} alunos começaram ·
+                    média {stats.media_percentual}%{stats.parcial ? " · parcial, o simulado ainda não fechou" : ""}
                   </p>
                   <table>
                     <thead>
@@ -59,12 +63,12 @@ export default function AdminSimulados() {
                     <tbody>
                       {stats.por_questao.map((q: any) => (
                         <tr key={q.questao_id}>
-                          <td>Q{String(q.numero ?? q.ordem).padStart(2, "0")}</td>
+                          <td>Q{String(q.ordem).padStart(2, "0")}</td>
                           <td>{q.topico ?? "—"}</td>
-                          <td>{q.percentual_acerto ?? "—"}%</td>
+                          <td>{q.percentual_acerto}%</td>
                           <td>
                             <div className="barra">
-                              <div style={{ width: `${q.percentual_acerto ?? 0}%` }} />
+                              <div style={{ width: `${q.percentual_acerto}%` }} />
                             </div>
                           </td>
                         </tr>
