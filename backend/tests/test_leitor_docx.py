@@ -96,3 +96,20 @@ def test_gabarito_numa_tabela_no_fim_do_documento():
 def test_arquivo_que_nao_e_docx_e_recusado():
     with pytest.raises(RegraDeNegocio):
         ler_docx(b"isto nao e um zip")
+
+
+def test_figura_convertida_perde_a_folha_em_branco_em_volta():
+    """O LibreOffice devolve a A4 inteira; o aluno tem de ver só o desenho."""
+    import io
+
+    from PIL import Image, ImageDraw
+
+    from app.services.leitor_docx import aparar_margem
+
+    folha = Image.new("RGB", (794, 1123), "white")
+    ImageDraw.Draw(folha).rectangle((300, 500, 500, 560), fill="black")
+    arquivo = io.BytesIO()
+    folha.save(arquivo, "PNG")
+
+    with Image.open(io.BytesIO(aparar_margem(arquivo.getvalue()))) as recortada:
+        assert recortada.size == (201 + 16, 61 + 16)

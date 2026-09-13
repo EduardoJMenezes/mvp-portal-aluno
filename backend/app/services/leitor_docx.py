@@ -416,8 +416,30 @@ def converter_formatos_antigos(figuras: dict[str, Figura]) -> list[str]:
             for n, figura in enumerate(antigas):
                 png = Path(pasta) / f"figura{n}.png"
                 if png.exists() and png.stat().st_size:
-                    figura.conteudo, figura.tipo = png.read_bytes(), "image/png"
+                    figura.conteudo, figura.tipo = aparar_margem(png.read_bytes()), "image/png"
     return [f.chave for f in figuras.values() if f.tipo is None]
+
+
+def aparar_margem(png: bytes, folga: int = 8) -> bytes:
+    """Recorta o branco em volta do desenho.
+
+    O LibreOffice exporta a folha A4 inteira, com a figura perdida no meio;
+    sem o recorte, uma estrutura química viraria uma página em branco na tela
+    do aluno.
+    """
+    from PIL import Image, ImageChops
+
+    with Image.open(io.BytesIO(png)) as original:
+        imagem = original.convert("RGB")
+    caixa = ImageChops.difference(imagem, Image.new("RGB", imagem.size, "white")).getbbox()
+    if caixa is None:
+        return png
+    esquerda, topo, direita, base = caixa
+    recorte = imagem.crop((max(0, esquerda - folga), max(0, topo - folga),
+                           min(imagem.width, direita + folga), min(imagem.height, base + folga)))
+    saida = io.BytesIO()
+    recorte.save(saida, "PNG", optimize=True)
+    return saida.getvalue()
 
 
 # --- das regras às questões --------------------------------------------------
