@@ -227,3 +227,56 @@ async def test_simulado_pelo_mcp_nasce_num_rascunho_e_se_ajusta_na_hora(db, mund
 
         ranking = await tool("buscar_ranking_simulado", simulado="Simulado 30")
         assert ranking["participantes"] == 0 and ranking["parcial"] is True
+
+
+def _rascunho_de_itens(mundo):
+    from app.db import SessionLocal
+    from app.services import rascunhos
+
+    with SessionLocal() as sessao:
+        return rascunhos.importar_videos_como_itens(
+            sessao, mundo["professor_mcp"], "Extensivo 2027", "K01 - Estequiometria", "Aulas",
+            [{"vimeo_id": "novo-mcp", "titulo": "Vídeo novo"}],
+        )["rascunho_id"]
+
+
+async def test_publicar_em_cliente_sem_formulario_manda_aprovar_no_portal(db, mundo, monkeypatch):
+    """O claude.ai não mostra o pedido de confirmação. Sem este desvio, o
+    professor via um erro genérico, e nada dizia que a aprovação é no portal."""
+    from fastmcp import Client
+
+    import app.mcp_server.tools as tools
+    from app.services import rascunhos
+
+    monkeypatch.setattr(tools, "identidade_da_sessao", lambda: mundo["professor_mcp"])
+    rid = _rascunho_de_itens(mundo)
+
+    async with Client(mcp) as cliente:  # sem handler: não declara que mostra formulário
+        saida = (await cliente.call_tool("publicar_rascunho", {"rascunho_id": rid})).data
+
+    assert saida["publicado"] is False
+    assert f"#{rid}" in saida["mensagem"] and "Aprovar e publicar" in saida["mensagem"]
+    assert rascunhos.detalhar_rascunho(db, mundo["professor"], rid)["publicado"] is False
+
+
+async def test_publicar_em_cliente_com_formulario_so_publica_depois_do_aceite(db, mundo, monkeypatch):
+    from fastmcp import Client
+    from fastmcp.client.elicitation import ElicitResult
+
+    import app.mcp_server.tools as tools
+    from app.services import rascunhos
+
+    monkeypatch.setattr(tools, "identidade_da_sessao", lambda: mundo["professor_mcp"])
+    rid = _rascunho_de_itens(mundo)
+    perguntas = []
+
+    async def professor(mensagem, tipo, params, contexto):
+        perguntas.append(mensagem)
+        return ElicitResult(action="accept", content={"publicar": True})
+
+    async with Client(mcp, elicitation_handler=professor) as cliente:
+        saida = (await cliente.call_tool("publicar_rascunho", {"rascunho_id": rid})).data
+
+    assert perguntas, "o professor precisa ter sido perguntado"
+    assert saida["publicado"] is True
+    assert rascunhos.detalhar_rascunho(db, mundo["professor"], rid)["aprovado_via"] == "ELICITATION_MCP"

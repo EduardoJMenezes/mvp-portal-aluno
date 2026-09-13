@@ -16,10 +16,17 @@ import anyio
 from fastmcp import Context
 from fastmcp.exceptions import ToolError
 from fastmcp.server.elicitation import AcceptedElicitation
-from mcp_types import ElicitRequest, ElicitRequestFormParams, InputRequiredResult
+from mcp_types import (
+    ClientCapabilities,
+    ElicitationCapability,
+    ElicitRequest,
+    ElicitRequestFormParams,
+    InputRequiredResult,
+)
 from pydantic import Field
 from sqlalchemy.orm import Session
 
+from app.config import get_settings
 from app.db import SessionLocal
 from app.errors import AprovacaoNecessaria, ErroDominio
 from app.identidade import Identidade
@@ -565,6 +572,39 @@ def _pedido_de_confirmacao(mensagem: str, rascunho_id: int) -> InputRequiredResu
     )
 
 
+def _cliente_pergunta_ao_professor(ctx: Context) -> bool:
+    """Se o cliente declarou que mostra formulário ao usuário (capability `elicitation`).
+
+    Sem ela, nenhum dos dois canais de confirmação chega ao professor: no
+    claude.ai o pedido devolvido vira "Error occurred during tool execution", e
+    o modelo conclui que o servidor quebrou.
+    """
+    try:
+        sessao = ctx.session
+    except RuntimeError:
+        return False
+    if sessao.check_client_capability(ClientCapabilities(elicitation=ElicitationCapability())):
+        return True
+    cliente = getattr(getattr(sessao.client_params, "client_info", None), "name", None)
+    logger.info("cliente %s não mostra formulário; a aprovação vai para o portal", cliente)
+    return False
+
+
+def _aprovar_no_portal(rascunho_id: int) -> dict:
+    base = (get_settings().mcp_base_url or "").rstrip("/")
+    onde = f"{base}/rascunhos" if base else "Admin › Rascunhos"
+    return {
+        "rascunho_id": rascunho_id,
+        "publicado": False,
+        "aprovar_em": onde,
+        "mensagem": (
+            "Nada foi publicado. Este aplicativo não mostra o pedido de confirmação ao "
+            f"professor, então a aprovação é no portal: {onde}, rascunho #{rascunho_id}, "
+            "botão 'Aprovar e publicar'. Repasse isso ao professor em vez de tentar de novo."
+        ),
+    }
+
+
 def _recusado(rascunho_id: int) -> dict:
     return {
         "rascunho_id": rascunho_id,
@@ -603,7 +643,8 @@ async def publicar_rascunho(
     A aprovação não é opcional e não depende de você lembrar de pedir: o
     backend recusa publicar qualquer rascunho sem aprovação humana registrada.
     Esta tool pede a confirmação ao professor pelo próprio cliente e publica se
-    ele aceitar.
+    ele aceitar. Em cliente que não mostra esse pedido (o claude.ai, hoje), ela
+    devolve onde aprovar no portal: repasse ao professor, sem insistir.
 
     Se ele recusar, nada acontece — e o rascunho continua no portal, em
     Admin > Rascunhos, para revisar com calma.
@@ -635,6 +676,11 @@ async def publicar_rascunho(
         pass
     except ErroDominio as e:
         raise ToolError(str(e)) from e
+
+    # Cliente que não sabe perguntar nada ao usuário: os dois canais abaixo não
+    # chegariam ao professor. A aprovação continua humana — só muda de lugar.
+    if not _cliente_pergunta_ao_professor(ctx):
+        return _aprovar_no_portal(alvo)
 
     try:
         resumo = await _em_thread(_resumo, ident, alvo)

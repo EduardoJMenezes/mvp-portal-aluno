@@ -103,6 +103,9 @@ Ensaio geral dos quatro fluxos do §21, contra o servidor no ar:
 * **Elicitation mudou no protocolo 2026-07-28.** Requisição iniciada pelo
   servidor não existe mais; o canal é `InputRequiredResult` (SEP-2322).
   `publicar_rascunho` implementa os dois caminhos — não simplifique para só um.
+  E há um terceiro caso: cliente que não declara a capability `elicitation`
+  (o claude.ai, hoje) não mostra nenhum dos dois, e o pedido vira um erro
+  genérico na tela. Para ele a tool responde onde aprovar no portal.
 * **`api.vimeo.com` costuma estar bloqueado em rede corporativa.** Ver
   [docs/VIMEO.md](docs/VIMEO.md). Sem token, o backend cai no acervo de
   demonstração embutido, e a POC roda inteira assim.
