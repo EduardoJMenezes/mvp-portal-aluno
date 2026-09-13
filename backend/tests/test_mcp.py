@@ -2,6 +2,7 @@
 
 import asyncio
 
+import pytest
 from fastmcp.server.auth import AuthProvider
 
 from app.mcp_server.auth import TokenDaPlataforma, _consultar
@@ -134,6 +135,36 @@ def test_tool_que_altera_na_hora_pede_preview_e_ok_no_chat():
     ]
     assert sem_regra == []
     assert "só chame depois do ok do professor" in corrido(mcp.instructions)
+
+
+async def test_cliente_com_lista_de_ferramentas_velha_e_avisado():
+    """O conector do claude.ai guarda o catálogo de quando foi ligado.
+
+    Quando uma tool some ou muda de assinatura num deploy, o modelo chama o
+    formato antigo — e sem este aviso inventa uma explicação para o professor.
+    """
+    from fastmcp import Client, FastMCP
+
+    from app.mcp_server.server import CatalogoDesatualizado
+
+    assert any(isinstance(m, CatalogoDesatualizado) for m in mcp.middleware)
+
+    servidor = FastMCP("teste", middleware=[CatalogoDesatualizado()])
+
+    @servidor.tool(name="importar")
+    def importar(pasta: str, destinos: list[dict]) -> str:
+        return "ok"
+
+    async with Client(servidor) as cliente:
+        with pytest.raises(Exception) as sumiu:
+            await cliente.call_tool("listar_capitulos", {})
+        with pytest.raises(Exception) as mudou:
+            await cliente.call_tool("importar", {"pasta": "1", "capitulo": "K01"})
+
+    assert "desatualizada" in str(sumiu.value)
+    assert "Ferramentas atuais: importar" in str(sumiu.value)
+    assert "que hoje recebe: pasta, destinos" in str(mudou.value)
+    assert "desatualizada" in str(mudou.value)
 
 
 def test_cliente_vimeo_le_o_embed_da_api():

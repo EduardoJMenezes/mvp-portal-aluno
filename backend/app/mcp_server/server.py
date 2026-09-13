@@ -9,8 +9,55 @@ from __future__ import annotations
 import os
 
 from fastmcp import FastMCP
+from fastmcp.exceptions import NotFoundError, ToolError, ValidationError
+from fastmcp.server.middleware import Middleware
 
 from app.mcp_server.auth import construir_auth
+
+RECONECTAR = (
+    "peça ao usuário para reconectar o conector deste servidor "
+    "(Configurações › Conectores) e abrir uma conversa nova"
+)
+
+
+class CatalogoDesatualizado(Middleware):
+    """Avisa quando o cliente chama o servidor com a lista de ferramentas velha.
+
+    O conector do claude.ai guarda o catálogo de ferramentas de quando foi
+    ligado. Depois de um deploy que renomeia uma tool ou muda os parâmetros
+    dela, o modelo continua chamando o formato antigo, leva um erro genérico e
+    inventa uma explicação — foi o que aconteceu quando `listar_capitulos`
+    virou `listar_modulos`. Aqui o erro diz o que existe hoje e o que fazer.
+
+    Os dois casos só nascem neste caminho: `NotFoundError` quando a tool não
+    existe, `ValidationError` quando os argumentos não batem com a assinatura.
+    O aviso é condicional ("se a sua lista mostra outra coisa") porque o mesmo
+    erro também aparece quando o modelo simplesmente erra a chamada.
+    """
+
+    async def on_call_tool(self, context, call_next):
+        nome = context.message.name
+        servidor = context.fastmcp_context.fastmcp
+        try:
+            return await call_next(context)
+        except NotFoundError as e:
+            atuais = sorted(t.name for t in await servidor.list_tools(run_middleware=False))
+            # ToolError, e não NotFoundError: o handler do protocolo troca o
+            # texto de qualquer NotFoundError por um "Unknown tool" fixo.
+            raise ToolError(
+                f"A ferramenta '{nome}' não existe neste servidor. Se ela aparece na sua "
+                f"lista de ferramentas, essa lista está desatualizada: {RECONECTAR}. "
+                f"Ferramentas atuais: {', '.join(atuais)}."
+            ) from e
+        except ValidationError as e:
+            tool = await servidor.get_tool(nome)
+            parametros = ", ".join((tool.parameters if tool else {}).get("properties", {}))
+            raise ValidationError(
+                f"Os argumentos não batem com '{nome}', que hoje recebe: {parametros}. Se a "
+                f"definição que você tem dela é outra, a sua lista de ferramentas está "
+                f"desatualizada: {RECONECTAR}.\n\nDetalhe: {e}",
+                log_level=e.log_level,
+            ) from e
 
 # Estas instruções são a camada de bom comportamento — úteis, e insuficientes
 # por si só. A garantia de verdade está no backend: publicar exige aprovação
@@ -52,4 +99,5 @@ mcp = FastMCP(
     version=os.getenv("MCP_SERVER_VERSION", "0.1.0"),
     instructions=INSTRUCOES,
     auth=construir_auth(),
+    middleware=[CatalogoDesatualizado()],
 )
