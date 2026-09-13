@@ -211,8 +211,8 @@ tool de publicar em lote. O rascunho de importação já funciona assim hoje: el
 
 Sem rascunho no meio, mudar o nome de um item publicado muda para o aluno
 imediatamente, e remover tira da tela imediatamente (logicamente — `removido_em`
-preenchido, nada apagado). É justamente por isso que a confirmação por
-elicitation não é opcional na tool.
+preenchido, nada apagado). É justamente por isso que o preview no chat não é
+opcional.
 
 ## Como a escrita acontece
 
@@ -222,18 +222,22 @@ edição exigiria guardar o "antes" e o "depois" e resolver conflito entre dois
 rascunhos tocando o mesmo módulo, e isso não se paga para trocar duas aulas de
 lugar.
 
-Em troca, a tool do MCP **sempre** mostra o que vai mudar e pede confirmação
-pelo próprio cliente, por elicitation, como `publicar_rascunho` já faz.
+Em troca, antes de chamar a tool o modelo **sempre** mostra no chat como vai
+ficar — o antes, o depois e quantos itens publicados são afetados — e só chama
+depois do ok do professor. A regra está na descrição de cada tool e nas
+instruções do servidor, e um teste quebra se ela sair.
 
-Vale dizer o que se perde nessa troca, para ninguém se surpreender depois: no
-publicar, a garantia **não** está no elicitation — está no backend, que recusa
-publicar sem aprovação gravada; se o cliente não souber confirmar, nada
-acontece. Na edição direta a proteção passa a morar na tool, que é a camada que
-o `server.py` chama de "bom comportamento, útil e insuficiente por si só". É
-uma escolha consciente, compensada por três coisas:
+A primeira versão confirmava por formulário do próprio cliente (elicitation).
+Não sobreviveu ao teste real: o app do Claude responde a esse formulário
+sozinho, sem mostrá-lo a ninguém, então a trava bloqueava toda alteração sem
+proteger coisa alguma.
 
-* **Fail-safe.** Cliente sem suporte a elicitation → a tool **recusa**, nunca
-  aplica em silêncio.
+Vale dizer o que se perde, para ninguém se surpreender depois: no publicar, a
+garantia está no backend, que recusa publicar sem aprovação gravada. Na edição
+direta a proteção mora no comportamento do modelo, que é a camada que o
+`server.py` chama de "bom comportamento, útil e insuficiente por si só". É uma
+escolha consciente do professor, compensada por duas coisas:
+
 * **Rastro na linha.** `alterado_por_id` e `alterado_em` em tudo que se edita.
   Duas colunas, no lugar de uma tabela de auditoria que a §20 deixou fora.
 * **Remoção é sempre lógica.** `removido_em` preenchido, nunca `DELETE`. Vale

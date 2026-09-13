@@ -93,9 +93,11 @@ Ensaio geral dos quatro fluxos do §21, contra o servidor no ar:
 * **Módulo é endereço, assunto é etiqueta.** `Modulo` pertence à turma e
   carrega o "K01"; `Assunto` é global e **nunca** leva numeração de capítulo —
   K03 é Estequiometria em 2026 e Tabela Periódica em 2025.
-* **Editar e remover são diretos; publicar não.** As duas primeiras confirmam
-  com o professor pela tool ([mcp_server/confirmacao.py](backend/app/mcp_server/confirmacao.py))
-  e gravam `alterado_por_id`. Publicar continua exigindo aprovação humana em
+* **Editar e remover são diretos; publicar não.** As tools de
+  [tools_estrutura.py](backend/app/mcp_server/tools_estrutura.py) alteram na hora
+  e gravam `alterado_por_id`; a confirmação é o preview no chat, escrito na
+  descrição de cada uma. Não volte para formulário de confirmação (elicitation):
+  o app do Claude responde a ele sozinho, sem mostrar a ninguém. Publicar continua exigindo aprovação humana em
   `drafts.aprovado_por_id`, verificada no banco — inclusive quando se publica
   item a item, que acontece de dentro de um rascunho já aprovado.
 * **Elicitation mudou no protocolo 2026-07-28.** Requisição iniciada pelo

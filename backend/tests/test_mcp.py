@@ -7,10 +7,17 @@ from fastmcp.server.auth import AuthProvider
 from app.mcp_server.auth import TokenDaPlataforma, _consultar
 from app.mcp_server.server import mcp
 
-# Importar o módulo de tools é o que dispara os decorators que registram tudo.
+# Importar os módulos de tools é o que dispara os decorators que registram tudo.
 import app.mcp_server.tools  # noqa: F401  isort:skip
+import app.mcp_server.tools_estrutura  # noqa: F401  isort:skip
 from app.models import Papel, TokenMCP, Usuario
 from app.security import hash_senha, hash_token, novo_token_mcp
+
+# Alteram o curso sem rascunho no meio: a confirmação é o preview no chat.
+ALTERAM_NA_HORA = {
+    "criar_modulo", "criar_submodulo", "editar_modulo", "editar_item",
+    "remover_do_curso", "cadastrar_assunto", "classificar_videos",
+}
 
 
 def _token_para(db, usuario: Usuario, revogado: bool = False) -> str:
@@ -89,8 +96,7 @@ def test_tools_registradas_e_anotadas():
         "criar_questao_rascunho", "importar_videos_como_itens", "criar_simulado_rascunho",
         "importar_pasta_vimeo_como_rascunho", "publicar_rascunho",
         # CRUD do curso, que altera direto e confirma com o professor
-        "criar_modulo", "criar_submodulo", "editar_modulo", "editar_item",
-        "remover_do_curso", "cadastrar_assunto", "classificar_videos",
+        *ALTERAM_NA_HORA,
     }
     assert esperadas <= set(tools)
 
@@ -100,9 +106,7 @@ def test_tools_registradas_e_anotadas():
 
     escritas = {"criar_questao_rascunho", "importar_videos_como_itens",
                 "criar_simulado_rascunho", "publicar_rascunho",
-                "importar_pasta_vimeo_como_rascunho",
-                "criar_modulo", "criar_submodulo", "editar_modulo", "editar_item",
-                "remover_do_curso", "cadastrar_assunto", "classificar_videos"}
+                "importar_pasta_vimeo_como_rascunho", *ALTERAM_NA_HORA}
     for nome, tool in tools.items():
         esperado = nome not in escritas
         assert tool.annotations.read_only_hint is esperado, f"{nome} com read_only_hint errado"
@@ -110,6 +114,26 @@ def test_tools_registradas_e_anotadas():
 
 def test_instrucoes_do_servidor_reforcam_a_regra():
     assert "nunca publique" in (mcp.instructions or "").lower()
+
+
+def test_tool_que_altera_na_hora_pede_preview_e_ok_no_chat():
+    """Sem rascunho entre a decisão e o efeito, a confirmação é esta instrução.
+
+    Foi escolha do professor: o formulário de confirmação era respondido pelo
+    próprio app, sem chegar a ele. Tirar a instrução daqui deixaria a tool
+    alterando o curso sem ninguém ver antes.
+    """
+    tools = {t.name: t for t in asyncio.run(mcp._list_tools())}
+
+    def corrido(texto: str | None) -> str:
+        return " ".join((texto or "").split())  # a quebra de linha não vale como mudança
+
+    sem_regra = [
+        nome for nome in ALTERAM_NA_HORA
+        if "mostre ao professor no chat" not in corrido(tools[nome].description)
+    ]
+    assert sem_regra == []
+    assert "só chame depois do ok do professor" in corrido(mcp.instructions)
 
 
 def test_cliente_vimeo_le_o_embed_da_api():
