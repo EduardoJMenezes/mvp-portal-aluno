@@ -113,7 +113,7 @@ export default function AdminRascunhos() {
                       <li key={q.questao_id}>
                         gabarito {q.gabarito}{q.nova ? "" : " · do acervo"}
                         {q.imagem_pendente ? " · 🖼 imagem pendente" : ""}
-                        {q.resolucao ? ` · 🎬 ${q.resolucao}` : " · sem resolução"}
+                        {q.resolucao ? ` · 🎬 ${q.resolucao}` : " · sem vídeo de resolução"}
                       </li>
                     ))}
                   </ol>
@@ -130,6 +130,12 @@ export default function AdminRascunhos() {
                   )) : (
                     <div className="legenda" style={{ margin: "4px 0 0" }}>
                       sem alternativas A–E — não pode entrar num simulado
+                    </div>
+                  )}
+                  {q.resolucao_comentada && (
+                    <div className="resolucao">
+                      <div className="legenda" style={{ margin: "0 0 4px", fontWeight: 600 }}>Resolução comentada</div>
+                      <TextoFormatado texto={q.resolucao_comentada} />
                     </div>
                   )}
                   <div className="legenda" style={{ margin: "6px 0 0" }}>

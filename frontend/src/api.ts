@@ -112,6 +112,7 @@ export type Rascunho = {
   questoes?: { questao_id: number; enunciado: string;
     alternativas: Record<string, string>; gabarito: string | null; completa: boolean;
     imagem_pendente: boolean; classificacao: { assunto: string; subassunto: string | null }[];
+    resolucao_comentada: string | null;
     video: { vimeo_id: string; titulo: string } | null }[];
   simulado?: { simulado_id: number; titulo: string; turmas: string[];
     abre_em: string | null; fecha_em: string | null; duracao_minutos: number | null;
@@ -120,6 +121,8 @@ export type Rascunho = {
       nova: boolean; imagem_pendente: boolean; resolucao: string | null }[] };
   aviso?: string;
 };
+
+const figuras = new Map<number, Promise<string>>();
 
 export const api = {
   login: (email: string, senha: string) =>
@@ -162,13 +165,28 @@ export const api = {
   // Só depois do fechamento: antes, o backend recusa.
   resultado: (id: number) => req<any>(`/aluno/simulados/${id}/resultado`),
 
-  // A figura vem como arquivo, não JSON; a tela recebe um endereço local para o <img>.
-  imagem: async (questaoId: number) => {
-    const resposta = await fetch(`${BASE}/aluno/questoes/${questaoId}/imagem`, {
-      headers: { authorization: `Bearer ${token()}` },
-    });
+  // A figura vem como arquivo, não JSON; a tela recebe um endereço local para o
+  // <img>. Guardado por id: a mesma figura aparece no enunciado e no resultado.
+  figura: (id: number) => {
+    if (!figuras.has(id)) {
+      figuras.set(id, fetch(`${BASE}/aluno/figuras/${id}`, {
+        headers: { authorization: `Bearer ${token()}` },
+      }).then(async (resposta) => {
+        if (!resposta.ok) throw new Error(await mensagemDeErro(resposta));
+        return URL.createObjectURL(await resposta.blob());
+      }));
+    }
+    return figuras.get(id)!;
+  },
+
+  // Link de envio do .docx: vale sem login, o token do link é a credencial.
+  envio: (token: string) => req<any>(`/importacoes/${token}`),
+  enviarDocx: async (token: string, arquivo: File) => {
+    const corpo = new FormData();
+    corpo.append("arquivo", arquivo);
+    const resposta = await fetch(`${BASE}/importacoes/${token}/arquivo`, { method: "POST", body: corpo });
     if (!resposta.ok) throw new Error(await mensagemDeErro(resposta));
-    return URL.createObjectURL(await resposta.blob());
+    return resposta.json();
   },
 };
 

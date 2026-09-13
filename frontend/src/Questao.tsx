@@ -1,30 +1,36 @@
 import katex from "katex";
+import "katex/contrib/mhchem";
 import "katex/dist/katex.min.css";
 import { Marked } from "marked";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { api } from "./api";
 
-// Enunciado e alternativas chegam como o Claude transcreve: Markdown, com
-// tabela, e fórmula em LaTeX entre $...$ (docs/MODELO-SIMULADO.md).
+// Enunciado, alternativas e resolução chegam como Markdown, com tabela, fórmula
+// em LaTeX entre $...$ (química em \ce{}) e figuras referenciadas no ponto onde
+// aparecem: ![](figura:123). Ver docs/IMPORTADOR-SIMULADO.md.
 
 const escapar = (texto: string) =>
   texto.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 
-// Questão não carrega HTML, link nem imagem: a figura vem anexada à parte, e o
-// resto seria só um jeito de injetar coisa na tela do aluno.
+// Questão não carrega HTML nem link: seriam só um jeito de injetar coisa na
+// tela do aluno. Imagem, só a figura da própria questão.
 const markdown = new Marked({
   gfm: true,
   breaks: true,
   renderer: {
     html({ text }) { return escapar(text); },
     link({ tokens }) { return this.parser.parseInline(tokens); },
-    image({ text }) { return escapar(text); },
+    image({ href, text }) {
+      if (href === "figura:pendente") return '<span class="figura-pendente">figura pendente</span>';
+      const figura = /^figura:(\d+)$/.exec(href);
+      return figura ? `<img class="figura" data-figura="${figura[1]}" alt="Figura da questão">` : escapar(text);
+    },
   },
 });
 
-// $$bloco$$ ou $linha$. O `$` colado no texto é o que separa fórmula de preço:
-// "R$ 50 e R$ 60" não vira fórmula.
-const FORMULA = /\$\$([\s\S]+?)\$\$|\$(?!\s)([^$\n]+?)(?<!\s)\$/g;
+// $$bloco$$ ou $linha$. O `$` colado no texto é o que separa fórmula de preço
+// ("R$ 50 e R$ 60" não vira fórmula), e `\$` é um cifrão de verdade.
+const FORMULA = /(?<!\\)\$\$([\s\S]+?)(?<!\\)\$\$|(?<!\\)\$(?!\s)([^$\n]+?)(?<!\s|\\)\$/g;
 
 export function paraHtml(texto: string): string {
   // A fórmula sai antes do Markdown, senão o `_` e o `*` dela viram itálico.
@@ -43,33 +49,21 @@ export function paraHtml(texto: string): string {
   );
 }
 
+// A figura só sai com o token — antes de a prova abrir ela adiantaria a
+// questão —, então o <img> nasce sem src e ganha o endereço local do arquivo.
 export function TextoFormatado({ texto }: { texto: string }) {
   const html = useMemo(() => paraHtml(texto), [texto]);
-  return <div className="texto" dangerouslySetInnerHTML={{ __html: html }} />;
-}
-
-// A figura só sai com o token: antes de a prova abrir, ela adiantaria a
-// questão. Por isso não é um <img src> direto para a API.
-export function FiguraDaQuestao({ questaoId }: { questaoId: number }) {
-  const [url, setUrl] = useState<string | null>(null);
-  const [erro, setErro] = useState("");
+  const caixa = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    let criada: string | null = null;
-    let desmontou = false;
-    api.imagem(questaoId)
-      .then((u) => {
-        criada = u;
-        if (desmontou) URL.revokeObjectURL(u);
-        else setUrl(u);
-      })
-      .catch((e) => setErro(e.message));
-    return () => {
-      desmontou = true;
-      if (criada) URL.revokeObjectURL(criada);
-    };
-  }, [questaoId]);
+    caixa.current?.querySelectorAll<HTMLImageElement>("img[data-figura]").forEach((img) => {
+      api.figura(Number(img.dataset.figura))
+        .then((url) => { img.src = url; })
+        .catch(() => img.replaceWith(Object.assign(document.createElement("span"), {
+          className: "figura-pendente", textContent: "figura indisponível",
+        })));
+    });
+  }, [html]);
 
-  if (erro) return <div className="legenda">{erro}</div>;
-  return url ? <img className="figura" src={url} alt="Figura da questão" /> : null;
+  return <div ref={caixa} className="texto" dangerouslySetInnerHTML={{ __html: html }} />;
 }

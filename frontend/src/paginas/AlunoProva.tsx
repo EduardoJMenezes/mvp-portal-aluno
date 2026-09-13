@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { api, emBrasilia } from "../api";
-import { FiguraDaQuestao, TextoFormatado } from "../Questao";
+import { TextoFormatado } from "../Questao";
 import { ItemDoCurso } from "./AlunoConteudo";
 
 // A prova vista pelo aluno. Quem decide o estado — agendada, em andamento,
@@ -139,7 +139,6 @@ function EmAndamento({ prova, aoAcabar }: { prova: any; aoAcabar: () => void }) 
 
       <div className="cartao">
         <TextoFormatado texto={questao.enunciado} />
-        {questao.tem_imagem && <FiguraDaQuestao questaoId={questao.questao_id} />}
         {Object.entries(questao.alternativas).map(([letra, texto]) => (
           <div key={letra} onClick={() => marcar(letra)}
                className={`alternativa ${marcadas[questao.questao_id] === letra ? "marcada" : ""}`}>
@@ -187,7 +186,6 @@ function Resultado({ r }: { r: any }) {
             </span>
           </div>
           <TextoFormatado texto={q.enunciado} />
-          {q.tem_imagem && <FiguraDaQuestao questaoId={q.questao_id} />}
           {Object.entries(q.alternativas).map(([letra, texto]) => (
             <div key={letra} className={[
               "alternativa fixa",
@@ -199,6 +197,12 @@ function Resultado({ r }: { r: any }) {
               {letra === q.marcada && <span className="legenda" style={{ margin: 0 }}>sua resposta</span>}
             </div>
           ))}
+          {q.resolucao_comentada && (
+            <div className="resolucao">
+              <div className="legenda" style={{ margin: "0 0 4px", fontWeight: 600 }}>Resolução comentada</div>
+              <TextoFormatado texto={q.resolucao_comentada} />
+            </div>
+          )}
           {q.resolucao && (
             <ItemDoCurso item={{ id: q.resolucao.id, nome: "Resolução em vídeo", video: q.resolucao }}
                          aberto={vendo === `q${q.questao_id}`}

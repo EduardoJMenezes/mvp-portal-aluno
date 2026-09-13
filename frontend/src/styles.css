@@ -149,3 +149,11 @@ iframe { border: 0; border-radius: 8px; width: 100%; aspect-ratio: 16/9; backgro
 .alternativa.fixa:hover { border-color: var(--borda); }
 .alternativa.gabarito { border-color: var(--publicado); background: var(--publicado-fundo); }
 .alternativa.errada { border-color: #fecdca; background: #fef3f2; }
+
+.figura-pendente {
+  display: inline-block; padding: 2px 8px; border-radius: 6px; font-size: 13px;
+  color: var(--rascunho); background: var(--rascunho-fundo); border: 1px dashed var(--rascunho);
+}
+.texto img.figura { display: block; max-width: 100%; margin: 8px 0; }
+.texto td img.figura, .alternativa img.figura { display: inline-block; margin: 0; vertical-align: middle; }
+.resolucao { margin-top: 12px; padding: 10px 12px; border-left: 3px solid var(--borda); background: var(--fundo); }

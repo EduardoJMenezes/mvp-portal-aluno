@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { NavLink, Navigate, Route, Routes, useNavigate } from "react-router-dom";
 import { api, type Usuario } from "./api";
 import Login from "./paginas/Login";
+import EnviarDocx from "./paginas/EnviarDocx";
 import AdminTurmas from "./paginas/AdminTurmas";
 import AdminRascunhos from "./paginas/AdminRascunhos";
 import AdminSimulados from "./paginas/AdminSimulados";
@@ -13,12 +14,16 @@ export default function App() {
   const [usuario, setUsuario] = useState<Usuario | null>(null);
   const [carregando, setCarregando] = useState(true);
   const navegar = useNavigate();
+  // O link de envio do .docx vem do chat e vale sem login: nem confere sessão,
+  // senão um login vencido no navegador tiraria a pessoa da página de envio.
+  const envio = /^\/enviar\/([^/]+)/.exec(window.location.pathname);
 
   useEffect(() => {
-    if (!localStorage.getItem("token")) return setCarregando(false);
+    if (envio || !localStorage.getItem("token")) return setCarregando(false);
     api.eu().then(setUsuario).catch(() => localStorage.clear()).finally(() => setCarregando(false));
   }, []);
 
+  if (envio) return <EnviarDocx token={envio[1]} />;
   if (carregando) return <main><p className="legenda">carregando…</p></main>;
   if (!usuario) return <Login aoEntrar={setUsuario} />;
 
