@@ -13,6 +13,14 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONPATH=/app/backend
 
 WORKDIR /app
+
+# LibreOffice sem interface: o importador de simulado converte com ele as
+# figuras em formato antigo do Word (EMF, WMF, prévia de "Equação 3.0") para
+# PNG. Pesa algumas centenas de MB — ver docs/IMPORTADOR-SIMULADO.md.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends libreoffice-draw-nogui fonts-liberation \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY pyproject.toml ./
 COPY backend/ ./backend/
 RUN python -m pip install --no-cache-dir .

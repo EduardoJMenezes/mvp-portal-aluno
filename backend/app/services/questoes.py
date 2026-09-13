@@ -1,14 +1,15 @@
-"""Manutenção da questão de simulado: detalhar, editar, remover e a imagem.
+"""Manutenção da questão de simulado: detalhar, editar, remover e as figuras.
 
 Editar e remover são diretos, com o preview no chat antes — a mesma pegada do
 curso. A trava vem do simulado: depois que abre uma prova com esta questão,
-enunciado, alternativas, gabarito e imagem não mudam mais. Classificação,
-dificuldade e vídeo de resolução continuam editáveis, porque não mexem na prova
-de ninguém.
+enunciado, alternativas, gabarito e figuras da prova não mudam mais.
+Classificação, dificuldade, resolução comentada e vídeo de resolução continuam
+editáveis, porque não mexem na prova de ninguém.
 """
 
 from __future__ import annotations
 
+import re
 from datetime import UTC, datetime
 
 from sqlalchemy import select
@@ -20,6 +21,7 @@ from app.models import (
     LETRAS,
     Alternativa,
     Imagem,
+    ParteDaQuestao,
     Questao,
     Simulado,
     SimuladoQuestao,
@@ -35,6 +37,11 @@ from app.services.rascunhos import (
     _video_da_entrada,
 )
 from app.services.simulados import Situacao, em_brasilia, situacao
+
+# A marca que a transcrição deixa onde a figura vai entrar, e a referência que
+# a figura anexada deixa no lugar dela.
+PENDENTE = "figura:pendente"
+REFERENCIA = re.compile(r"figura:(\d+)")
 
 # ponytail: 2 MB por imagem, dentro do Postgres. A figura recortada de uma
 # questão cabe com folga; foto de celular, não — e não deveria.
@@ -108,6 +115,11 @@ def detalhar_questao(
     q = resolver_questao(db, questao_id)
     return {
         **catalogo.descrever_questao(db, q, incluir_gabarito=True),
+        "resolucao_comentada": q.resolucao_comentada,
+        "figuras": [
+            {"figura_id": f.id, "parte": f.parte}
+            for f in db.scalars(select(Imagem).where(Imagem.questao_id == q.id).order_by(Imagem.id))
+        ],
         "resolucao": {"vimeo_id": q.video.vimeo_id, "titulo": q.video.titulo} if q.video else None,
         "simulados": [
             {"simulado_id": s.id, "titulo": s.titulo, "situacao": situacao(s, agora)}
@@ -128,6 +140,7 @@ def editar_questao(
     assunto: str | None = None,
     subassunto: str | None = None,
     resolucao: dict | None = None,
+    resolucao_comentada: str | None = None,
     agora: datetime | None = None,
 ) -> dict:
     """Altera a questão direto — o preview é no chat, antes da chamada.
@@ -185,6 +198,9 @@ def editar_questao(
     if resolucao is not None:
         q.video = _video_da_entrada(db, resolucao) if resolucao.get("vimeo_id") else None
 
+    if resolucao_comentada is not None:
+        q.resolucao_comentada = resolucao_comentada.strip() or None
+
     tocar(ident, q)
     db.commit()
     return detalhar_questao(db, ident, q.id, agora)
@@ -217,24 +233,8 @@ def remover_questao(
     return {"questao_id": q.id, "enunciado": q.enunciado[:80], "reversivel": True}
 
 
-def anexar_imagem(
-    db: Session,
-    ident: Identidade,
-    questao_id: int | str,
-    conteudo: bytes,
-    nome: str | None = None,
-    agora: datetime | None = None,
-) -> dict:
-    """Anexa a figura que não deu para transcrever, e tira a pendência.
-
-    Anexar de novo troca a imagem. A trava é a mesma do enunciado: com a prova
-    aberta, a figura não muda.
-    """
-    ident.exigir_operador()
-    agora = _agora(agora)
-    q = resolver_questao(db, questao_id)
-    _exigir_prova_fechada_para_mudancas(db, q, agora)
-
+def validar_figura(conteudo: bytes) -> str:
+    """O tipo da figura, lido dos bytes. Recusa o que não for imagem de verdade."""
     if not conteudo:
         raise RegraDeNegocio("Arquivo vazio.")
     if len(conteudo) > LIMITE_DA_IMAGEM:
@@ -245,44 +245,115 @@ def anexar_imagem(
     tipo = tipo_da_imagem(conteudo)
     if tipo is None:
         raise RegraDeNegocio("Formato não aceito. Envie PNG, JPEG, WEBP ou GIF.")
+    return tipo
 
-    q.imagem = Imagem(conteudo=conteudo, tipo=tipo, nome=(nome or "").strip()[:200] or None)
-    q.imagem_pendente = False
+
+def _textos(q: Questao) -> list[str]:
+    return [q.enunciado, q.resolucao_comentada or "", *(a.texto for a in q.alternativas)]
+
+
+def anexar_figura(
+    db: Session,
+    ident: Identidade,
+    questao_id: int | str,
+    conteudo: bytes,
+    nome: str | None = None,
+    parte: str = ParteDaQuestao.ENUNCIADO,
+    agora: datetime | None = None,
+) -> dict:
+    """Anexa uma figura à questão e a põe no texto.
+
+    Onde houver a marca `![](figura:pendente)` — que a transcrição deixa no
+    lugar da figura que não deu para transcrever —, a primeira marca da parte
+    recebe a figura. Sem marca, ela entra no fim do enunciado ou da resolução.
+    Anexar tira a pendência quando não sobra marca nenhuma.
+
+    A figura da prova trava quando o simulado abre; a da resolução, não.
+    """
+    ident.exigir_operador()
+    agora = _agora(agora)
+    parte = str(parte or "").strip().upper()
+    if parte not in ParteDaQuestao.TODAS:
+        raise RegraDeNegocio(f"Parte '{parte}' inválida. Use {', '.join(ParteDaQuestao.TODAS)}.")
+    q = resolver_questao(db, questao_id)
+    if parte != ParteDaQuestao.RESOLUCAO:
+        _exigir_prova_fechada_para_mudancas(db, q, agora)
+
+    figura = Imagem(
+        conteudo=conteudo, tipo=validar_figura(conteudo), nome=(nome or "").strip()[:200] or None,
+        questao_id=q.id, parte=parte,
+    )
+    db.add(figura)
+    db.flush()
+    referencia = f"figura:{figura.id}"
+
+    if parte == ParteDaQuestao.RESOLUCAO:
+        atual = q.resolucao_comentada or ""
+        q.resolucao_comentada = (
+            atual.replace(PENDENTE, referencia, 1) if PENDENTE in atual
+            else f"{atual}\n\n![]({referencia})".strip()
+        )
+    elif parte == ParteDaQuestao.ALTERNATIVA:
+        alvo = next((a for a in q.alternativas if PENDENTE in a.texto), None)
+        if alvo is None:
+            raise RegraDeNegocio(
+                "Nenhuma alternativa tem a marca ![](figura:pendente). Ponha a marca na "
+                "alternativa certa (editar_questao) antes de anexar."
+            )
+        alvo.texto = alvo.texto.replace(PENDENTE, referencia, 1)
+    else:
+        q.enunciado = (
+            q.enunciado.replace(PENDENTE, referencia, 1) if PENDENTE in q.enunciado
+            else f"{q.enunciado}\n\n![]({referencia})"
+        )
+
+    q.imagem_pendente = any(PENDENTE in t for t in _textos(q))
     tocar(ident, q)
     db.commit()
     return {
         "questao_id": q.id,
-        "imagem_id": q.imagem_id,
-        "tipo": tipo,
+        "figura_id": figura.id,
+        "parte": parte,
+        "tipo": figura.tipo,
         "bytes": len(conteudo),
-        "imagem_pendente": False,
+        "imagem_pendente": q.imagem_pendente,
     }
 
 
-def imagem_da_questao(db: Session, ident: Identidade, questao_id: int) -> Imagem:
+def figura(
+    db: Session, ident: Identidade, figura_id: int, agora: datetime | None = None
+) -> Imagem:
     """A figura, para quem pode vê-la.
 
     Operador, sempre. Aluno, só depois de começar uma prova publicada que tenha
-    a questão: antes disso, a figura adiantaria a prova.
+    a questão — antes disso, a figura adiantaria a prova. A da resolução, só
+    depois que essa prova fechar, como o vídeo de resolução.
     """
-    q = db.get(Questao, questao_id)
-    if q is None or q.imagem is None:
-        raise NaoEncontrado(f"A questão {questao_id} não tem imagem.")
+    img = db.get(Imagem, figura_id)
+    if img is None:
+        raise NaoEncontrado(f"A figura {figura_id} não existe.")
     if ident.e_operador:
-        return q.imagem
+        return img
+    if img.questao_id is None:
+        raise NaoAutorizado("Esta figura ainda não faz parte de nenhuma questão.")
 
-    comecou = db.scalar(
-        select(Tentativa.id)
-        .join(Simulado, Simulado.id == Tentativa.simulado_id)
-        .join(SimuladoQuestao, SimuladoQuestao.simulado_id == Simulado.id)
-        .where(
-            Tentativa.aluno_id == ident.usuario_id,
-            SimuladoQuestao.questao_id == q.id,
-            Simulado.status == Status.PUBLICADO,
-            Simulado.removido_em.is_(None),
+    fechamentos = list(
+        db.scalars(
+            select(Simulado.fecha_em)
+            .join(Tentativa, Tentativa.simulado_id == Simulado.id)
+            .join(SimuladoQuestao, SimuladoQuestao.simulado_id == Simulado.id)
+            .where(
+                Tentativa.aluno_id == ident.usuario_id,
+                SimuladoQuestao.questao_id == img.questao_id,
+                Simulado.status == Status.PUBLICADO,
+                Simulado.removido_em.is_(None),
+            )
         )
-        .limit(1)
     )
-    if comecou is None:
-        raise NaoAutorizado("Esta imagem é de uma prova que você não começou.")
-    return q.imagem
+    if not fechamentos:
+        raise NaoAutorizado("Esta figura é de uma prova que você não começou.")
+    if img.parte == ParteDaQuestao.RESOLUCAO and not any(
+        f is not None and f <= _agora(agora) for f in fechamentos
+    ):
+        raise NaoAutorizado("A resolução aparece quando o simulado fechar.")
+    return img

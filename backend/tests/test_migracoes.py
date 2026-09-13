@@ -21,8 +21,10 @@ def test_migracao_leva_o_schema_antigo_ao_atual_sem_perder_simulado(db, mundo):
 
     with motor.begin() as c:
         c.execute(text("DROP TABLE exam_classes"))
-        c.execute(text("ALTER TABLE questions DROP COLUMN imagem_id, DROP COLUMN imagem_pendente"))
-        c.execute(text("DROP TABLE images"))
+        c.execute(text("DROP TABLE images, imports"))
+        c.execute(text(
+            "ALTER TABLE questions DROP COLUMN imagem_pendente, DROP COLUMN resolucao_comentada"
+        ))
         c.execute(text(
             "ALTER TABLE exams DROP COLUMN abre_em, DROP COLUMN fecha_em, "
             "DROP COLUMN duracao_minutos, ADD COLUMN turma_id integer REFERENCES classes(id)"
@@ -43,7 +45,10 @@ def test_migracao_leva_o_schema_antigo_ao_atual_sem_perder_simulado(db, mundo):
 
     assert "turma_id" not in _colunas(motor, "exams")
     assert {"abre_em", "fecha_em", "duracao_minutos"} <= _colunas(motor, "exams")
-    assert {"imagem_pendente", "imagem_id"} <= _colunas(motor, "questions")
+    assert {"imagem_pendente", "resolucao_comentada"} <= _colunas(motor, "questions")
+    assert "imagem_id" not in _colunas(motor, "questions")
+    assert {"questao_id", "parte"} <= _colunas(motor, "images")
+    assert {"token_hash", "blocos", "relatorio"} <= _colunas(motor, "imports")
     assert {"prazo_em", "entregue_automaticamente"} <= _colunas(motor, "exam_attempts")
 
     with motor.connect() as c:

@@ -460,7 +460,7 @@ async def criar_simulado_rascunho(
             description=(
                 "Na ordem da prova. Cada uma é o id de uma questão publicada (buscar_questoes) "
                 "ou a questão nova inteira: {enunciado, alternativas: {A..E}, gabarito, "
-                "assunto, subassunto, dificuldade, imagem_pendente, numero, vimeo_id}. "
+                "resolucao_comentada, assunto, subassunto, dificuldade, numero, vimeo_id}. "
                 "`numero` é o da prova, quando não for a posição (ex.: 91 no ENEM)."
             )
         ),
@@ -488,13 +488,17 @@ async def criar_simulado_rascunho(
 
     É o fluxo do print ou do PDF que o professor manda no chat: transcreva as
     questões e crie tudo numa chamada só. Um simulado de 15 questões é um
-    preview e um ok, não dezesseis rascunhos.
+    preview e um ok, não dezesseis rascunhos. Se o simulado já está num .docx,
+    prefira importar_simulado_docx: o arquivo traz figuras e resoluções.
 
-    Transcreva tudo o que der para replicar em texto: enunciado e alternativas
-    em Markdown, tabela como tabela Markdown, fórmula em LaTeX entre $...$.
-    Figura sem letras nem números que importem não se transcreve: marque
-    `imagem_pendente: true` — o professor anexa pela plataforma, e o simulado
-    não publica antes disso. Proponha assunto e sub-assunto de cada questão
+    Transcreva tudo o que der para replicar em texto: enunciado, alternativas e
+    resolução comentada em Markdown, tabela como tabela Markdown, fórmula
+    química com índice em Unicode (CO₃²⁻) ou `$\\ce{...}$`, e matemática em
+    LaTeX entre $...$. Figura sem letras nem números que importem **não se
+    descreve em texto** — descrever estrutura entrega a resposta: ponha
+    `![](figura:pendente)` no lugar exato dela. A questão fica com imagem
+    pendente, o professor anexa a figura depois, e o simulado não publica
+    antes disso. Proponha assunto e sub-assunto de cada questão
     (listar_assuntos): é o que liga o erro do aluno ao vídeo que explica.
 
     A resolução vem do Vimeo, da pasta que o professor disser — não adivinhe a

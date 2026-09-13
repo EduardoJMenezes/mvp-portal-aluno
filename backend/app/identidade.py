@@ -16,6 +16,8 @@ from app.models import Papel
 class Canal:
     PORTAL = "PORTAL"
     MCP = "MCP"
+    # O .docx que chegou pelo link de envio, pedido por alguém no MCP.
+    DOCX = "DOCX"
 
 
 @dataclass(frozen=True)

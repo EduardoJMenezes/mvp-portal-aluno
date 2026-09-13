@@ -44,8 +44,15 @@ tabela. Enunciado e alternativas guardam texto formatado (Markdown, com fórmula
 em LaTeX), e o portal desenha.
 
 O que não dá para replicar — figura sem letras nem números que importem — fica
-**marcado como imagem pendente**, e o professor anexa pela plataforma. Enquanto
-houver imagem pendente, o simulado não publica.
+**marcado como imagem pendente**: a transcrição põe `![](figura:pendente)` no
+lugar exato da figura, e o professor anexa depois. Enquanto houver imagem
+pendente, o simulado não publica.
+
+Uma questão tem quantas figuras precisar — no enunciado, numa alternativa ou na
+resolução comentada —, cada uma referenciada no texto onde aparece
+(`![](figura:123)`). A da resolução só aparece para o aluno depois do
+fechamento, como o vídeo. Quando o simulado já está num .docx, o importador
+traz figuras e resoluções sozinho: ver [IMPORTADOR-SIMULADO.md](IMPORTADOR-SIMULADO.md).
 
 A apostila já tira as imagens desnecessárias e mantém só as tabelas e gráficos
 que importam para a questão, então a transcrição deve cobrir por volta de 90%
@@ -61,9 +68,12 @@ recorta a figura e envia pelo endpoint REST de anexo, com o mesmo token do MCP.
 A trava continua a mesma.
 
 ```bash
-curl -X PUT -H "Authorization: Bearer $TOKEN_DO_MCP" \
-  -F arquivo=@figura.png https://<servidor>/api/admin/questoes/<id>/imagem
+curl -X POST -H "Authorization: Bearer $TOKEN_DO_MCP" -F arquivo=@figura.png \
+  -F parte=ENUNCIADO https://<servidor>/api/admin/questoes/<id>/figuras
 ```
+
+A figura entra na primeira marca `figura:pendente` da parte (`ENUNCIADO`,
+`ALTERNATIVA` ou `RESOLUCAO`); sem marca, no fim do enunciado ou da resolução.
 
 Aceita PNG, JPEG, WEBP e GIF até 2 MB — o tipo é lido dos bytes, e SVG fica de
 fora. O token do MCP abre a API com o canal MCP: anexa, mas não aprova nem

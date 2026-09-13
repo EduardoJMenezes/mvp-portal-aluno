@@ -208,7 +208,6 @@ def descrever_questao(db: Session, questao: Questao, incluir_gabarito: bool) -> 
         else [],
         "classificacao": taxonomia.assuntos_da_questao(questao),
         "imagem_pendente": questao.imagem_pendente,
-        "tem_imagem": questao.imagem_id is not None,
         "video_resolucao_id": questao.video_id,
     }
     if incluir_gabarito:

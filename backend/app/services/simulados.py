@@ -210,7 +210,6 @@ def _questao_da_prova(vinculo: SimuladoQuestao, com_gabarito: bool) -> dict:
         "questao_id": q.id,
         "enunciado": q.enunciado,
         "alternativas": {a.letra: a.texto for a in q.alternativas},
-        "tem_imagem": q.imagem_id is not None,
     }
     if com_gabarito:
         dados["gabarito"] = q.gabarito
@@ -287,6 +286,7 @@ def abrir_simulado(
             "questoes": [
                 {
                     **_questao_da_prova(sq, com_gabarito=True),
+                    "resolucao_comentada": sq.questao.resolucao_comentada,
                     "resolucao": sq.questao.video.titulo if sq.questao.video else None,
                 }
                 for sq in s.questoes
@@ -560,6 +560,7 @@ def resultado(
                 "em_branco": r is None,
                 "gabarito": q.gabarito,
                 "correta": bool(r and r.correta),
+                "resolucao_comentada": q.resolucao_comentada,
                 "resolucao": acesso.descrever_video(videos.get(q.video_id), q.video_id in liberados)
                 if q.video_id
                 else None,

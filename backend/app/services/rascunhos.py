@@ -238,9 +238,10 @@ def _nova_questao(
     """Uma questão nova, em rascunho, do jeito que o Claude transcreveu.
 
     `entrada` traz enunciado, alternativas (A a E) e gabarito; opcionais:
-    assunto, subassunto, dificuldade, imagem_pendente e o vídeo da
-    **resolução** — `resolucao` (o vídeo descrito, com `embed_url`) ou só o
-    `vimeo_id`. Enunciado e alternativas vão como vieram: Markdown, com fórmula
+    resolucao_comentada, assunto, subassunto, dificuldade, imagem_pendente e o
+    vídeo da **resolução** — `resolucao` (o vídeo descrito, com `embed_url`) ou
+    só o `vimeo_id`. A figura que ainda não veio fica marcada no texto como
+    `![](figura:pendente)`, e a marca já basta para a questão ficar pendente. Enunciado e alternativas vão como vieram: Markdown, com fórmula
     em LaTeX. O `resolucao` do parâmetro é o vídeo da pasta do Vimeo que casou
     com a questão pelo número, e só vale quando a entrada não diz outro.
     """
@@ -256,11 +257,16 @@ def _nova_questao(
     )
     video = _video_da_entrada(db, resolucao) if resolucao else None
 
+    resolucao_comentada = str(entrada.get("resolucao_comentada") or "").strip() or None
+    marcada = any(
+        "figura:pendente" in t for t in (enunciado, resolucao_comentada or "", *letras.values())
+    )
     questao = Questao(
         enunciado=enunciado,
         gabarito=gab,
         dificuldade=_valida_dificuldade(entrada.get("dificuldade")),
-        imagem_pendente=bool(entrada.get("imagem_pendente")),
+        imagem_pendente=bool(entrada.get("imagem_pendente")) or marcada,
+        resolucao_comentada=resolucao_comentada,
         video=video,
         status=Status.RASCUNHO,
         rascunho_id=rascunho.id,
@@ -552,6 +558,7 @@ def detalhar_rascunho(db: Session, ident: Identidade, rascunho_id: int) -> dict:
             "alternativas": {a.letra: a.texto for a in q.alternativas},
             "gabarito": q.gabarito if q.alternativas else None,
             "completa": len(q.alternativas) == len(LETRAS),
+            "resolucao_comentada": q.resolucao_comentada,
             "dificuldade": q.dificuldade,
             "classificacao": taxonomia.assuntos_da_questao(q),
             "imagem_pendente": q.imagem_pendente,

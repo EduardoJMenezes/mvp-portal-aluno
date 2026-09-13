@@ -43,15 +43,16 @@ def test_claude_code_monta_o_simulado_e_anexa_a_figura_mas_nao_publica(db, mundo
     rascunho = r.json()
     nova = rascunho["simulado"]["questoes"][1]["questao_id"]
 
-    svg = api.put(f"/api/admin/questoes/{nova}/imagem", headers=claude_code,
-                  files={"arquivo": ("a.svg", b"<svg onload='x()'/>", "image/svg+xml")})
+    svg = api.post(f"/api/admin/questoes/{nova}/figuras", headers=claude_code,
+                   files={"arquivo": ("a.svg", b"<svg onload='x()'/>", "image/svg+xml")})
     assert svg.status_code == 400
 
-    png = api.put(f"/api/admin/questoes/{nova}/imagem", headers=claude_code,
-                  files={"arquivo": ("figura.png", PNG, "image/png")})
+    png = api.post(f"/api/admin/questoes/{nova}/figuras", headers=claude_code,
+                   files={"arquivo": ("figura.png", PNG, "image/png")}, data={"parte": "ENUNCIADO"})
     assert png.status_code == 200 and png.json()["imagem_pendente"] is False
 
-    figura = api.get(f"/api/admin/questoes/{nova}/imagem", headers=_portal(mundo["professor"]))
+    figura = api.get(f"/api/aluno/figuras/{png.json()['figura_id']}",
+                     headers=_portal(mundo["professor"]))
     assert figura.content == PNG and figura.headers["content-type"] == "image/png"
 
     # O token do MCP abre a API, mas não faz as vezes do professor no navegador.
@@ -68,11 +69,11 @@ def test_aluno_nao_alcanca_a_api_do_professor_nem_a_figura_antes_da_prova(db, mu
     api = TestClient(main.app)
     joao = _portal(mundo["joao"])
     questao = mundo["questoes"][0].id
-    api.put(f"/api/admin/questoes/{questao}/imagem", headers=_portal(mundo["professor"]),
-            files={"arquivo": ("f.png", PNG, "image/png")})
+    anexo = api.post(f"/api/admin/questoes/{questao}/figuras", headers=_portal(mundo["professor"]),
+                     files={"arquivo": ("f.png", PNG, "image/png")}).json()
 
-    assert api.get(f"/api/admin/simulados", headers=joao).status_code == 403
-    assert api.get(f"/api/aluno/questoes/{questao}/imagem", headers=joao).status_code == 403
+    assert api.get("/api/admin/simulados", headers=joao).status_code == 403
+    assert api.get(f"/api/aluno/figuras/{anexo['figura_id']}", headers=joao).status_code == 403
 
 
 def test_toda_tool_do_simulado_tem_endpoint(schema):
@@ -83,7 +84,11 @@ def test_toda_tool_do_simulado_tem_endpoint(schema):
         "/api/admin/simulados/{simulado}": {"get", "patch", "delete"},
         "/api/admin/simulados/{simulado}/ranking": {"get"},
         "/api/admin/questoes/{questao_id}": {"get", "patch", "delete"},
-        "/api/admin/questoes/{questao_id}/imagem": {"get", "put"},
+        "/api/admin/questoes/{questao_id}/figuras": {"post"},
+        "/api/aluno/figuras/{figura_id}": {"get"},
+        "/api/admin/importacoes": {"post"},
+        "/api/admin/importacoes/{importacao_id}": {"get"},
+        "/api/importacoes/{token}/arquivo": {"post"},
         "/api/admin/turmas/{turma}/modulos": {"post"},
         "/api/admin/vimeo/importacoes": {"post"},
         "/api/aluno/simulados/{simulado_id}/entregar": {"post"},

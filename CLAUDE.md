@@ -114,6 +114,13 @@ Ensaio geral dos quatro fluxos do §21, contra o servidor no ar:
   para tabela nova, `ALTER ... IF NOT EXISTS` para o resto, idempotente —, e o
   Dockerfile roda `python -m app.migracoes` antes de subir o servidor a cada
   deploy. Mudou `models.py`? Acrescente a alteração ao fim de `ALTERACOES`.
+* **O importador de .docx não chama modelo nenhum.** O servidor lê o arquivo
+  por regras ([leitor_docx.py](backend/app/services/leitor_docx.py)) e cria o
+  rascunho; o julgamento — revisar, completar questão pelos blocos, sugerir
+  assunto — fica com o Claude na conversa, dentro da assinatura. As figuras em
+  formato antigo (EMF, WMF) são convertidas pelo LibreOffice que o Dockerfile
+  instala; sem ele (máquina local), elas viram `figura:pendente` e a importação
+  segue. Ver [docs/IMPORTADOR-SIMULADO.md](docs/IMPORTADOR-SIMULADO.md).
 * **Simulado: o relógio entra como parâmetro.** Os services de
   [simulados.py](backend/app/services/simulados.py) recebem `agora`; não há job
   de entrega automática — a tentativa vencida é consolidada na próxima consulta.

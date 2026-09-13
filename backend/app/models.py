@@ -29,6 +29,7 @@ from __future__ import annotations
 from datetime import datetime
 
 from sqlalchemy import (
+    JSON,
     Boolean,
     CheckConstraint,
     DateTime,
@@ -83,6 +84,16 @@ class TipoSubModulo:
     VIDEO = "VIDEO"
 
     TODOS = (VIDEO,)
+
+
+class ParteDaQuestao:
+    """Onde a figura aparece — e, por isso, quando o aluno pode vê-la."""
+
+    ENUNCIADO = "ENUNCIADO"
+    ALTERNATIVA = "ALTERNATIVA"
+    RESOLUCAO = "RESOLUCAO"
+
+    TODAS = (ENUNCIADO, ALTERNATIVA, RESOLUCAO)
 
 
 class Dificuldade:
@@ -211,7 +222,11 @@ class Video(Base, Rastreavel):
 
 
 class Imagem(Base):
-    """Arquivo anexado a uma questão — a figura que não deu para transcrever.
+    """Figura de uma questão: no enunciado, numa alternativa ou na resolução.
+
+    O texto aponta para ela no lugar exato onde aparece — `![](figura:123)` —,
+    e é assim que uma questão tem quantas figuras precisar. `parte` decide
+    quando o aluno pode vê-la: a da resolução só depois que o simulado fecha.
 
     ponytail: bytes no próprio Postgres. Serve para a POC; com volume, vira
     bucket e esta tabela guarda só a chave.
@@ -223,6 +238,9 @@ class Imagem(Base):
     conteudo: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
     tipo: Mapped[str] = mapped_column(String(60), nullable=False)
     nome: Mapped[str | None] = mapped_column(String(200))
+    # Vazio enquanto a figura veio de uma importação e ainda não tem questão.
+    questao_id: Mapped[int | None] = mapped_column(ForeignKey("questions.id"))
+    parte: Mapped[str | None] = mapped_column(String(20))
     criado_em: Mapped[datetime] = _agora()
 
 
@@ -232,10 +250,10 @@ class Questao(Base, Rastreavel):
     **Não** é a questão da apostila — essa mora na apostila, e o que a
     plataforma guarda dela é o vídeo da resolução, como item de sub-módulo.
 
-    Enunciado e alternativas são texto formatado (Markdown, fórmulas em LaTeX):
-    é como o Claude transcreve tabela e equação. A figura que não dá para
-    transcrever vira `imagem_pendente`, e o simulado não publica enquanto ela
-    não for anexada.
+    Enunciado, alternativas e resolução comentada são texto formatado
+    (Markdown, fórmulas em LaTeX), com as figuras referenciadas no ponto onde
+    aparecem. A figura que ainda não chegou vira `imagem_pendente`, e o
+    simulado não publica enquanto ela não for anexada.
     """
 
     __tablename__ = "questions"
@@ -247,7 +265,8 @@ class Questao(Base, Rastreavel):
     imagem_pendente: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default=text("false")
     )
-    imagem_id: Mapped[int | None] = mapped_column(ForeignKey("images.id"))
+    # A resolução escrita, que o aluno lê com o gabarito depois do fechamento.
+    resolucao_comentada: Mapped[str | None] = mapped_column(Text)
     # Vídeo da resolução desta questão, quando houver.
     video_id: Mapped[int | None] = mapped_column(ForeignKey("videos.id"))
     status: Mapped[str] = mapped_column(String(20), nullable=False, default=Status.RASCUNHO)
@@ -270,7 +289,6 @@ class Questao(Base, Rastreavel):
         back_populates="questao", cascade="all, delete-orphan"
     )
     video: Mapped[Video | None] = relationship()
-    imagem: Mapped[Imagem | None] = relationship()
 
 
 class Alternativa(Base):
@@ -592,6 +610,44 @@ class Resposta(Base):
 
     tentativa: Mapped[Tentativa] = relationship(back_populates="respostas")
     questao: Mapped[Questao] = relationship()
+
+
+# --- importação de .docx -----------------------------------------------------
+
+
+class StatusImportacao:
+    AGUARDANDO = "AGUARDANDO"
+    PROCESSADA = "PROCESSADA"
+
+
+class Importacao(Base):
+    """Um .docx de simulado chegando pelo link de envio.
+
+    O link é a credencial — uso único, com prazo —, então aqui fica só o hash
+    do token, como em `api_tokens`. Depois do envio, a linha guarda o arquivo
+    original, os blocos lidos e o relatório: é com eles que o Claude completa,
+    na revisão, a questão que as regras não fecharam.
+    """
+
+    __tablename__ = "imports"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    criado_por_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    expira_em: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    status: Mapped[str] = mapped_column(
+        String(20), nullable=False, default=StatusImportacao.AGUARDANDO
+    )
+    parametros: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    arquivo_nome: Mapped[str | None] = mapped_column(String(200))
+    arquivo: Mapped[bytes | None] = mapped_column(LargeBinary)
+    blocos: Mapped[list | None] = mapped_column(JSON)
+    relatorio: Mapped[dict | None] = mapped_column(JSON)
+    rascunho_id: Mapped[int | None] = mapped_column(ForeignKey("drafts.id"))
+    criado_em: Mapped[datetime] = _agora()
+    recebido_em: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    criado_por: Mapped[Usuario] = relationship()
 
 
 # --- credencial do MCP -------------------------------------------------------

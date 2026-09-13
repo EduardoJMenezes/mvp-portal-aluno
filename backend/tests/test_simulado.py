@@ -227,7 +227,7 @@ def test_imagem_pendente_barra_a_publicacao_ate_ser_anexada(db, mundo):
         publicacao.aprovar_e_publicar(db, mundo["professor"], r["rascunho_id"])
     assert "imagem pendente" in str(erro.value)
 
-    anexo = questoes.anexar_imagem(db, mundo["professor"], pendente, PNG, "figura.png")
+    anexo = questoes.anexar_figura(db, mundo["professor"], pendente, PNG, "figura.png")
     assert anexo["tipo"] == "image/png" and anexo["imagem_pendente"] is False
 
     publicado = publicacao.aprovar_e_publicar(db, mundo["professor"], r["rascunho_id"])
@@ -238,9 +238,9 @@ def test_imagem_pendente_barra_a_publicacao_ate_ser_anexada(db, mundo):
 def test_imagem_so_aceita_formato_de_imagem_de_verdade(db, mundo):
     alvo = mundo["questoes"][0].id
     with pytest.raises(RegraDeNegocio):
-        questoes.anexar_imagem(db, mundo["professor"], alvo, b"<svg onload='x()'/>", "a.svg")
+        questoes.anexar_figura(db, mundo["professor"], alvo, b"<svg onload='x()'/>", "a.svg")
     with pytest.raises(RegraDeNegocio):
-        questoes.anexar_imagem(db, mundo["professor"], alvo, PNG + b"\x00" * (3 * 1024 * 1024))
+        questoes.anexar_figura(db, mundo["professor"], alvo, PNG + b"\x00" * (3 * 1024 * 1024))
 
 
 # --- o rascunho único e o que o aluno alcança --------------------------------
@@ -292,18 +292,37 @@ def test_resolucao_libera_so_depois_do_fechamento_e_so_para_quem_fez(db, mundo):
     assert resolucao["bloqueado"] is False and resolucao["embed_url"]
 
 
-def test_imagem_so_para_quem_comecou_a_prova(db, mundo):
+def test_figura_so_para_quem_comecou_e_a_da_resolucao_so_depois_de_fechar(db, mundo):
     alvo = mundo["questoes"][0].id
-    questoes.anexar_imagem(db, mundo["professor"], alvo, PNG)
+    da_prova = questoes.anexar_figura(db, mundo["professor"], alvo, PNG)["figura_id"]
+    da_resolucao = questoes.anexar_figura(
+        db, mundo["professor"], alvo, PNG, parte="RESOLUCAO"
+    )["figura_id"]
     sid = _publicado(db, mundo)
 
     with pytest.raises(NaoAutorizado):
-        questoes.imagem_da_questao(db, mundo["joao"], alvo)
+        questoes.figura(db, mundo["joao"], da_prova, agora=DURANTE)
     with pytest.raises(NaoAutorizado):
-        questoes.imagem_da_questao(db, mundo["pedro"], alvo)
+        questoes.figura(db, mundo["pedro"], da_prova, agora=DURANTE)
 
     simulados.abrir_simulado(db, mundo["joao"], sid, agora=DURANTE)
-    assert questoes.imagem_da_questao(db, mundo["joao"], alvo).tipo == "image/png"
+    assert questoes.figura(db, mundo["joao"], da_prova, agora=DURANTE).tipo == "image/png"
+    with pytest.raises(NaoAutorizado):
+        questoes.figura(db, mundo["joao"], da_resolucao, agora=DURANTE)
+    assert questoes.figura(db, mundo["joao"], da_resolucao, agora=DEPOIS).parte == "RESOLUCAO"
+
+
+def test_figura_anexada_entra_na_marca_deixada_pela_transcricao(db, mundo):
+    marcada = _nova(1, enunciado="Observe:\n\n![](figura:pendente)\n\nQual a cadeia?")
+    r = _rascunho(db, mundo, questoes_=[marcada])
+    questao = r["simulado"]["questoes"][0]
+    assert questao["imagem_pendente"] is True, "a marca basta para a questão ficar pendente"
+
+    anexo = questoes.anexar_figura(db, mundo["professor"], questao["questao_id"], PNG)
+
+    enunciado = questoes.detalhar_questao(db, mundo["professor"], questao["questao_id"])["enunciado"]
+    assert enunciado == f"Observe:\n\n![](figura:{anexo['figura_id']})\n\nQual a cadeia?"
+    assert anexo["imagem_pendente"] is False
 
 
 def test_lista_do_aluno_diz_onde_ele_esta(db, mundo):

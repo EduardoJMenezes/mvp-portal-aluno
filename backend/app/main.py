@@ -23,7 +23,7 @@ from starlette.middleware import Middleware
 from starlette.middleware.cors import CORSMiddleware
 from starlette.routing import Mount
 
-from app.api import admin_routes, aluno_routes, auth_routes
+from app.api import admin_routes, aluno_routes, auth_routes, envio_routes
 from app.config import get_settings
 from app.db import engine
 from app.errors import AprovacaoNecessaria, NaoAutorizado, NaoEncontrado, RegraDeNegocio
@@ -32,6 +32,7 @@ from app.integracoes.vimeo import VimeoErro
 # Importar os módulos de tools registra todas elas na instância `mcp`.
 from app.mcp_server import tools as _tools  # noqa: F401
 from app.mcp_server import tools_estrutura as _tools_estrutura  # noqa: F401
+from app.mcp_server import tools_importacao as _tools_importacao  # noqa: F401
 from app.mcp_server import tools_simulado as _tools_simulado  # noqa: F401
 from app.mcp_server.server import mcp
 
@@ -160,6 +161,7 @@ def saude() -> JSONResponse:
 api.include_router(auth_routes.router)
 api.include_router(admin_routes.router)
 api.include_router(aluno_routes.router)
+api.include_router(envio_routes.router)
 
 # O frontend compilado, quando existe, é servido pelo mesmo host — assim a demo
 # roda em uma porta só. Em desenvolvimento usa-se o Vite (porta 5173).

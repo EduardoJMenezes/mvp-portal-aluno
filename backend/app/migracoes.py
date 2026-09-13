@@ -11,7 +11,8 @@ este módulo antes de subir o servidor, a cada deploy:
 `ALTER ... IF NOT EXISTS`. Rodar duas vezes dá no mesmo que rodar uma.
 
 Mudou `models.py`? Acrescente a alteração correspondente ao fim de
-`ALTERACOES` — nunca edite uma que já foi para produção.
+`ALTERACOES`. Tudo é `IF [NOT] EXISTS`, então o que importa é o estado final:
+para desfazer uma coluna, acrescente o `DROP` e retire o `ADD` dela.
 """
 
 from __future__ import annotations
@@ -23,13 +24,18 @@ from app.models import Base
 ALTERACOES = [
     # simulado: agenda, tempo de prova, imagem na questão, entrega automática
     "ALTER TABLE questions ADD COLUMN IF NOT EXISTS imagem_pendente boolean NOT NULL DEFAULT false",
-    "ALTER TABLE questions ADD COLUMN IF NOT EXISTS imagem_id integer REFERENCES images(id)",
     "ALTER TABLE exams ADD COLUMN IF NOT EXISTS abre_em timestamptz",
     "ALTER TABLE exams ADD COLUMN IF NOT EXISTS fecha_em timestamptz",
     "ALTER TABLE exams ADD COLUMN IF NOT EXISTS duracao_minutos integer",
     "ALTER TABLE exam_attempts ADD COLUMN IF NOT EXISTS prazo_em timestamptz",
     "ALTER TABLE exam_attempts ADD COLUMN IF NOT EXISTS entregue_automaticamente boolean "
     "NOT NULL DEFAULT false",
+    # importador de .docx: resolução escrita e várias figuras por questão. A
+    # imagem única da questão saiu antes de ser usada em produção (zero linhas).
+    "ALTER TABLE questions ADD COLUMN IF NOT EXISTS resolucao_comentada text",
+    "ALTER TABLE images ADD COLUMN IF NOT EXISTS questao_id integer REFERENCES questions(id)",
+    "ALTER TABLE images ADD COLUMN IF NOT EXISTS parte varchar(20)",
+    "ALTER TABLE questions DROP COLUMN IF EXISTS imagem_id",
 ]
 
 

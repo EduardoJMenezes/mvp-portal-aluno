@@ -73,20 +73,20 @@ def resultado(
     return simulados.resultado(db, ident, simulado_id)
 
 
-@router.get("/questoes/{questao_id}/imagem", response_class=Response)
-def imagem_da_questao(
-    questao_id: int,
+@router.get("/figuras/{figura_id}", response_class=Response)
+def figura(
+    figura_id: int,
     ident: Identidade = Depends(usuario_atual),
     db: Session = Depends(get_db),
 ) -> Response:
-    """A figura da questão, para quem já começou a prova que a tem.
+    """A figura de uma questão, para quem pode vê-la — operador ou aluno.
 
-    Vem por aqui, com o token, e não por URL pública: antes de a prova abrir,
-    a figura adiantaria a questão.
+    Vem por aqui, com o token, e não por URL pública: antes de a prova abrir, a
+    figura adiantaria a questão; a da resolução, o gabarito.
     """
-    figura = questoes.imagem_da_questao(db, ident, questao_id)
+    imagem = questoes.figura(db, ident, figura_id)
     return Response(
-        figura.conteudo,
-        media_type=figura.tipo,
+        imagem.conteudo,
+        media_type=imagem.tipo,
         headers={"X-Content-Type-Options": "nosniff", "Cache-Control": "private, max-age=3600"},
     )

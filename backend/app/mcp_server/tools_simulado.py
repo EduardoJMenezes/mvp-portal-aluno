@@ -94,6 +94,9 @@ async def editar_questao(
     vimeo_id: Annotated[
         str | None, Field(description="Vídeo da resolução no Vimeo; '' tira a resolução")
     ] = None,
+    resolucao_comentada: Annotated[
+        str | None, Field(description="Resolução escrita (Markdown e LaTeX); '' tira")
+    ] = None,
 ) -> dict:
     """Corrige uma questão: texto, alternativas, gabarito, classificação ou resolução.
 
@@ -102,14 +105,14 @@ async def editar_questao(
     inclusive nos simulados publicados que ainda não abriram.
 
     Depois que abre uma prova com esta questão, enunciado, alternativas,
-    gabarito e imagem travam: a tool recusa e diz em qual simulado.
-    Classificação, dificuldade e resolução continuam editáveis.
+    gabarito e figuras travam: a tool recusa e diz em qual simulado.
+    Classificação, dificuldade e as resoluções continuam editáveis.
 
-    A figura não passa por aqui: o arquivo não cabe numa chamada de tool. O
-    professor anexa pela plataforma.
+    A figura não passa por aqui: o arquivo não cabe numa chamada de tool. Ponha
+    `![](figura:pendente)` onde ela vai, e o professor anexa pela plataforma.
     """
     mudancas = (enunciado, alternativas, gabarito, dificuldade, imagem_pendente, assunto,
-                subassunto, vimeo_id)
+                subassunto, vimeo_id, resolucao_comentada)
     if all(v is None for v in mudancas):
         raise ToolError("Diga o que mudar na questão.")
     ident = identidade_da_sessao()
@@ -118,6 +121,7 @@ async def editar_questao(
         enunciado=enunciado, alternativas=alternativas, gabarito=gabarito,
         dificuldade=dificuldade, imagem_pendente=imagem_pendente, assunto=assunto,
         subassunto=subassunto, resolucao=await _resolucao_do_vimeo(vimeo_id),
+        resolucao_comentada=resolucao_comentada,
     )
 
 

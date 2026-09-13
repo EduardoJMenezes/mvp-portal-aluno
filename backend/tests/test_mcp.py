@@ -11,6 +11,7 @@ from app.mcp_server.server import mcp
 # Importar os módulos de tools é o que dispara os decorators que registram tudo.
 import app.mcp_server.tools  # noqa: F401  isort:skip
 import app.mcp_server.tools_estrutura  # noqa: F401  isort:skip
+import app.mcp_server.tools_importacao  # noqa: F401  isort:skip
 import app.mcp_server.tools_simulado  # noqa: F401  isort:skip
 from app.models import Papel, TokenMCP, Usuario
 from app.security import hash_senha, hash_token, novo_token_mcp
@@ -95,7 +96,8 @@ def test_tools_registradas_e_anotadas():
         "listar_videos_vimeo", "listar_pastas_vimeo", "simular_importacao_vimeo",
         "listar_rascunhos", "detalhar_rascunho", "buscar_desempenho_aluno",
         "buscar_estatisticas_simulado", "listar_simulados", "detalhar_questao",
-        "detalhar_simulado", "buscar_ranking_simulado",
+        "detalhar_simulado", "buscar_ranking_simulado", "revisar_importacao",
+        "importar_simulado_docx", "completar_questao_importada",
         # proposta, que nasce em rascunho
         "criar_questao_rascunho", "importar_videos_como_itens", "criar_simulado_rascunho",
         "importar_pasta_vimeo_como_rascunho", "publicar_rascunho",
@@ -109,7 +111,8 @@ def test_tools_registradas_e_anotadas():
     assert sem_descricao == []
 
     escritas = {"criar_questao_rascunho", "importar_videos_como_itens",
-                "criar_simulado_rascunho", "publicar_rascunho",
+                "criar_simulado_rascunho", "publicar_rascunho", "importar_simulado_docx",
+                "completar_questao_importada",
                 "importar_pasta_vimeo_como_rascunho", *ALTERAM_NA_HORA}
     for nome, tool in tools.items():
         esperado = nome not in escritas
@@ -280,3 +283,27 @@ async def test_publicar_em_cliente_com_formulario_so_publica_depois_do_aceite(db
     assert perguntas, "o professor precisa ter sido perguntado"
     assert saida["publicado"] is True
     assert rascunhos.detalhar_rascunho(db, mundo["professor"], rid)["aprovado_via"] == "ELICITATION_MCP"
+
+
+async def test_importacao_pelo_chat_devolve_link_e_a_revisao_mostra_as_figuras(db, mundo, monkeypatch):
+    """O Claude revisa vendo as figuras: elas voltam como imagem, não como texto."""
+    from fastmcp import Client
+
+    import app.mcp_server.tools as tools
+    from app.db import SessionLocal
+    from app.services import importacoes
+    from tests.docx_de_teste import PNG, docx, figura, p
+
+    monkeypatch.setattr(tools, "identidade_da_sessao", lambda: mundo["professor_mcp"])
+    arquivo = docx(p("01. Observe:"), p(figura()), *[p(f"{l}) item {l}") for l in "abcde"],
+                   p("GABARITO: A"), p("Porque sim."))
+
+    async with Client(mcp) as cliente:
+        link = (await cliente.call_tool("importar_simulado_docx", {"turmas": ["Extensivo 2027"]})).data
+        with SessionLocal() as sessao:
+            importacoes.receber_arquivo(sessao, link["link"].rsplit("/", 1)[-1], "s.docx", arquivo)
+        revisao = await cliente.call_tool("revisar_importacao", {"importacao": link["importacao_id"]})
+
+    imagens = [c for c in revisao.content if c.type == "image"]
+    assert len(imagens) == 1 and imagens[0].mime_type == "image/png"
+    assert '"gabarito": "A"' in revisao.content[0].text

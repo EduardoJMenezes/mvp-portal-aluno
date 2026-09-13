@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, Depends, File, UploadFile
+from fastapi import APIRouter, Depends, File, Form, UploadFile
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
 from starlette.concurrency import run_in_threadpool
@@ -27,6 +27,7 @@ from app.services import (
     analytics,
     catalogo,
     estrutura,
+    importacoes,
     publicacao,
     questoes,
     rascunhos,
@@ -343,27 +344,63 @@ def remover_questao(questao_id: int, ident: Identidade = Operador, db: Session =
     return questoes.remover_questao(db, ident, questao_id)
 
 
-@router.put("/questoes/{questao_id}/imagem")
-async def anexar_imagem(
+@router.post("/questoes/{questao_id}/figuras")
+async def anexar_figura(
     questao_id: int,
     arquivo: UploadFile = File(description="PNG, JPEG, WEBP ou GIF, até 2 MB"),
+    parte: str = Form("ENUNCIADO", description="ENUNCIADO, ALTERNATIVA ou RESOLUCAO"),
     ident: Identidade = Operador,
     db: Session = Banco,
 ) -> dict:
-    """A figura que não deu para transcrever. Anexar tira a pendência."""
+    """A figura entra na primeira marca `figura:pendente` da parte; sem marca, no fim."""
     # Lê um byte além do limite: basta para recusar sem carregar um arquivo gigante.
     conteudo = await arquivo.read(questoes.LIMITE_DA_IMAGEM + 1)
     return await run_in_threadpool(
-        questoes.anexar_imagem, db, ident, questao_id, conteudo, arquivo.filename
+        questoes.anexar_figura, db, ident, questao_id, conteudo, arquivo.filename, parte
     )
 
 
-@router.get("/questoes/{questao_id}/imagem", response_class=Response)
-def imagem(questao_id: int, ident: Identidade = Operador, db: Session = Banco) -> Response:
-    figura = questoes.imagem_da_questao(db, ident, questao_id)
-    return Response(
-        figura.conteudo, media_type=figura.tipo, headers={"X-Content-Type-Options": "nosniff"}
-    )
+# --- importação de .docx -----------------------------------------------------
+
+
+class ImportacaoDocxIn(BaseModel):
+    turmas: list[str]
+    titulo: str | None = None
+    abre_em: str | None = None
+    fecha_em: str | None = None
+    duracao_minutos: int | None = Field(None, ge=1)
+    pasta_resolucao: str | None = None
+
+
+class CompletarQuestaoIn(BaseModel):
+    numero: int
+    enunciado: str = Field(description="Faixa de blocos, ex.: '12-18'")
+    alternativas: str | dict[str, str]
+    gabarito: str
+    resolucao: str | None = None
+
+
+@router.post("/importacoes")
+def criar_link_de_envio(dados: ImportacaoDocxIn, ident: Identidade = Operador, db: Session = Banco) -> dict:
+    """O link de uso único pelo qual o .docx chega (ver /api/importacoes/{token})."""
+    return importacoes.criar_link(db, ident, **dados.model_dump())
+
+
+@router.get("/importacoes/{importacao_id}")
+def revisar_importacao(
+    importacao_id: int, de: int = 1, ate: int | None = None, ident: Identidade = Operador,
+    db: Session = Banco,
+) -> dict:
+    """O que foi lido. As figuras vêm pelo id, em /api/aluno/figuras/{id}."""
+    dados, _figuras = importacoes.revisar(db, ident, importacao_id, de, ate)
+    return dados
+
+
+@router.post("/importacoes/{importacao_id}/questoes")
+def completar_questao_importada(
+    importacao_id: int, dados: CompletarQuestaoIn, ident: Identidade = Operador, db: Session = Banco
+) -> dict:
+    return importacoes.completar_questao(db, ident, importacao_id, **dados.model_dump())
 
 
 # --- simulados ---------------------------------------------------------------
