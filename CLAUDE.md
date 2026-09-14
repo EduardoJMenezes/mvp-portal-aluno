@@ -106,6 +106,11 @@ Ensaio geral dos quatro fluxos do §21, contra o servidor no ar:
   E há um terceiro caso: cliente que não declara a capability `elicitation`
   (o claude.ai, hoje) não mostra nenhum dos dois, e o pedido vira um erro
   genérico na tela. Para ele a tool responde onde aprovar no portal.
+* **Tool nova ou descrição mudada não chega sozinha ao claude.ai.** O conector
+  guarda a lista de ferramentas de quando foi adicionado, e reconectar não a
+  atualiza (só faz `server/discover`): depois do deploy, o professor remove o
+  conector e adiciona de novo. Confirme no log, que registra cada chamada: a
+  lista nova chegou quando aparece `mcp tools/list [Claude-User]`.
 * **`api.vimeo.com` costuma estar bloqueado em rede corporativa.** Ver
   [docs/VIMEO.md](docs/VIMEO.md). Sem token, o backend cai no acervo de
   demonstração embutido, e a POC roda inteira assim.

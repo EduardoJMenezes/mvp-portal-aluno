@@ -18,9 +18,13 @@ from app.mcp_server.auth import construir_auth
 
 logger = logging.getLogger("plataforma.mcp")
 
+# Só reconectar não basta: nos logs, o claude.ai reconectado faz server/discover
+# e continua com a lista velha. Ela só vem de novo com o conector removido e
+# adicionado outra vez.
 RECONECTAR = (
-    "peça ao usuário para reconectar o conector deste servidor "
-    "(Configurações › Conectores) e abrir uma conversa nova"
+    "peça ao usuário para remover o conector deste servidor e adicioná-lo de novo "
+    "(Configurações › Conectores) e abrir uma conversa nova — só reconectar não "
+    "atualiza a lista"
 )
 
 

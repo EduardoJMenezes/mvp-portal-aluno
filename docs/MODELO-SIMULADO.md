@@ -224,4 +224,6 @@ vídeo e só ganha uma questão opcional.
 
 ### Imagens que não dão para transcrever
 
-Os ~10% que hoje vão por anexo manual. Revisitar com dados reais de uso do MCP.
+Resolvido pelos importadores: o .docx traz a figura como arquivo, e o print
+enviado pelo link tem a figura recortada de dentro dele. Ver
+[IMPORTADOR-SIMULADO.md](IMPORTADOR-SIMULADO.md).
