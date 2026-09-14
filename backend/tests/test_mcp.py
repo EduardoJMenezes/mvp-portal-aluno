@@ -98,6 +98,7 @@ def test_tools_registradas_e_anotadas():
         "buscar_estatisticas_simulado", "listar_simulados", "detalhar_questao",
         "detalhar_simulado", "buscar_ranking_simulado", "revisar_importacao",
         "importar_simulado_docx", "completar_questao_importada",
+        "importar_prints", "ver_prints", "recortar_figura",
         # proposta, que nasce em rascunho
         "criar_questao_rascunho", "importar_videos_como_itens", "criar_simulado_rascunho",
         "importar_pasta_vimeo_como_rascunho", "publicar_rascunho",
@@ -112,7 +113,7 @@ def test_tools_registradas_e_anotadas():
 
     escritas = {"criar_questao_rascunho", "importar_videos_como_itens",
                 "criar_simulado_rascunho", "publicar_rascunho", "importar_simulado_docx",
-                "completar_questao_importada",
+                "completar_questao_importada", "importar_prints", "recortar_figura",
                 "importar_pasta_vimeo_como_rascunho", *ALTERAM_NA_HORA}
     for nome, tool in tools.items():
         esperado = nome not in escritas
@@ -331,3 +332,33 @@ async def test_importacao_pelo_chat_devolve_link_e_a_revisao_mostra_as_figuras(d
     imagens = [c for c in revisao.content if c.type == "image"]
     assert len(imagens) == 1 and imagens[0].mime_type == "image/png"
     assert '"gabarito": "A"' in revisao.content[0].text
+
+
+async def test_prints_pelo_chat_voltam_como_imagem_e_o_recorte_tambem(db, mundo, monkeypatch):
+    """O Claude transcreve vendo o print e confere o recorte vendo a figura."""
+    from fastmcp import Client
+
+    import app.mcp_server.tools as tools
+    from app.db import SessionLocal
+    from app.services import importacoes, rascunhos
+    from tests.docx_de_teste import print_de_questao
+
+    monkeypatch.setattr(tools, "identidade_da_sessao", lambda: mundo["professor_mcp"])
+
+    async with Client(mcp) as cliente:
+        link = (await cliente.call_tool("importar_prints", {})).data
+        with SessionLocal() as sessao:
+            importacoes.receber_prints(sessao, link["link"].rsplit("/", 1)[-1], [("q1.png", print_de_questao())])
+            rascunho = rascunhos.criar_simulado_rascunho(sessao, mundo["professor"], ["Extensivo 2027"], "P", [
+                {"enunciado": "Veja ![](figura:pendente)", "alternativas": {l: l for l in "ABCDE"}, "gabarito": "A"}
+            ])
+        vista = await cliente.call_tool("ver_prints", {"importacao": link["importacao_id"]})
+        recorte = await cliente.call_tool("recortar_figura", {
+            "importacao": link["importacao_id"], "print": 1,
+            "questao": rascunho["simulado"]["questoes"][0]["questao_id"], "retangulo": [90, 140, 310, 360],
+        })
+
+    assert [c.type for c in vista.content] == ["text", "text", "image"]
+    assert "900×600" in vista.content[1].text
+    assert recorte.content[1].type == "image"
+    assert '"imagem_pendente": false' in recorte.content[0].text

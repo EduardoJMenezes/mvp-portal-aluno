@@ -20,10 +20,12 @@ resolvem com instrução melhor:
 O .docx já traz tudo isso dentro: as figuras como arquivos e os índices e
 expoentes como formatação. Ler o arquivo é mais fiel do que redigitá-lo.
 
-## Os dois caminhos continuam
+## Três caminhos
 
-* **Chat** — print, PDF, questão de outra fonte: o Claude transcreve
-  (`criar_simulado_rascunho`), como hoje.
+* **Chat** — print ou PDF colado na conversa: o Claude transcreve
+  (`criar_simulado_rascunho`), e a figura fica pendente.
+* **Prints pelo link** — questão de prova, PDF ou site, com figura: o Claude
+  transcreve, e a figura sai recortada do print (ver "Prints pelo link").
 * **Importador** — o .docx no padrão da casa: o servidor lê o arquivo.
 
 ## Tudo pelo chat, sem a API da Anthropic
@@ -85,6 +87,36 @@ figuras convertidas). O que não fecha vira **aviso no preview**, nunca chute.
   LibreOffice. A imagem do servidor cresce algumas centenas de MB; foi a opção
   escolhida para documentos antigos entrarem sem ninguém mexer neles.
 
+## Prints pelo link
+
+Print não tem padrão — prova, PDF, site —, então não há regra que leia: quem
+lê é o Claude, na conversa. O link muda uma coisa só: o servidor fica com a
+imagem original, e a figura sai recortada de dentro dela.
+
+1. `importar_prints` devolve o link, com as mesmas regras do .docx. A página
+   aceita colar (Ctrl+V), escolher ou arrastar — até 50 prints, na ordem das
+   questões.
+2. `ver_prints` devolve os prints como imagem, já reduzidos para caber no
+   limite de imagem do modelo (1568 px no lado maior, 1,15 MP). Assim nada os
+   reduz de novo no caminho, e o retângulo que o Claude devolve vale na escala
+   que ele viu.
+3. O Claude transcreve e cria as questões com `![](figura:pendente)` no lugar
+   de cada figura. Print quase nunca traz gabarito: quem diz é o professor; o
+   Claude só resolve se ele pedir, e como proposta.
+4. `recortar_figura` recebe `[x0, y0, x1, y1]`, recorta do **original** — não
+   da vista reduzida —, apara o branco e põe a figura na marca (numa
+   alternativa, na letra indicada). O recorte volta como imagem para o Claude
+   conferir; se saiu errado, `substituir` troca o arquivo sem mexer no texto.
+5. Só em questão de rascunho: o professor vê tudo no preview antes de aprovar.
+
+Medido antes de construir, com dois prints reais (um de prova, com letras em
+círculo, e um de site): os três retângulos estimados olhando a imagem saíram
+certos de primeira — figura inteira, sem texto em volta.
+
+Os prints não mudam o schema: ficam em `images`, sem questão, com os ids no
+relatório da importação, e `imports.parametros.formato` separa um envio do
+outro.
+
 ## Mudanças no modelo
 
 | onde | mudança |
@@ -113,4 +145,6 @@ para aprovação — sem ela, o "Onde revisar" do aluno sai vazio.
 
 * Tela de importação no portal — fica para o Next, com a API já pronta.
 * Documento que é uma imagem só (questão colada como print dentro do Word): não
-  há texto para ler; vai pelo caminho do chat.
+  há texto para ler; vai pelos prints.
+* PDF inteiro no link, cortado em páginas pelo servidor: por ora, o professor
+  tira o print da questão.

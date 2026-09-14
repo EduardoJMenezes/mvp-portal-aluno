@@ -109,7 +109,8 @@ async def editar_questao(
     Classificação, dificuldade e as resoluções continuam editáveis.
 
     A figura não passa por aqui: o arquivo não cabe numa chamada de tool. Ponha
-    `![](figura:pendente)` onde ela vai, e o professor anexa pela plataforma.
+    `![](figura:pendente)` onde ela vai; ela entra por recortar_figura, se a
+    questão veio de print pelo link, ou o professor anexa pela plataforma.
     """
     mudancas = (enunciado, alternativas, gabarito, dificuldade, imagem_pendente, assunto,
                 subassunto, vimeo_id, resolucao_comentada)

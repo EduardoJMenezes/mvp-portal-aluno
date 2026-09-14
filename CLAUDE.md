@@ -120,7 +120,10 @@ Ensaio geral dos quatro fluxos do §21, contra o servidor no ar:
   assunto — fica com o Claude na conversa, dentro da assinatura. As figuras em
   formato antigo (EMF, WMF) são convertidas pelo LibreOffice que o Dockerfile
   instala; sem ele (máquina local), elas viram `figura:pendente` e a importação
-  segue. Ver [docs/IMPORTADOR-SIMULADO.md](docs/IMPORTADOR-SIMULADO.md).
+  segue. Nos prints, o servidor nem lê: o Claude transcreve e aponta o
+  retângulo de cada figura, e `recortar_figura` recorta do print original — o
+  retângulo vale na escala de `ver_prints`, que já cabe no limite de imagem do
+  modelo. Ver [docs/IMPORTADOR-SIMULADO.md](docs/IMPORTADOR-SIMULADO.md).
 * **Simulado: o relógio entra como parâmetro.** Os services de
   [simulados.py](backend/app/services/simulados.py) recebem `agora`; não há job
   de entrega automática — a tentativa vencida é consolidada na próxima consulta.

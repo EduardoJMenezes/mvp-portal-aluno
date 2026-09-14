@@ -1,4 +1,4 @@
-"""Um .docx mínimo, montado à mão, para testar o importador.
+"""Um .docx mínimo, montado à mão, e um print de questão, para testar o importador.
 
 Os simulados reais da equipe não entram no repositório; este gerador reproduz
 só o que o leitor lê: parágrafos com corridas (índice, expoente, negrito),
@@ -72,3 +72,17 @@ def docx(*blocos: str, midias: dict[str, bytes] | None = None) -> bytes:
         for nome, conteudo in midias.items():
             z.writestr(f"word/media/{nome}", conteudo)
     return arquivo.getvalue()
+
+
+def print_de_questao(largura: int = 900, altura: int = 600) -> bytes:
+    """Print de site: linhas de texto em cinza e, entre elas, a figura em (100, 150)–(300, 350)."""
+    from PIL import Image, ImageDraw
+
+    folha = Image.new("RGBA", (largura, altura), "white")
+    desenho = ImageDraw.Draw(folha)
+    for y in (20, 50, 80, 420):
+        desenho.rectangle((20, y, largura - 40, y + 14), fill=(60, 60, 60))
+    desenho.rectangle((100, 150, 300, 350), fill="black")
+    saida = io.BytesIO()
+    folha.save(saida, "PNG")
+    return saida.getvalue()

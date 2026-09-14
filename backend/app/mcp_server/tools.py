@@ -332,7 +332,7 @@ def listar_simulados(
 
     Simulado que o professor cita e não está aqui ainda não foi montado — não
     procure no Vimeo, que só tem os vídeos de resolução. Se ele está num .docx,
-    importar_simulado_docx; se veio em print ou PDF, criar_simulado_rascunho.
+    importar_simulado_docx; se está em prints, importar_prints.
     """
     with _sessao() as (db, ident):
         return simulados.listar_simulados(db, ident, turma)
@@ -490,10 +490,11 @@ async def criar_simulado_rascunho(
 ) -> dict:
     """Monta um simulado em RASCUNHO — e as questões novas dele, no mesmo rascunho.
 
-    É o fluxo do print ou do PDF que o professor manda no chat: transcreva as
-    questões e crie tudo numa chamada só. Um simulado de 15 questões é um
-    preview e um ok, não dezesseis rascunhos. Se o simulado já está num .docx,
-    prefira importar_simulado_docx: o arquivo traz figuras e resoluções.
+    É o fluxo das questões em print ou PDF: transcreva as questões e crie tudo
+    numa chamada só. Um simulado de 15 questões é um preview e um ok, não
+    dezesseis rascunhos. Se o simulado já está num .docx, prefira
+    importar_simulado_docx: o arquivo traz figuras e resoluções. Print com
+    figura, peça pelo link de importar_prints, que deixa recortar a figura.
 
     Transcreva tudo o que der para replicar em texto: enunciado, alternativas e
     resolução comentada em Markdown, tabela como tabela Markdown, fórmula
@@ -501,8 +502,8 @@ async def criar_simulado_rascunho(
     LaTeX entre $...$. Figura sem letras nem números que importem **não se
     descreve em texto** — descrever estrutura entrega a resposta: ponha
     `![](figura:pendente)` no lugar exato dela. A questão fica com imagem
-    pendente, o professor anexa a figura depois, e o simulado não publica
-    antes disso. Proponha assunto e sub-assunto de cada questão
+    pendente até a figura entrar — por recortar_figura, se o print veio pelo
+    link, ou anexada pelo professor —, e o simulado não publica antes disso. Proponha assunto e sub-assunto de cada questão
     (listar_assuntos): é o que liga o erro do aluno ao vídeo que explica.
 
     A resolução vem do Vimeo, da pasta que o professor disser — não adivinhe a

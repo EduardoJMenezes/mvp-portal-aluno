@@ -4,14 +4,17 @@ O rascunho que sai daqui continua precisando da aprovação de sempre para ir ao
 ar — nada neste fluxo publica.
 """
 
+import io
 from datetime import timedelta
+from functools import partial
 
 import pytest
+from PIL import Image
 
 from app.errors import RegraDeNegocio
-from app.models import Imagem, Importacao, ParteDaQuestao, Status
-from app.services import importacoes, questoes
-from tests.docx_de_teste import docx, figura, p, questao
+from app.models import Imagem, Importacao, ParteDaQuestao, Questao, Status
+from app.services import importacoes, questoes, rascunhos
+from tests.docx_de_teste import docx, figura, p, print_de_questao, questao
 
 
 def _link(db, mundo):
@@ -106,3 +109,77 @@ def test_questao_que_as_regras_nao_fecharam_e_completada_pelos_blocos(db, mundo)
         "Qual a massa?", "alternativa a da 2", "B"
     )
     assert revisao["incompletas"] == []
+
+
+# --- prints ------------------------------------------------------------------
+
+
+def test_prints_chegam_pelo_link_e_o_claude_ve_na_escala_do_recorte(db, mundo):
+    saida = importacoes.criar_link_de_prints(db, mundo["professor_mcp"])
+    token = saida["link"].rsplit("/", 1)[-1]
+    assert importacoes.situacao_do_link(db, token)["formato"] == "prints"
+
+    with pytest.raises(RegraDeNegocio) as docx_no_link:
+        importacoes.receber_arquivo(db, token, "s.docx", _simulado_com_figura_e_resolucao())
+    assert "prints" in str(docx_no_link.value)
+    with pytest.raises(RegraDeNegocio):
+        importacoes.receber_prints(db, token, [("prova.pdf", b"%PDF-1.4")])
+    assert importacoes.situacao_do_link(db, token)["situacao"] == "AGUARDANDO"
+
+    importacoes.receber_prints(db, token, [("tela.png", print_de_questao(3000, 2000)),
+                                           ("site.png", print_de_questao())])
+
+    dados, vistas = importacoes.ver_prints(db, mundo["professor"], saida["importacao_id"])
+    grande, pequeno = dados["prints"]
+    assert max(grande["largura"], grande["altura"]) <= importacoes.LADO_DA_VISTA
+    assert grande["largura"] * grande["altura"] <= importacoes.PIXELS_DA_VISTA
+    assert (pequeno["largura"], pequeno["altura"]) == (900, 600), "print que já cabe não é reduzido"
+    assert len(vistas) == 2
+    with pytest.raises(RegraDeNegocio) as usado:
+        importacoes.receber_prints(db, token, [("outro.png", print_de_questao())])
+    assert "já recebeu" in str(usado.value)
+
+
+def test_figura_recortada_do_print_entra_no_lugar_da_marca(db, mundo):
+    link = importacoes.criar_link_de_prints(db, mundo["professor_mcp"])
+    importacoes.receber_prints(db, link["link"].rsplit("/", 1)[-1], [("tela.png", print_de_questao(3000, 2000))])
+    vista = importacoes.ver_prints(db, mundo["professor"], link["importacao_id"])[0]["prints"][0]
+    marca = "![](figura:pendente)"
+    rascunho = rascunhos.criar_simulado_rascunho(db, mundo["professor"], ["Extensivo 2027"], "Prints", [{
+        "enunciado": f"Observe:\n\n{marca}",
+        "alternativas": {"A": "um", "B": "dois", "C": marca, "D": "quatro", "E": "cinco"},
+        "gabarito": "C",
+    }])
+    questao_id = rascunho["simulado"]["questoes"][0]["questao_id"]
+    recortar = partial(importacoes.recortar_figura, db, mundo["professor"], link["importacao_id"], 1, questao_id)
+
+    # O retângulo vem na escala da vista (a tela de 3000 px foi reduzida); o
+    # recorte sai do original, só com a figura: 201 px mais a folga de 8 de cada lado.
+    saida, png = recortar([35, 55, 145, 165])
+    with Image.open(io.BytesIO(png)) as recorte:
+        assert recorte.size == (217, 217)
+    detalhe = questoes.detalhar_questao(db, mundo["professor"], questao_id)
+    assert detalhe["enunciado"] == f"Observe:\n\n![](figura:{saida['figura_id']})"
+    assert saida["imagem_pendente"] is True, "a alternativa C ainda espera a figura dela"
+
+    na_c, _ = recortar([35, 55, 145, 165], parte="ALTERNATIVA", alternativa="C")
+    assert na_c["imagem_pendente"] is False
+    assert questoes.detalhar_questao(db, mundo["professor"], questao_id)["alternativas"]["C"] == (
+        f"![](figura:{na_c['figura_id']})"
+    )
+
+    # Recorte que pegou texto se troca sem mexer no texto da questão.
+    trocado, novo = recortar([0, 0, 300, 200], substituir=saida["figura_id"])
+    assert trocado["figura_id"] == saida["figura_id"]
+    assert db.get(Imagem, saida["figura_id"]).conteudo == novo
+    assert questoes.detalhar_questao(db, mundo["professor"], questao_id)["enunciado"] == detalhe["enunciado"]
+
+    with pytest.raises(RegraDeNegocio) as fora:
+        recortar([0, 0, 3000, 2000])
+    assert f"{vista['largura']}×{vista['altura']}" in str(fora.value)
+
+    db.get(Questao, questao_id).status = Status.PUBLICADO
+    db.commit()
+    with pytest.raises(RegraDeNegocio) as publicada:
+        recortar([35, 55, 145, 165])
+    assert "rascunho" in str(publicada.value)

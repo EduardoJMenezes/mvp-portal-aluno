@@ -424,18 +424,28 @@ def converter_formatos_antigos(figuras: dict[str, Figura]) -> list[str]:
     return [f.chave for f in figuras.values() if f.tipo is None]
 
 
-def aparar_margem(png: bytes, folga: int = 8) -> bytes:
+def sobre_branco(imagem):
+    """A imagem em RGB, com a parte transparente pintada de branco, como na página."""
+    from PIL import Image
+
+    rgba = imagem.convert("RGBA")
+    return Image.alpha_composite(Image.new("RGBA", rgba.size, "white"), rgba).convert("RGB")
+
+
+def aparar_margem(png: bytes, folga: int = 8, tolerancia: int = 40) -> bytes:
     """Recorta o branco em volta do desenho.
 
-    O LibreOffice exporta a folha A4 inteira, com a figura perdida no meio;
-    sem o recorte, uma estrutura química viraria uma página em branco na tela
-    do aluno.
+    O LibreOffice exporta a folha A4 inteira, com a figura perdida no meio, e o
+    recorte de um print vem com a sobra do retângulo; sem aparar, uma estrutura
+    química viraria uma página em branco na tela do aluno. A tolerância deixa
+    de fora o quase branco do fundo de site e a sujeira de JPEG.
     """
     from PIL import Image, ImageChops
 
     with Image.open(io.BytesIO(png)) as original:
-        imagem = original.convert("RGB")
-    caixa = ImageChops.difference(imagem, Image.new("RGB", imagem.size, "white")).getbbox()
+        imagem = sobre_branco(original)
+    diferenca = ImageChops.difference(imagem, Image.new("RGB", imagem.size, "white")).convert("L")
+    caixa = diferenca.point(lambda v: 255 if v > tolerancia else 0).getbbox()
     if caixa is None:
         return png
     esquerda, topo, direita, base = caixa

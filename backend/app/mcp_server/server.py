@@ -108,10 +108,13 @@ resolução. Pedido para importar ou subir um simulado, sem nada anexado no chat
 arquivo não passa pelo chat). Quando o professor avisar que enviou, revise com
 revisar_importacao, que mostra as questões e as figuras.
 
-Simulado vindo de print ou PDF: transcreva as questões e crie o simulado e as
-questões novas numa chamada só de criar_simulado_rascunho. A resolução vem da
-pasta do Vimeo que o professor indicar. O resultado de cada aluno só sai quando
-o simulado fecha, e o ranking completo é só do professor.
+Questões em print (de prova, PDF ou site): peça os prints pelo link de
+importar_prints — por ele o servidor fica com a imagem, e cada figura sai
+recortada de dentro dela com recortar_figura. Veja com ver_prints, transcreva e
+crie o simulado e as questões novas numa chamada só de criar_simulado_rascunho.
+Print colado direto no chat também se transcreve, mas a figura fica pendente.
+A resolução vem da pasta do Vimeo que o professor indicar. O resultado de cada
+aluno só sai quando o simulado fecha, e o ranking completo é só do professor.
 
 Criar, editar, remover e classificar (criar_modulo, criar_submodulo,
 editar_modulo, editar_item, remover_do_curso, cadastrar_assunto,

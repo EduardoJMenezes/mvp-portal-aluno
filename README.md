@@ -158,6 +158,7 @@ rascunho sem aprovação humana gravada no banco. Detalhe das quatro camadas em
 | `criar_questao_rascunho` | uma questão avulsa **em rascunho** |
 | `criar_simulado_rascunho` | simulado, agenda e questões novas **num rascunho só**, com a resolução casada da pasta do Vimeo |
 | `importar_simulado_docx`, `revisar_importacao`, `completar_questao_importada` | o simulado que já está num .docx: link de envio, leitura pelo servidor e revisão no chat, com as figuras |
+| `importar_prints`, `ver_prints`, `recortar_figura` | questões em print (prova, PDF, site): link de envio, o Claude transcreve e a figura sai recortada do print original |
 | `editar_questao`, `remover_questao`, `editar_simulado`, `remover_simulado` | ajuste direto, com preview no chat e a trava de prova aberta |
 | `listar_simulados`, `detalhar_simulado` | simulados com turmas, agenda e situação |
 | `buscar_ranking_simulado` | o ranking completo, só do professor |

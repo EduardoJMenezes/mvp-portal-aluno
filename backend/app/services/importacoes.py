@@ -1,9 +1,11 @@
-"""Importação de simulado por .docx: o link de envio, o arquivo e a revisão.
+"""Importação de simulado pelo link de envio: .docx ou prints.
 
 O fluxo inteiro acontece no chat (docs/IMPORTADOR-SIMULADO.md): a tool gera o
-link, o professor envia o arquivo por ele, este módulo lê o .docx e cria o
+link e o professor envia por ele. O .docx este módulo lê e transforma em
 rascunho, e o Claude revisa na conversa — vendo as figuras — e completa o que
-as regras não fecharam apontando os blocos do documento, sem redigitar.
+as regras não fecharam apontando os blocos do documento, sem redigitar. Os
+prints ficam guardados como chegaram: o Claude os lê, transcreve as questões
+e aponta onde está cada figura, que sai recortada do print original.
 
 Nada aqui publica: o que sai é um rascunho, e publicar continua exigindo a
 aprovação gravada em `drafts.aprovado_por_id`.
@@ -11,10 +13,12 @@ aprovação gravada em `drafts.aprovado_por_id`.
 
 from __future__ import annotations
 
+import io
 import re
 import secrets
 from datetime import UTC, datetime, timedelta
 
+from PIL import Image
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -27,11 +31,12 @@ from app.models import (
     Importacao,
     ParteDaQuestao,
     Simulado,
+    Status,
     StatusImportacao,
     Usuario,
 )
 from app.security import hash_token
-from app.services import leitor_docx, rascunhos, simulados, taxonomia
+from app.services import leitor_docx, questoes, rascunhos, simulados, taxonomia
 from app.services.catalogo import resolver_turma
 from app.services.consultas import selecionar
 from app.services.nomes_vimeo import interpretar_faixa
@@ -40,6 +45,15 @@ from app.services.simulados import em_brasilia, ler_data_hora
 VALIDADE_DO_LINK = timedelta(minutes=30)
 LIMITE_DO_ARQUIVO = 25 * 1024 * 1024
 _REFERENCIA = re.compile(r"figura:(\d+)")
+
+DOCX, PRINTS = "docx", "prints"
+LIMITE_DOS_PRINTS = 50
+LIMITE_DO_PRINT = 5 * 1024 * 1024
+# O print que o Claude vê já cabe no limite de imagem do modelo, para não ser
+# reduzido de novo no caminho: é isso que faz o retângulo que ele devolve valer
+# aqui, na mesma escala.
+LADO_DA_VISTA = 1568
+PIXELS_DA_VISTA = 1_150_000
 
 
 def _agora(agora: datetime | None) -> datetime:
@@ -76,15 +90,30 @@ def criar_link(
     if duracao_minutos is not None and duracao_minutos <= 0:
         raise RegraDeNegocio("O tempo de prova precisa ser maior que zero.")
 
+    return _novo_link(
+        db, ident, agora,
+        {"turmas": nomes, "titulo": titulo, "abre_em": abre_em, "fecha_em": fecha_em,
+         "duracao_minutos": duracao_minutos, "pasta_resolucao": pasta_resolucao},
+        "ele abre, envia o .docx e avisa aqui que enviou. Aí chame revisar_importacao",
+    )
+
+
+def criar_link_de_prints(db: Session, ident: Identidade, agora: datetime | None = None) -> dict:
+    """O link para prints de questões. Turma e agenda ficam para quando o Claude criar as questões."""
+    ident.exigir_operador()
+    return _novo_link(
+        db, ident, _agora(agora), {"formato": PRINTS},
+        "ele cola os prints (Ctrl+V) ou escolhe as imagens, envia e avisa aqui. Aí chame ver_prints",
+    )
+
+
+def _novo_link(db: Session, ident: Identidade, agora: datetime, parametros: dict, passos: str) -> dict:
     token = secrets.token_urlsafe(32)
     importacao = Importacao(
         criado_por_id=ident.usuario_id,
         token_hash=hash_token(token),
         expira_em=agora + VALIDADE_DO_LINK,
-        parametros={
-            "turmas": nomes, "titulo": titulo, "abre_em": abre_em, "fecha_em": fecha_em,
-            "duracao_minutos": duracao_minutos, "pasta_resolucao": pasta_resolucao,
-        },
+        parametros=parametros,
     )
     db.add(importacao)
     db.commit()
@@ -94,17 +123,33 @@ def criar_link(
         "importacao_id": importacao.id,
         "link": f"{base}/enviar/{token}",
         "expira_em": em_brasilia(importacao.expira_em),
-        "instrucao": (
-            "Passe o link ao professor: ele abre, envia o .docx e avisa aqui que enviou. "
-            f"Aí chame revisar_importacao com importacao={importacao.id}."
-        ),
+        "instrucao": f"Passe o link ao professor: {passos} com importacao={importacao.id}.",
     }
+
+
+def _formato(importacao: Importacao) -> str:
+    return importacao.parametros.get("formato", DOCX)
 
 
 def _pelo_token(db: Session, token: str) -> Importacao:
     importacao = db.scalar(select(Importacao).where(Importacao.token_hash == hash_token(token)))
     if importacao is None:
         raise NaoEncontrado("Este link de envio não existe. Peça um novo no chat.")
+    return importacao
+
+
+def _aguardando(db: Session, token: str, formato: str, agora: datetime) -> Importacao:
+    """O link que ainda pode receber este envio. Envio recusado não gasta o link."""
+    importacao = _pelo_token(db, token)
+    if importacao.status == StatusImportacao.PROCESSADA:
+        raise RegraDeNegocio("Este link já recebeu um envio. Volte ao chat.")
+    if agora >= importacao.expira_em:
+        raise RegraDeNegocio("Este link expirou. Peça um novo no chat.")
+    if _formato(importacao) != formato:
+        raise RegraDeNegocio(
+            "Este link é para prints de questões: cole ou escolha as imagens."
+            if formato == DOCX else "Este link é para o .docx do simulado."
+        )
     return importacao
 
 
@@ -119,6 +164,7 @@ def situacao_do_link(db: Session, token: str, agora: datetime | None = None) -> 
         situacao = "AGUARDANDO"
     return {
         "situacao": situacao,
+        "formato": _formato(importacao),
         "titulo": importacao.parametros.get("titulo"),
         "turmas": importacao.parametros.get("turmas", []),
         "pasta_resolucao": importacao.parametros.get("pasta_resolucao"),
@@ -146,11 +192,7 @@ def receber_arquivo(
     e a questão fica com imagem pendente.
     """
     agora = _agora(agora)
-    importacao = _pelo_token(db, token)
-    if importacao.status == StatusImportacao.PROCESSADA:
-        raise RegraDeNegocio("Este link já recebeu um arquivo. Volte ao chat.")
-    if agora >= importacao.expira_em:
-        raise RegraDeNegocio("Este link expirou. Peça um novo no chat.")
+    importacao = _aguardando(db, token, DOCX, agora)
     if not (nome or "").lower().endswith(".docx"):
         raise RegraDeNegocio("Envie o arquivo .docx do simulado.")
     if len(conteudo) > LIMITE_DO_ARQUIVO:
@@ -410,3 +452,150 @@ def completar_questao(
     db.commit()
     return {"numero": numero, "questao_id": nova.id, "ordem": posicao + 1,
             "total_questoes": len(simulado.questoes)}
+
+
+# --- os prints ---------------------------------------------------------------
+
+
+def receber_prints(
+    db: Session, token: str, arquivos: list[tuple[str | None, bytes]], agora: datetime | None = None
+) -> dict:
+    """Guarda os prints na ordem em que chegaram. Ler fica com o Claude, na conversa."""
+    agora = _agora(agora)
+    importacao = _aguardando(db, token, PRINTS, agora)
+    if not arquivos:
+        raise RegraDeNegocio("Nenhum print chegou. Cole ou escolha as imagens das questões.")
+    if len(arquivos) > LIMITE_DOS_PRINTS:
+        raise RegraDeNegocio(f"Mande até {LIMITE_DOS_PRINTS} prints por link; peça outro no chat para o resto.")
+
+    ids = []
+    for numero, (nome, conteudo) in enumerate(arquivos, start=1):
+        rotulo = f"O arquivo {numero} ({nome or 'sem nome'})"
+        tipo = questoes.tipo_da_imagem(conteudo)
+        if tipo is None:
+            raise RegraDeNegocio(f"{rotulo} não é imagem PNG, JPEG, WEBP ou GIF.")
+        if len(conteudo) > LIMITE_DO_PRINT:
+            raise RegraDeNegocio(f"{rotulo} passa de {LIMITE_DO_PRINT // 1024 // 1024} MB.")
+        try:
+            with Image.open(io.BytesIO(conteudo)) as imagem:
+                imagem.verify()
+        except Exception:
+            raise RegraDeNegocio(f"{rotulo} não abriu como imagem.") from None
+        print_ = Imagem(conteudo=conteudo, tipo=tipo, nome=(nome or f"print {numero}")[:200])
+        db.add(print_)
+        db.flush()
+        ids.append(print_.id)
+
+    importacao.status = StatusImportacao.PROCESSADA
+    importacao.recebido_em = agora
+    importacao.arquivo_nome = f"{len(ids)} print(s)"
+    importacao.relatorio = {"prints": ids}
+    db.commit()
+    return {
+        "importacao_id": importacao.id,
+        "prints": len(ids),
+        "mensagem": "Recebido! Volte ao chat e avise que enviou — o Claude monta as questões a partir dos prints.",
+    }
+
+
+def _ids_dos_prints(db: Session, ident: Identidade, importacao_id: int) -> list[int]:
+    ids = (_processada(db, ident, importacao_id).relatorio or {}).get("prints")
+    if ids is None:
+        raise RegraDeNegocio(f"A importação {importacao_id} é de um .docx: revise com revisar_importacao.")
+    return ids
+
+
+def _print(db: Session, ids: list[int], numero: int) -> Image.Image:
+    if not 1 <= numero <= len(ids):
+        raise RegraDeNegocio(f"O print {numero} não existe: esta importação tem de 1 a {len(ids)}.")
+    with Image.open(io.BytesIO(db.get(Imagem, ids[numero - 1]).conteudo)) as original:
+        return leitor_docx.sobre_branco(original)
+
+
+def _tamanho_da_vista(largura: int, altura: int) -> tuple[int, int]:
+    escala = min(1.0, LADO_DA_VISTA / max(largura, altura), (PIXELS_DA_VISTA / (largura * altura)) ** 0.5)
+    return int(largura * escala), int(altura * escala)  # arredondar para cima estoura o limite
+
+
+def _png(imagem: Image.Image) -> bytes:
+    saida = io.BytesIO()
+    imagem.save(saida, "PNG", optimize=True)
+    return saida.getvalue()
+
+
+def ver_prints(
+    db: Session, ident: Identidade, importacao_id: int, de: int = 1, ate: int | None = None
+) -> tuple[dict, list[bytes]]:
+    """Os prints como o Claude os vê, na escala em que o retângulo do recorte vale."""
+    ids = _ids_dos_prints(db, ident, importacao_id)
+    ate = min(ate or de + 4, len(ids))
+    descricao, vistas = [], []
+    for numero in range(de, ate + 1):
+        imagem = _print(db, ids, numero)
+        tamanho = _tamanho_da_vista(*imagem.size)
+        if tamanho != imagem.size:
+            imagem = imagem.resize(tamanho, Image.Resampling.LANCZOS)
+        descricao.append({"print": numero, "largura": tamanho[0], "altura": tamanho[1]})
+        vistas.append(_png(imagem))
+    if not vistas:
+        raise RegraDeNegocio(f"Esta importação tem {len(ids)} print(s); peça de 1 a {len(ids)}.")
+    return {
+        "importacao_id": importacao_id,
+        "total_prints": len(ids),
+        "mostrando": f"{de} a {ate}",
+        "prints": descricao,
+    }, vistas
+
+
+def recortar_figura(
+    db: Session,
+    ident: Identidade,
+    importacao_id: int,
+    numero: int,
+    questao_id: int,
+    retangulo: list[float],
+    parte: str = ParteDaQuestao.ENUNCIADO,
+    alternativa: str | None = None,
+    substituir: int | None = None,
+    agora: datetime | None = None,
+) -> tuple[dict, bytes]:
+    """Recorta a figura de dentro do print e a põe na questão, no lugar da marca.
+
+    `retangulo` é [x0, y0, x1, y1] na escala de `ver_prints`; o recorte sai do
+    print original, com a margem branca aparada, e volta para o Claude
+    conferir. `substituir` troca um recorte que saiu errado sem mexer no texto.
+    Só em questão de rascunho: o professor ainda vê tudo antes de aprovar.
+    """
+    ids = _ids_dos_prints(db, ident, importacao_id)
+    questao = questoes.resolver_questao(db, questao_id)
+    if questao.status != Status.RASCUNHO:
+        raise RegraDeNegocio(
+            f"A questão {questao.id} já foi publicada: recorte de print só entra em questão de rascunho."
+        )
+    imagem = _print(db, ids, numero)
+    largura, altura = _tamanho_da_vista(*imagem.size)
+    try:
+        x0, y0, x1, y1 = (float(v) for v in retangulo)
+    except (TypeError, ValueError):
+        raise RegraDeNegocio("O retângulo vai como [x0, y0, x1, y1], em pixels.") from None
+    folga = 10  # o que passa um pouco da borda é só a borda
+    if not (-folga <= x0 < x1 <= largura + folga and -folga <= y0 < y1 <= altura + folga):
+        raise RegraDeNegocio(
+            f"O retângulo {list(retangulo)} não cabe no print {numero}, que tem {largura}×{altura} px "
+            "na escala de ver_prints. Use [x0, y0, x1, y1] com x0 < x1 e y0 < y1."
+        )
+
+    fx, fy = imagem.width / largura, imagem.height / altura
+    caixa = (max(0, round(x0 * fx)), max(0, round(y0 * fy)),
+             min(imagem.width, round(x1 * fx)), min(imagem.height, round(y1 * fy)))
+    recorte = leitor_docx.aparar_margem(_png(imagem.crop(caixa)))
+
+    if substituir is not None:
+        figura = db.get(Imagem, substituir)
+        if figura is None or figura.questao_id != questao.id:
+            raise RegraDeNegocio(f"A figura {substituir} não é da questão {questao.id}.")
+        return questoes.trocar_figura(db, ident, substituir, recorte, agora), recorte
+    saida = questoes.anexar_figura(
+        db, ident, questao.id, recorte, f"print {numero}", parte, alternativa, agora
+    )
+    return saida, recorte

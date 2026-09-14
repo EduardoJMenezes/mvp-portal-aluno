@@ -76,6 +76,25 @@ def test_aluno_nao_alcanca_a_api_do_professor_nem_a_figura_antes_da_prova(db, mu
     assert api.get(f"/api/aluno/figuras/{anexo['figura_id']}", headers=joao).status_code == 403
 
 
+def test_prints_chegam_pela_pagina_de_envio_e_o_professor_ve_pela_api(db, mundo):
+    from tests.docx_de_teste import print_de_questao
+
+    api = TestClient(main.app)
+    professor = _portal(mundo["professor"])
+    link = api.post("/api/admin/importacoes/prints", headers=professor).json()
+    token = link["link"].rsplit("/", 1)[-1]
+
+    enviado = api.post(f"/api/importacoes/{token}/prints", files=[
+        ("arquivos", ("q1.png", print_de_questao(), "image/png")),
+        ("arquivos", ("q2.png", print_de_questao(), "image/png")),
+    ])
+    assert enviado.status_code == 200, enviado.text
+    assert enviado.json()["prints"] == 2
+
+    vista = api.get(f"/api/admin/importacoes/{link['importacao_id']}/prints/2", headers=professor)
+    assert vista.status_code == 200 and vista.headers["content-type"] == "image/png"
+
+
 def test_toda_tool_do_simulado_tem_endpoint(schema):
     caminhos = TestClient(main.app).get("/openapi.json").json()["paths"]
 
@@ -89,6 +108,10 @@ def test_toda_tool_do_simulado_tem_endpoint(schema):
         "/api/admin/importacoes": {"post"},
         "/api/admin/importacoes/{importacao_id}": {"get"},
         "/api/importacoes/{token}/arquivo": {"post"},
+        "/api/importacoes/{token}/prints": {"post"},
+        "/api/admin/importacoes/prints": {"post"},
+        "/api/admin/importacoes/{importacao_id}/prints/{numero}": {"get"},
+        "/api/admin/importacoes/{importacao_id}/recortes": {"post"},
         "/api/admin/turmas/{turma}/modulos": {"post"},
         "/api/admin/vimeo/importacoes": {"post"},
         "/api/aluno/simulados/{simulado_id}/entregar": {"post"},

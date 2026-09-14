@@ -1,10 +1,11 @@
-"""Tools do importador de simulado por .docx (docs/IMPORTADOR-SIMULADO.md).
+"""Tools do importador de simulado: .docx e prints (docs/IMPORTADOR-SIMULADO.md).
 
 O arquivo não passa pela conversa — a chamada de tool só carrega texto. Por
-isso o fluxo é: `importar_simulado_docx` gera um link de envio, o professor
-envia o .docx por ele, o servidor lê e cria o rascunho, e aqui o Claude revisa
-(`revisar_importacao`, com as figuras) e completa o que as regras não
-fecharam (`completar_questao_importada`).
+isso o fluxo começa num link de envio. Com .docx, o servidor lê e cria o
+rascunho, e aqui o Claude revisa (`revisar_importacao`, com as figuras) e
+completa o que as regras não fecharam (`completar_questao_importada`). Com
+prints, o Claude os vê (`ver_prints`), transcreve as questões e aponta onde
+está cada figura, que o servidor recorta do print original (`recortar_figura`).
 
 Toda a parte que exige julgamento fica na conversa; o servidor não chama
 nenhum modelo.
@@ -47,7 +48,7 @@ def importar_simulado_docx(
     ("importa o SIMULADO 03 para o Extensivo 2026") sem anexar nada: o simulado
     da equipe está num documento do Word — questões numeradas, alternativas a)
     a e), gabarito e resolução — e ainda não existe na plataforma nem no Vimeo.
-    Para print, PDF ou questão solta, use criar_simulado_rascunho.
+    Questões em print vão por importar_prints.
 
     O arquivo não passa pelo chat: devolva o link ao professor (vale 30
     minutos, uso único). Ele abre, envia o .docx e avisa aqui. O servidor lê o
@@ -120,3 +121,86 @@ def completar_questao_importada(
         return importacoes.completar_questao(
             db, ident, importacao, numero, enunciado, alternativas, gabarito, resolucao
         )
+
+
+@mcp.tool(name="importar_prints", annotations=ESCREVE_RASCUNHO)
+def importar_prints() -> dict:
+    """Gera o link para o professor enviar prints de questões — de prova, PDF ou site.
+
+    É o caminho quando as questões estão em imagem, sobretudo com figura
+    (estrutura, gráfico, tabela desenhada): pelo link o servidor fica com o
+    print original, e a figura sai recortada de dentro dele. Print colado
+    direto no chat dá para transcrever, mas a figura fica pendente. Simulado
+    que já está num .docx vai por importar_simulado_docx.
+
+    Devolva o link ao professor (vale 30 minutos, uso único): ele cola os
+    prints com Ctrl+V ou escolhe as imagens, envia e avisa aqui. Aí chame
+    ver_prints.
+    """
+    with _sessao() as (db, ident):
+        return importacoes.criar_link_de_prints(db, ident)
+
+
+@mcp.tool(name="ver_prints", annotations=SOMENTE_LEITURA)
+def ver_prints(
+    importacao: Annotated[int, Field(description="Id devolvido por importar_prints")],
+    de: Annotated[int, Field(ge=1, description="Primeiro print a mostrar")] = 1,
+    ate: Annotated[int | None, Field(ge=1, description="Último print; vazio mostra 5 a partir de `de`")] = None,
+) -> list:
+    """Mostra os prints que o professor enviou pelo link, para transcrever as questões.
+
+    Cada print volta como imagem, com largura e altura: é nessa escala, em
+    pixels, que recortar_figura recebe o retângulo. Vá de 5 em 5.
+
+    Para montar:
+
+    * transcreva como em criar_simulado_rascunho — Markdown, índice em Unicode
+      (CO₃²⁻), fórmula em LaTeX — e ponha `![](figura:pendente)` no lugar exato
+      de cada figura; estrutura, gráfico e tabela desenhada não se descrevem
+      em texto;
+    * print quase nunca traz o gabarito: pergunte ao professor. Se ele pedir
+      que você resolva, mostre as respostas como proposta e espere o ok;
+    * crie as questões (criar_simulado_rascunho, ou editar_simulado numa prova
+      que já existe) e chame recortar_figura para cada marca.
+    """
+    with _sessao() as (db, ident):
+        dados, vistas = importacoes.ver_prints(db, ident, importacao, de, ate)
+        saida: list = [json.dumps(dados, ensure_ascii=False)]
+        for descricao, png in zip(dados["prints"], vistas):
+            saida.append(f"print {descricao['print']} — {descricao['largura']}×{descricao['altura']} px")
+            saida.append(Image(data=png, format="png"))
+        return saida
+
+
+@mcp.tool(name="recortar_figura", annotations=ESCREVE_RASCUNHO)
+def recortar_figura(
+    importacao: Annotated[int, Field(description="Id da importação dos prints")],
+    print: Annotated[int, Field(ge=1, description="Número do print, como em ver_prints")],
+    questao: Annotated[int, Field(description="questao_id da questão que tem a marca da figura")],
+    retangulo: Annotated[
+        list[float],
+        Field(min_length=4, max_length=4, description="[x0, y0, x1, y1] em pixels, na escala de ver_prints"),
+    ],
+    parte: Annotated[str, Field(description="ENUNCIADO, ALTERNATIVA ou RESOLUCAO")] = "ENUNCIADO",
+    alternativa: Annotated[str | None, Field(description="Letra, quando a parte é ALTERNATIVA")] = None,
+    substituir: Annotated[
+        int | None, Field(description="figura_id de um recorte que saiu errado, para trocar")
+    ] = None,
+) -> list:
+    """Recorta uma figura de dentro de um print e a põe na questão, no lugar da marca.
+
+    O retângulo pega a figura inteira com um pouco de folga — o branco em volta
+    é aparado aqui —, sem encostar no texto de cima, de baixo ou do lado. A
+    figura entra na primeira marca `![](figura:pendente)` da parte; numa
+    alternativa, diga a letra.
+
+    O recorte volta como imagem: confira. Se cortou parte do desenho ou pegou
+    texto, chame de novo com `substituir` = o figura_id devolvido, que troca o
+    arquivo sem mexer no texto. Vale só para questão em rascunho: o professor
+    vê tudo no preview antes de aprovar.
+    """
+    with _sessao() as (db, ident):
+        dados, png = importacoes.recortar_figura(
+            db, ident, importacao, print, questao, retangulo, parte, alternativa, substituir
+        )
+        return [json.dumps(dados, ensure_ascii=False), Image(data=png, format="png")]

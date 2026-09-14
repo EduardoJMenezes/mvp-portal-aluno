@@ -403,6 +403,43 @@ def completar_questao_importada(
     return importacoes.completar_questao(db, ident, importacao_id, **dados.model_dump())
 
 
+# --- importação de prints ----------------------------------------------------
+
+
+class RecorteIn(BaseModel):
+    print: int = Field(ge=1, description="Número do print, na ordem do envio")
+    questao: int
+    retangulo: list[float] = Field(
+        min_length=4, max_length=4, description="[x0, y0, x1, y1] na escala da vista do print"
+    )
+    parte: str = "ENUNCIADO"
+    alternativa: str | None = None
+    substituir: int | None = Field(None, description="figura_id de um recorte que saiu errado")
+
+
+@router.post("/importacoes/prints")
+def criar_link_de_prints(ident: Identidade = Operador, db: Session = Banco) -> dict:
+    """O link de uso único pelo qual os prints chegam (ver /api/importacoes/{token}/prints)."""
+    return importacoes.criar_link_de_prints(db, ident)
+
+
+@router.get("/importacoes/{importacao_id}/prints/{numero}", response_class=Response)
+def ver_print(importacao_id: int, numero: int, ident: Identidade = Operador, db: Session = Banco) -> Response:
+    """O print na escala em que o retângulo do recorte vale."""
+    _dados, [png] = importacoes.ver_prints(db, ident, importacao_id, numero, numero)
+    return Response(png, media_type="image/png")
+
+
+@router.post("/importacoes/{importacao_id}/recortes")
+def recortar_figura(importacao_id: int, dados: RecorteIn, ident: Identidade = Operador, db: Session = Banco) -> dict:
+    """A figura sai do print e entra na questão; o recorte fica em /api/aluno/figuras/{figura_id}."""
+    saida, _png = importacoes.recortar_figura(
+        db, ident, importacao_id, dados.print, dados.questao, dados.retangulo,
+        dados.parte, dados.alternativa, dados.substituir,
+    )
+    return saida
+
+
 # --- simulados ---------------------------------------------------------------
 
 

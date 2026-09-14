@@ -1,4 +1,4 @@
-"""A página de envio do .docx: o link é a credencial.
+"""A página de envio do .docx ou dos prints: o link é a credencial.
 
 Quem abre o link não precisa estar logado — ele é de uso único, expira em 30
 minutos e está preso a quem o pediu no chat (ver `services/importacoes.py`).
@@ -35,3 +35,17 @@ async def enviar_arquivo(
     return await run_in_threadpool(
         importacoes.receber_arquivo, db, token, arquivo.filename, conteudo, resolucoes
     )
+
+
+@router.post("/{token}/prints")
+async def enviar_prints(
+    token: str,
+    arquivos: list[UploadFile] = File(description="Os prints das questões, na ordem"),
+    db: Session = Depends(get_db),
+) -> dict:
+    # Um a mais que o limite, de contagem e de tamanho, basta para o service recusar.
+    lidos = [
+        (arquivo.filename, await arquivo.read(importacoes.LIMITE_DO_PRINT + 1))
+        for arquivo in arquivos[: importacoes.LIMITE_DOS_PRINTS + 1]
+    ]
+    return await run_in_threadpool(importacoes.receber_prints, db, token, lidos)

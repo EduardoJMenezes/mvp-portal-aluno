@@ -259,14 +259,16 @@ def anexar_figura(
     conteudo: bytes,
     nome: str | None = None,
     parte: str = ParteDaQuestao.ENUNCIADO,
+    alternativa: str | None = None,
     agora: datetime | None = None,
 ) -> dict:
     """Anexa uma figura à questão e a põe no texto.
 
     Onde houver a marca `![](figura:pendente)` — que a transcrição deixa no
     lugar da figura que não deu para transcrever —, a primeira marca da parte
-    recebe a figura. Sem marca, ela entra no fim do enunciado ou da resolução.
-    Anexar tira a pendência quando não sobra marca nenhuma.
+    recebe a figura; numa alternativa, a da letra informada. Sem marca, ela
+    entra no fim do enunciado ou da resolução. Anexar tira a pendência quando
+    não sobra marca nenhuma.
 
     A figura da prova trava quando o simulado abre; a da resolução, não.
     """
@@ -294,11 +296,15 @@ def anexar_figura(
             else f"{atual}\n\n![]({referencia})".strip()
         )
     elif parte == ParteDaQuestao.ALTERNATIVA:
-        alvo = next((a for a in q.alternativas if PENDENTE in a.texto), None)
+        letra = (alternativa or "").strip().upper()
+        alvo = next(
+            (a for a in q.alternativas if PENDENTE in a.texto and letra in ("", a.letra)), None
+        )
         if alvo is None:
+            onde = f"A alternativa {letra} não tem" if letra else "Nenhuma alternativa tem"
             raise RegraDeNegocio(
-                "Nenhuma alternativa tem a marca ![](figura:pendente). Ponha a marca na "
-                "alternativa certa (editar_questao) antes de anexar."
+                f"{onde} a marca ![](figura:pendente). Ponha a marca na alternativa certa "
+                "(editar_questao) antes de anexar."
             )
         alvo.texto = alvo.texto.replace(PENDENTE, referencia, 1)
     else:
@@ -315,6 +321,30 @@ def anexar_figura(
         "figura_id": figura.id,
         "parte": parte,
         "tipo": figura.tipo,
+        "bytes": len(conteudo),
+        "imagem_pendente": q.imagem_pendente,
+    }
+
+
+def trocar_figura(
+    db: Session, ident: Identidade, figura_id: int, conteudo: bytes, agora: datetime | None = None
+) -> dict:
+    """Troca o arquivo de uma figura sem mexer no texto: `figura:ID` segue apontando para ela."""
+    ident.exigir_operador()
+    img = db.get(Imagem, figura_id)
+    if img is None or img.questao_id is None:
+        raise NaoEncontrado(f"A figura {figura_id} não existe em nenhuma questão.")
+    q = resolver_questao(db, img.questao_id)
+    if img.parte != ParteDaQuestao.RESOLUCAO:
+        _exigir_prova_fechada_para_mudancas(db, q, _agora(agora))
+    img.tipo, img.conteudo = validar_figura(conteudo), conteudo
+    tocar(ident, q)
+    db.commit()
+    return {
+        "questao_id": q.id,
+        "figura_id": img.id,
+        "parte": img.parte,
+        "tipo": img.tipo,
         "bytes": len(conteudo),
         "imagem_pendente": q.imagem_pendente,
     }
