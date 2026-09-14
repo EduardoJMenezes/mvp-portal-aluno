@@ -358,7 +358,8 @@ async def test_prints_pelo_chat_voltam_como_imagem_e_o_recorte_tambem(db, mundo,
             "questao": rascunho["simulado"]["questoes"][0]["questao_id"], "retangulo": [90, 140, 310, 360],
         })
 
+    largura, altura = importacoes._tamanho_da_vista(900, 600)
     assert [c.type for c in vista.content] == ["text", "text", "image"]
-    assert "900×600" in vista.content[1].text
+    assert f"{largura}×{altura}" in vista.content[1].text
     assert recorte.content[1].type == "image"
     assert '"imagem_pendente": false' in recorte.content[0].text

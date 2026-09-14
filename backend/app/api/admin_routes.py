@@ -415,6 +415,7 @@ class RecorteIn(BaseModel):
     parte: str = "ENUNCIADO"
     alternativa: str | None = None
     substituir: int | None = Field(None, description="figura_id de um recorte que saiu errado")
+    estender: bool = Field(True, description="Estende as bordas até o desenho acabar")
 
 
 @router.post("/importacoes/prints")
@@ -426,8 +427,8 @@ def criar_link_de_prints(ident: Identidade = Operador, db: Session = Banco) -> d
 @router.get("/importacoes/{importacao_id}/prints/{numero}", response_class=Response)
 def ver_print(importacao_id: int, numero: int, ident: Identidade = Operador, db: Session = Banco) -> Response:
     """O print na escala em que o retângulo do recorte vale."""
-    _dados, [png] = importacoes.ver_prints(db, ident, importacao_id, numero, numero)
-    return Response(png, media_type="image/png")
+    _dados, [vista] = importacoes.ver_prints(db, ident, importacao_id, numero, numero)
+    return Response(vista, media_type="image/jpeg")
 
 
 @router.post("/importacoes/{importacao_id}/recortes")
@@ -435,7 +436,7 @@ def recortar_figura(importacao_id: int, dados: RecorteIn, ident: Identidade = Op
     """A figura sai do print e entra na questão; o recorte fica em /api/aluno/figuras/{figura_id}."""
     saida, _png = importacoes.recortar_figura(
         db, ident, importacao_id, dados.print, dados.questao, dados.retangulo,
-        dados.parte, dados.alternativa, dados.substituir,
+        dados.parte, dados.alternativa, dados.substituir, dados.estender,
     )
     return saida
 

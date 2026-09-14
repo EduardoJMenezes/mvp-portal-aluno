@@ -127,8 +127,10 @@ Ensaio geral dos quatro fluxos do §21, contra o servidor no ar:
   instala; sem ele (máquina local), elas viram `figura:pendente` e a importação
   segue. Nos prints, o servidor nem lê: o Claude transcreve e aponta o
   retângulo de cada figura, e `recortar_figura` recorta do print original — o
-  retângulo vale na escala de `ver_prints`, que já cabe no limite de imagem do
-  modelo. Ver [docs/IMPORTADOR-SIMULADO.md](docs/IMPORTADOR-SIMULADO.md).
+  retângulo vale na escala de `ver_prints`, que cabe no limite de imagem do
+  modelo. Não confie no retângulo nem na conferência do Claude: em print
+  pequeno ele corta o desenho e aceita; quem garante a figura inteira é a
+  extensão até a faixa em branco. Ver [docs/IMPORTADOR-SIMULADO.md](docs/IMPORTADOR-SIMULADO.md).
 * **Simulado: o relógio entra como parâmetro.** Os services de
   [simulados.py](backend/app/services/simulados.py) recebem `agora`; não há job
   de entrega automática — a tentativa vencida é consolidada na próxima consulta.

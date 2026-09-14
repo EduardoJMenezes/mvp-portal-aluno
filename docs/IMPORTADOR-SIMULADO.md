@@ -96,22 +96,32 @@ imagem original, e a figura sai recortada de dentro dela.
 1. `importar_prints` devolve o link, com as mesmas regras do .docx. A página
    aceita colar (Ctrl+V), escolher ou arrastar — até 50 prints, na ordem das
    questões.
-2. `ver_prints` devolve os prints como imagem, já reduzidos para caber no
-   limite de imagem do modelo (1568 px no lado maior, 1,15 MP). Assim nada os
-   reduz de novo no caminho, e o retângulo que o Claude devolve vale na escala
-   que ele viu.
+2. `ver_prints` devolve os prints como imagem, na escala que cabe no limite de
+   imagem do modelo (1568 px no lado maior, 1,15 MP): print grande é reduzido,
+   e print pequeno é ampliado até 3 vezes. Assim nada muda a escala no
+   caminho, o retângulo que o Claude devolve vale na escala que ele viu, e o
+   erro dele, em pixels da vista, encolhe no original.
 3. O Claude transcreve e cria as questões com `![](figura:pendente)` no lugar
    de cada figura. Print quase nunca traz gabarito: quem diz é o professor; o
    Claude só resolve se ele pedir, e como proposta.
-4. `recortar_figura` recebe `[x0, y0, x1, y1]`, recorta do **original** — não
-   da vista reduzida —, apara o branco e põe a figura na marca (numa
-   alternativa, na letra indicada). O recorte volta como imagem para o Claude
-   conferir; se saiu errado, `substituir` troca o arquivo sem mexer no texto.
+4. `recortar_figura` recebe `[x0, y0, x1, y1]` e recorta do **original**, não
+   da vista. Antes, estende cada borda enquanto ela corta traço, até uma faixa
+   em branco — com o traço engordado em 1 px, para atravessar o vão entre a
+   ligação e o átomo —; depois apara o branco e põe a figura na marca (numa
+   alternativa, na letra indicada). O recorte volta como imagem, na escala da
+   vista, para o Claude conferir; se saiu errado, `substituir` troca o arquivo
+   sem mexer no texto, e `estender=false` vale para o desenho que encosta no
+   texto.
 5. Só em questão de rascunho: o professor vê tudo no preview antes de aprovar.
 
 Medido antes de construir, com dois prints reais (um de prova, com letras em
 círculo, e um de site): os três retângulos estimados olhando a imagem saíram
-certos de primeira — figura inteira, sem texto em volta.
+certos de primeira. **O primeiro teste do professor desmentiu a folga:** com
+prints de uns 300 px de largura, três de oito figuras saíram cortadas — o anel
+pela metade, o "O" da carbonila de fora —, e o Claude aceitou os recortes, que
+voltavam miúdos demais para ele notar. A extensão até a faixa em branco, a
+vista ampliada e a prévia na mesma escala vieram daí; com elas, os três cortes
+refeitos saem inteiros, sem texto em volta.
 
 Os prints não mudam o schema: ficam em `images`, sem questão, com os ids no
 relatório da importação, e `imports.parametros.formato` separa um envio do

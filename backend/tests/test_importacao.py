@@ -133,7 +133,8 @@ def test_prints_chegam_pelo_link_e_o_claude_ve_na_escala_do_recorte(db, mundo):
     grande, pequeno = dados["prints"]
     assert max(grande["largura"], grande["altura"]) <= importacoes.LADO_DA_VISTA
     assert grande["largura"] * grande["altura"] <= importacoes.PIXELS_DA_VISTA
-    assert (pequeno["largura"], pequeno["altura"]) == (900, 600), "print que já cabe não é reduzido"
+    assert 900 < pequeno["largura"] <= 900 * importacoes.AMPLIACAO_MAXIMA, "print pequeno cresce na vista"
+    assert pequeno["largura"] * pequeno["altura"] <= importacoes.PIXELS_DA_VISTA
     assert len(vistas) == 2
     with pytest.raises(RegraDeNegocio) as usado:
         importacoes.receber_prints(db, token, [("outro.png", print_de_questao())])
@@ -183,3 +184,30 @@ def test_figura_recortada_do_print_entra_no_lugar_da_marca(db, mundo):
     with pytest.raises(RegraDeNegocio) as publicada:
         recortar([35, 55, 145, 165])
     assert "rascunho" in str(publicada.value)
+
+
+def test_retangulo_curto_nao_corta_o_desenho(db, mundo):
+    """No primeiro teste real, três de oito figuras saíram cortadas de prints pequenos."""
+    link = importacoes.criar_link_de_prints(db, mundo["professor_mcp"])
+    importacoes.receber_prints(db, link["link"].rsplit("/", 1)[-1], [("site.png", print_de_questao())])
+    rascunho = rascunhos.criar_simulado_rascunho(db, mundo["professor"], ["Extensivo 2027"], "Curto", [{
+        "enunciado": "![](figura:pendente)\n\n![](figura:pendente)",
+        "alternativas": {letra: letra for letra in "ABCDE"}, "gabarito": "A",
+    }])
+    questao_id = rascunho["simulado"]["questoes"][0]["questao_id"]
+    recortar = partial(importacoes.recortar_figura, db, mundo["professor"], link["importacao_id"], 1, questao_id)
+    escala = importacoes._tamanho_da_vista(900, 600)[0] / 900
+
+    def tamanho(saida):
+        with Image.open(io.BytesIO(db.get(Imagem, saida["figura_id"]).conteudo)) as figura:
+            return figura.size
+
+    # Só o miolo da figura (150–250, dentro de 100–300): as quatro bordas cortam o traço.
+    miolo = [150 * escala, 200 * escala, 250 * escala, 300 * escala]
+    inteira, previa = recortar(miolo)
+    cortada, _ = recortar(miolo, estender=False)
+
+    assert tamanho(inteira) == (217, 217), "estende até a faixa em branco, sem pegar as linhas de texto"
+    assert tamanho(cortada) == (116, 116)
+    with Image.open(io.BytesIO(previa)) as vista:
+        assert vista.width > 217, "a prévia vem na escala ampliada em que o Claude viu o print"

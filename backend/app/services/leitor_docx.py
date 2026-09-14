@@ -432,25 +432,31 @@ def sobre_branco(imagem):
     return Image.alpha_composite(Image.new("RGBA", rgba.size, "white"), rgba).convert("RGB")
 
 
+def tinta(imagem, tolerancia: int = 40):
+    """Máscara do que se afasta do branco mais que a tolerância: traço, letra, foto."""
+    from PIL import Image, ImageChops
+
+    diferenca = ImageChops.difference(imagem, Image.new("RGB", imagem.size, "white")).convert("L")
+    return diferenca.point(lambda v: 255 if v > tolerancia else 0)
+
+
 def aparar_margem(png: bytes, folga: int = 8, tolerancia: int = 40) -> bytes:
     """Recorta o branco em volta do desenho.
 
     O LibreOffice exporta a folha A4 inteira, com a figura perdida no meio, e o
     recorte de um print vem com a sobra do retângulo; sem aparar, uma estrutura
     química viraria uma página em branco na tela do aluno. A tolerância deixa
-    de fora o quase branco do fundo de site e a sujeira de JPEG.
+    de fora o quase branco do fundo de site e a sujeira de JPEG. A folga é
+    branco acrescentado, para o desenho não encostar na borda.
     """
-    from PIL import Image, ImageChops
+    from PIL import Image, ImageOps
 
     with Image.open(io.BytesIO(png)) as original:
         imagem = sobre_branco(original)
-    diferenca = ImageChops.difference(imagem, Image.new("RGB", imagem.size, "white")).convert("L")
-    caixa = diferenca.point(lambda v: 255 if v > tolerancia else 0).getbbox()
+    caixa = tinta(imagem, tolerancia).getbbox()
     if caixa is None:
         return png
-    esquerda, topo, direita, base = caixa
-    recorte = imagem.crop((max(0, esquerda - folga), max(0, topo - folga),
-                           min(imagem.width, direita + folga), min(imagem.height, base + folga)))
+    recorte = ImageOps.expand(imagem.crop(caixa), border=folga, fill="white")
     saida = io.BytesIO()
     recorte.save(saida, "PNG", optimize=True)
     return saida.getvalue()

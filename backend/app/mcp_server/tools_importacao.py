@@ -149,8 +149,9 @@ def ver_prints(
 ) -> list:
     """Mostra os prints que o professor enviou pelo link, para transcrever as questões.
 
-    Cada print volta como imagem, com largura e altura: é nessa escala, em
-    pixels, que recortar_figura recebe o retângulo. Vá de 5 em 5.
+    Cada print volta como imagem, com largura e altura — print pequeno vem
+    ampliado —, e é nessa escala, em pixels, que recortar_figura recebe o
+    retângulo. Vá de 5 em 5.
 
     Para montar:
 
@@ -166,9 +167,9 @@ def ver_prints(
     with _sessao() as (db, ident):
         dados, vistas = importacoes.ver_prints(db, ident, importacao, de, ate)
         saida: list = [json.dumps(dados, ensure_ascii=False)]
-        for descricao, png in zip(dados["prints"], vistas):
+        for descricao, vista in zip(dados["prints"], vistas):
             saida.append(f"print {descricao['print']} — {descricao['largura']}×{descricao['altura']} px")
-            saida.append(Image(data=png, format="png"))
+            saida.append(Image(data=vista, format="jpeg"))
         return saida
 
 
@@ -186,21 +187,27 @@ def recortar_figura(
     substituir: Annotated[
         int | None, Field(description="figura_id de um recorte que saiu errado, para trocar")
     ] = None,
+    estender: Annotated[
+        bool, Field(description="false só quando o desenho encosta no texto e o recorte veio com letra junto")
+    ] = True,
 ) -> list:
     """Recorta uma figura de dentro de um print e a põe na questão, no lugar da marca.
 
-    O retângulo pega a figura inteira com um pouco de folga — o branco em volta
-    é aparado aqui —, sem encostar no texto de cima, de baixo ou do lado. A
-    figura entra na primeira marca `![](figura:pendente)` da parte; numa
-    alternativa, diga a letra.
+    O retângulo pode sair um pouco curto: o servidor estende cada borda até o
+    desenho acabar, numa faixa em branco, e apara o branco em volta. Só não o
+    deixe pegar o texto de cima, de baixo ou do lado. A figura entra na
+    primeira marca `![](figura:pendente)` da parte; numa alternativa, diga a
+    letra.
 
-    O recorte volta como imagem: confira. Se cortou parte do desenho ou pegou
-    texto, chame de novo com `substituir` = o figura_id devolvido, que troca o
-    arquivo sem mexer no texto. Vale só para questão em rascunho: o professor
-    vê tudo no preview antes de aprovar.
+    O recorte volta como imagem, na escala em que você viu o print. Confira se
+    o desenho está inteiro — anel, ramificações, átomos e cargas — e sem texto
+    em volta. Se não, chame de novo com `substituir` = o figura_id devolvido,
+    que troca o arquivo sem mexer no texto; se veio letra junto porque o desenho
+    encosta no texto, use `estender=false` com o retângulo exato. Vale só para
+    questão em rascunho: o professor vê tudo no preview antes de aprovar.
     """
     with _sessao() as (db, ident):
-        dados, png = importacoes.recortar_figura(
-            db, ident, importacao, print, questao, retangulo, parte, alternativa, substituir
+        dados, previa = importacoes.recortar_figura(
+            db, ident, importacao, print, questao, retangulo, parte, alternativa, substituir, estender
         )
-        return [json.dumps(dados, ensure_ascii=False), Image(data=png, format="png")]
+        return [json.dumps(dados, ensure_ascii=False), Image(data=previa, format="png")]

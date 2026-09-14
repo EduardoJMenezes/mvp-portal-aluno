@@ -92,7 +92,7 @@ def test_prints_chegam_pela_pagina_de_envio_e_o_professor_ve_pela_api(db, mundo)
     assert enviado.json()["prints"] == 2
 
     vista = api.get(f"/api/admin/importacoes/{link['importacao_id']}/prints/2", headers=professor)
-    assert vista.status_code == 200 and vista.headers["content-type"] == "image/png"
+    assert vista.status_code == 200 and vista.headers["content-type"] == "image/jpeg"
 
 
 def test_toda_tool_do_simulado_tem_endpoint(schema):

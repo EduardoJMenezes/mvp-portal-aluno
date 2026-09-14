@@ -18,7 +18,7 @@ import re
 import secrets
 from datetime import UTC, datetime, timedelta
 
-from PIL import Image
+from PIL import Image, ImageFilter
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -51,9 +51,13 @@ LIMITE_DOS_PRINTS = 50
 LIMITE_DO_PRINT = 5 * 1024 * 1024
 # O print que o Claude vê já cabe no limite de imagem do modelo, para não ser
 # reduzido de novo no caminho: é isso que faz o retângulo que ele devolve valer
-# aqui, na mesma escala.
+# aqui, na mesma escala. Print pequeno cresce, até 3 vezes: o erro do retângulo
+# é em pixels da vista, e no original ele encolhe na mesma proporção.
 LADO_DA_VISTA = 1568
 PIXELS_DA_VISTA = 1_150_000
+AMPLIACAO_MAXIMA = 3
+# Escuro o bastante para ser traço de desenho, e não o esfumado da letra vizinha.
+TRACO = 100
 
 
 def _agora(agora: datetime | None) -> datetime:
@@ -513,13 +517,47 @@ def _print(db: Session, ids: list[int], numero: int) -> Image.Image:
 
 
 def _tamanho_da_vista(largura: int, altura: int) -> tuple[int, int]:
-    escala = min(1.0, LADO_DA_VISTA / max(largura, altura), (PIXELS_DA_VISTA / (largura * altura)) ** 0.5)
+    escala = min(AMPLIACAO_MAXIMA, LADO_DA_VISTA / max(largura, altura),
+                 (PIXELS_DA_VISTA / (largura * altura)) ** 0.5)
     return int(largura * escala), int(altura * escala)  # arredondar para cima estoura o limite
+
+
+def _estender_ate_o_desenho(imagem: Image.Image, caixa: tuple[int, int, int, int]) -> tuple[int, int, int, int]:
+    """Empurra cada borda do retângulo enquanto ela corta traço, até uma faixa em branco.
+
+    O retângulo estimado olhando a imagem erra por poucos pixels, e num print
+    pequeno isso corta o anel de uma estrutura — no primeiro teste real, três de
+    oito figuras saíram assim, e o Claude aceitou. A faixa em branco é o que
+    separa o desenho do texto em volta. O traço engordado em 1 px atravessa o
+    vão de 1 ou 2 px entre a ligação e o átomo ("O" sobre a dupla); a linha de
+    texto vizinha, a 3 px ou mais, fica de fora.
+    """
+    traco = leitor_docx.tinta(imagem, TRACO).filter(ImageFilter.MaxFilter(3))
+    e, t, d, b = caixa
+    while True:
+        antes = (e, t, d, b)
+        if t > 0 and traco.crop((e, t, d, t + 1)).getbbox():
+            t -= 1
+        if b < imagem.height and traco.crop((e, b - 1, d, b)).getbbox():
+            b += 1
+        if e > 0 and traco.crop((e, t, e + 1, b)).getbbox():
+            e -= 1
+        if d < imagem.width and traco.crop((d - 1, t, d, b)).getbbox():
+            d += 1
+        if (e, t, d, b) == antes:
+            return e, t, d, b
 
 
 def _png(imagem: Image.Image) -> bytes:
     saida = io.BytesIO()
     imagem.save(saida, "PNG", optimize=True)
+    return saida.getvalue()
+
+
+def _jpeg(imagem: Image.Image) -> bytes:
+    """A vista vai em JPEG: o print ampliado em PNG passa de 600 KB, e são cinco por chamada."""
+    saida = io.BytesIO()
+    imagem.save(saida, "JPEG", quality=90)
     return saida.getvalue()
 
 
@@ -536,7 +574,7 @@ def ver_prints(
         if tamanho != imagem.size:
             imagem = imagem.resize(tamanho, Image.Resampling.LANCZOS)
         descricao.append({"print": numero, "largura": tamanho[0], "altura": tamanho[1]})
-        vistas.append(_png(imagem))
+        vistas.append(_jpeg(imagem))
     if not vistas:
         raise RegraDeNegocio(f"Esta importação tem {len(ids)} print(s); peça de 1 a {len(ids)}.")
     return {
@@ -557,14 +595,16 @@ def recortar_figura(
     parte: str = ParteDaQuestao.ENUNCIADO,
     alternativa: str | None = None,
     substituir: int | None = None,
+    estender: bool = True,
     agora: datetime | None = None,
 ) -> tuple[dict, bytes]:
     """Recorta a figura de dentro do print e a põe na questão, no lugar da marca.
 
-    `retangulo` é [x0, y0, x1, y1] na escala de `ver_prints`; o recorte sai do
-    print original, com a margem branca aparada, e volta para o Claude
-    conferir. `substituir` troca um recorte que saiu errado sem mexer no texto.
-    Só em questão de rascunho: o professor ainda vê tudo antes de aprovar.
+    `retangulo` é [x0, y0, x1, y1] na escala de `ver_prints`. O recorte sai do
+    print original: estendido até o desenho acabar (`estender`), com a margem
+    branca aparada. Devolve o resultado e a prévia, na escala da vista, para o
+    Claude conferir. `substituir` troca um recorte que saiu errado sem mexer no
+    texto. Só em questão de rascunho: o professor ainda vê tudo antes de aprovar.
     """
     ids = _ids_dos_prints(db, ident, importacao_id)
     questao = questoes.resolver_questao(db, questao_id)
@@ -586,16 +626,28 @@ def recortar_figura(
         )
 
     fx, fy = imagem.width / largura, imagem.height / altura
-    caixa = (max(0, round(x0 * fx)), max(0, round(y0 * fy)),
-             min(imagem.width, round(x1 * fx)), min(imagem.height, round(y1 * fy)))
+    e = min(max(0, round(x0 * fx)), imagem.width - 1)
+    t = min(max(0, round(y0 * fy)), imagem.height - 1)
+    caixa = (e, t, max(e + 1, min(imagem.width, round(x1 * fx))), max(t + 1, min(imagem.height, round(y1 * fy))))
+    if estender:
+        caixa = _estender_ate_o_desenho(imagem, caixa)
     recorte = leitor_docx.aparar_margem(_png(imagem.crop(caixa)))
 
     if substituir is not None:
         figura = db.get(Imagem, substituir)
         if figura is None or figura.questao_id != questao.id:
             raise RegraDeNegocio(f"A figura {substituir} não é da questão {questao.id}.")
-        return questoes.trocar_figura(db, ident, substituir, recorte, agora), recorte
-    saida = questoes.anexar_figura(
-        db, ident, questao.id, recorte, f"print {numero}", parte, alternativa, agora
-    )
-    return saida, recorte
+        saida = questoes.trocar_figura(db, ident, substituir, recorte, agora)
+    else:
+        saida = questoes.anexar_figura(
+            db, ident, questao.id, recorte, f"print {numero}", parte, alternativa, agora
+        )
+
+    # O Claude confere na escala em que viu o print: recorte de print pequeno,
+    # do tamanho original, é miúdo demais para ele notar um corte.
+    previa = recorte
+    if fx < 1:
+        with Image.open(io.BytesIO(recorte)) as pequena:
+            previa = _png(pequena.resize((round(pequena.width / fx), round(pequena.height / fy)),
+                                         Image.Resampling.LANCZOS))
+    return saida, previa
