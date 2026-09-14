@@ -179,16 +179,19 @@ export const api = {
     return figuras.get(id)!;
   },
 
-  // Link de envio do .docx: vale sem login, o token do link é a credencial.
+  // Link de envio do .docx ou dos prints: vale sem login, o token do link é a credencial.
   envio: (token: string) => req<any>(`/importacoes/${token}`),
-  enviarDocx: async (token: string, arquivo: File) => {
-    const corpo = new FormData();
-    corpo.append("arquivo", arquivo);
-    const resposta = await fetch(`${BASE}/importacoes/${token}/arquivo`, { method: "POST", body: corpo });
-    if (!resposta.ok) throw new Error(await mensagemDeErro(resposta));
-    return resposta.json();
-  },
+  enviarDocx: (token: string, arquivo: File) => enviarArquivos(`/importacoes/${token}/arquivo`, "arquivo", [arquivo]),
+  enviarPrints: (token: string, prints: File[]) => enviarArquivos(`/importacoes/${token}/prints`, "arquivos", prints),
 };
+
+async function enviarArquivos(caminho: string, campo: string, arquivos: File[]) {
+  const corpo = new FormData();
+  arquivos.forEach((arquivo) => corpo.append(campo, arquivo));
+  const resposta = await fetch(`${BASE}${caminho}`, { method: "POST", body: corpo });
+  if (!resposta.ok) throw new Error(await mensagemDeErro(resposta));
+  return resposta.json();
+}
 
 // Agenda e prazos saem do backend em ISO; na tela, sempre no horário de Brasília.
 const FORMATO_BRASILIA = new Intl.DateTimeFormat("pt-BR", {

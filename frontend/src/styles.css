@@ -157,3 +157,12 @@ iframe { border: 0; border-radius: 8px; width: 100%; aspect-ratio: 16/9; backgro
 .texto img.figura { display: inline-block; vertical-align: middle; max-width: 100%; max-height: 2.2em; }
 .texto img.figura.sozinha { display: block; max-height: none; margin: 8px 0; }
 .resolucao { margin-top: 12px; padding: 10px 12px; border-left: 3px solid var(--borda); background: var(--fundo); }
+
+/* página de envio dos prints */
+.soltar { display: flex; gap: 12px; align-items: center; padding: 14px; border: 2px dashed var(--borda); border-radius: 8px; }
+.soltar input { width: auto; }
+.prints { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; margin-top: 12px; }
+.prints figure { margin: 0; }
+.prints img { width: 100%; height: 120px; object-fit: contain; background: var(--fundo); border: 1px solid var(--borda); border-radius: 6px; }
+.prints figcaption { align-items: center; font-size: 13px; color: var(--tinta-fraca); margin-top: 4px; }
+.prints figcaption button { padding: 2px 8px; font-size: 13px; }
