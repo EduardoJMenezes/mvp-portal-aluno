@@ -70,6 +70,8 @@ def schema():
         with engine.connect():
             pass
     except OperationalError as e:  # noqa: F841
+        if os.environ.get("CI"):
+            raise  # na CI, pular a metade que depende do banco passaria em silêncio
         pytest.skip(
             f"Postgres de teste indisponível em {engine.url}: suba o servidor e crie o "
             "banco (createdb plataforma_mvp_test) para rodar a parte que depende dele.",
