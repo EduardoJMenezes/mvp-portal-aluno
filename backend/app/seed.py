@@ -13,6 +13,7 @@ import sys
 
 from sqlalchemy import select
 
+from app import migracoes
 from app.db import SessionLocal, engine
 from app.models import (
     Alternativa,
@@ -213,7 +214,9 @@ def _video_demo(vimeo_id: str, titulo: str, pasta: str) -> Video:
 def povoar(reset: bool = False) -> None:
     if reset:
         Base.metadata.drop_all(engine)
-    Base.metadata.create_all(engine)
+    # O Railway roda o seed como Pre-Deploy, antes do CMD que migra: sem migrar
+    # aqui, a consulta abaixo usa colunas novas do modelo que o banco ainda não tem.
+    migracoes.aplicar(engine)
 
     with SessionLocal() as db:
         if db.scalar(select(Usuario).limit(1)) is not None:
