@@ -117,8 +117,8 @@ o MCP em `/mcp`.
 
 ### Contas da demonstração
 
-Senha de todas: `demo1234` — só para o banco local. Num ambiente publicado,
-troque essas senhas em Minha conta.
+No banco local, a senha dessas contas é a que o `seed` imprime ao criar os
+dados. Num ambiente publicado elas usam senha própria, trocada em Minha conta.
 
 | conta | papel | turma |
 |---|---|---|

@@ -103,10 +103,10 @@ toda tool de escrita, cria em rascunho e espera sua aprovação.
 
 ## Contas
 
-Senha de todas: `demo1234` — **só no banco local de demonstração**. Em
-produção, troque essas senhas (Minha conta) ou apague as contas; com
-`MODO_DEMO=true` a tela de entrada lista as contas `@escola.demo`/`@aluno.demo`
-e entra nelas sem senha, então nunca ligue essa variável num ambiente real.
+No banco local, a senha é a que o `seed` imprime ao criar os dados. Em
+produção essas contas usam senha própria. Com `MODO_DEMO=true` a tela de
+entrada lista as contas `@escola.demo`/`@aluno.demo` e entra nelas sem senha,
+então nunca ligue essa variável num ambiente real.
 
 | conta | papel | turma |
 |---|---|---|
