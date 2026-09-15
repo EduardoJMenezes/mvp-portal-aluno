@@ -51,6 +51,16 @@ def test_claude_code_monta_o_simulado_e_anexa_a_figura_mas_nao_publica(db, mundo
                    files={"arquivo": ("figura.png", PNG, "image/png")}, data={"parte": "ENUNCIADO"})
     assert png.status_code == 200 and png.json()["imagem_pendente"] is False
 
+    # A letra chega ao service: sem ela, a recusa diria "Nenhuma alternativa tem".
+    sem_marca = api.post(f"/api/admin/questoes/{nova}/figuras", headers=claude_code,
+                         files={"arquivo": ("f.png", PNG, "image/png")},
+                         data={"parte": "ALTERNATIVA", "alternativa": "C"})
+    assert sem_marca.status_code == 400 and "alternativa C" in sem_marca.json()["detail"]
+
+    # O portal leva do simulado em rascunho à revisão do rascunho.
+    visto = api.get(f"/api/admin/simulados/{rascunho['simulado']['simulado_id']}", headers=claude_code)
+    assert visto.json()["rascunho_id"] == rascunho["rascunho_id"]
+
     figura = api.get(f"/api/aluno/figuras/{png.json()['figura_id']}",
                      headers=_portal(mundo["professor"]))
     assert figura.content == PNG and figura.headers["content-type"] == "image/png"

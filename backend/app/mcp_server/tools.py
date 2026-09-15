@@ -601,7 +601,7 @@ def _cliente_pergunta_ao_professor(ctx: Context) -> bool:
 
 def _aprovar_no_portal(rascunho_id: int) -> dict:
     base = (get_settings().mcp_base_url or "").rstrip("/")
-    onde = f"{base}/rascunhos" if base else "Admin › Rascunhos"
+    onde = f"{base}/admin/rascunhos/revisar/?id={rascunho_id}" if base else "Admin › Rascunhos"
     return {
         "rascunho_id": rascunho_id,
         "publicado": False,

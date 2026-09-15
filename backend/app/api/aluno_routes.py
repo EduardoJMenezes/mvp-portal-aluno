@@ -73,6 +73,12 @@ def resultado(
     return simulados.resultado(db, ident, simulado_id)
 
 
+@router.get("/desempenho")
+def desempenho(ident: Identidade = Depends(usuario_atual), db: Session = Depends(get_db)) -> dict:
+    """Os simulados encerrados que fez, com nota e posição, e onde mais errou."""
+    return simulados.historico_do_aluno(db, ident)
+
+
 @router.get("/figuras/{figura_id}", response_class=Response)
 def figura(
     figura_id: int,

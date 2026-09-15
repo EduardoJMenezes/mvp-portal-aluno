@@ -109,11 +109,11 @@ mostrar ao professor um resumo coerente do que ele está aprovando.
 | 6  | IA não publica direto | `services/publicacao.py` + `tools.publicar_rascunho` |
 | 7  | dados de demonstração | `seed.py` |
 | 8  | consulta ao Vimeo | `vimeo/client.py`, tool `listar_videos_vimeo` |
-| 10 | frontend admin mínimo | `frontend/src/paginas/Admin*.tsx` |
-| 11 | frontend aluno e segregação | `frontend/src/paginas/Aluno*.tsx`, `catalogo.py` |
+| 10 | frontend admin | `frontend/app/(portal)/admin/` (Next.js, exportado estático) |
+| 11 | frontend aluno e segregação | `frontend/app/(portal)/`, `catalogo.py` |
 | 12 | estrutura da questão | `models.Questao`, `Alternativa`, `Classificacao` |
 | 13 | simulado via MCP | `criar_simulado_rascunho` |
-| 14 | aluno respondendo | `services/simulados.py`, `AlunoProva.tsx` |
+| 14 | aluno respondendo | `services/simulados.py`, `frontend/app/(portal)/simulados/prova/` |
 | 15 | estatísticas via MCP | `services/analytics.py` |
 | 16 | questão por imagem (opcional) | sem código próprio — ver [DEMO.md](DEMO.md) |
 | 17 | tools do MCP | `mcp_server/tools.py` |

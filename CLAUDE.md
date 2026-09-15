@@ -40,8 +40,9 @@ brew services start postgresql@17
 .venv/bin/python -m uvicorn app.main:app --port 8000
 .venv/bin/python -m pytest backend/tests -q
 
-cd frontend && npm run dev                # 5173, com proxy para o backend
-cd frontend && npm run build              # o backend serve o dist em /
+cd frontend && npm run dev                # Next.js em 3000, /api reescrito para o 8000
+cd frontend && npm run build              # exporta estático em out/, que o backend serve em /
+cd frontend && npm run tipos              # só o TypeScript
 ```
 
 Ensaio geral dos quatro fluxos do §21, contra o servidor no ar:

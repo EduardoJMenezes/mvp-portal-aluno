@@ -36,6 +36,9 @@ ALTERACOES = [
     "ALTER TABLE images ADD COLUMN IF NOT EXISTS questao_id integer REFERENCES questions(id)",
     "ALTER TABLE images ADD COLUMN IF NOT EXISTS parte varchar(20)",
     "ALTER TABLE questions DROP COLUMN IF EXISTS imagem_id",
+    # conta: senha temporária e sessões que caem quando a senha muda
+    "ALTER TABLE users ADD COLUMN IF NOT EXISTS senha_temporaria boolean NOT NULL DEFAULT false",
+    "ALTER TABLE users ADD COLUMN IF NOT EXISTS senha_alterada_em timestamptz",
 ]
 
 

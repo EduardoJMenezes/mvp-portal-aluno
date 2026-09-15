@@ -1,9 +1,11 @@
-FROM node:20-bookworm-slim AS frontend-build
+FROM node:22-bookworm-slim AS frontend-build
 
 WORKDIR /app/frontend
 COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci
 COPY frontend/ ./
+# Portal em Next.js exportado como site estático (frontend/out), servido pelo backend.
+ENV NEXT_TELEMETRY_DISABLED=1
 RUN npm run build
 
 FROM python:3.11-slim-bookworm AS runtime
@@ -25,9 +27,11 @@ COPY pyproject.toml ./
 COPY backend/ ./backend/
 RUN python -m pip install --no-cache-dir .
 
-COPY --from=frontend-build /app/frontend/dist ./frontend/dist
+COPY --from=frontend-build /app/frontend/out ./frontend/out
 COPY scripts/ ./scripts/
 
 # A migração vem antes do servidor: se ela falhar, o container não sobe e o
 # Railway mantém a versão anterior no ar (ver app/migracoes.py).
-CMD ["sh", "-c", "python -m app.migracoes && exec python -m uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"]
+# --forwarded-allow-ips: o container só é alcançado pelo proxy do Railway, e é
+# do X-Forwarded-For que sai o IP do limite de tentativas de login.
+CMD ["sh", "-c", "python -m app.migracoes && exec python -m uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000} --proxy-headers --forwarded-allow-ips '*'"]

@@ -32,6 +32,7 @@ def test_migracao_leva_o_schema_antigo_ao_atual_sem_perder_simulado(db, mundo):
         c.execute(text(
             "ALTER TABLE exam_attempts DROP COLUMN prazo_em, DROP COLUMN entregue_automaticamente"
         ))
+        c.execute(text("ALTER TABLE users DROP COLUMN senha_temporaria, DROP COLUMN senha_alterada_em"))
         simulado_id = c.execute(
             text(
                 "INSERT INTO exams (titulo, turma_id, status, criado_por_id) "
@@ -50,6 +51,7 @@ def test_migracao_leva_o_schema_antigo_ao_atual_sem_perder_simulado(db, mundo):
     assert {"questao_id", "parte"} <= _colunas(motor, "images")
     assert {"token_hash", "blocos", "relatorio"} <= _colunas(motor, "imports")
     assert {"prazo_em", "entregue_automaticamente"} <= _colunas(motor, "exam_attempts")
+    assert {"senha_temporaria", "senha_alterada_em"} <= _colunas(motor, "users")
 
     with motor.connect() as c:
         vinculos = c.execute(

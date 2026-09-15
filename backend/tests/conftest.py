@@ -8,6 +8,8 @@ memória não reproduz igual.
 import os
 
 os.environ.setdefault("DATABASE_URL", "postgresql+psycopg:///plataforma_mvp_test")
+# O TestClient fala http: um cookie Secure não voltaria nas chamadas seguintes.
+os.environ.setdefault("SESSAO_COOKIE_SEGURO", "false")
 
 import pytest
 from sqlalchemy import create_engine
@@ -41,6 +43,22 @@ from app.security import hash_senha
 get_settings.cache_clear()
 engine = create_engine(get_settings().database_url, future=True)
 Sessao = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
+
+# A suíte apaga e recria todas as tabelas. Rodar com o DATABASE_URL de produção
+# (dentro do container, por exemplo) destruiria o curso real — então só roda
+# contra um banco cujo nome termina em _test.
+if not (engine.url.database or "").endswith("_test"):
+    raise RuntimeError(
+        f"Os testes recriam o banco inteiro e o DATABASE_URL aponta para "
+        f"'{engine.url.database}'. Use um banco *_test."
+    )
+
+
+@pytest.fixture(autouse=True)
+def _login_sem_trava_herdada():
+    from app.services import contas
+
+    contas.esquecer_tentativas()
 
 
 # Sem autouse de propósito: quem precisa de banco pede `db`, que depende desta

@@ -17,6 +17,15 @@ class Settings(BaseSettings):
     jwt_secret: str = "dev-only-trocar-antes-de-qualquer-coisa-real"
     jwt_expira_horas: int = 12
 
+    # A sessão viaja num cookie httpOnly, que o JavaScript não lê. Em produção
+    # (https) ele é Secure; só o teste e o desenvolvimento em http desligam.
+    sessao_cookie_seguro: bool = True
+
+    # Modo demonstração: a tela de login oferece entrar como as contas de
+    # exemplo do seed (e-mails .demo), sem senha. Ligado, qualquer visitante
+    # vira ADMIN com um clique — nunca em ambiente com gente de verdade.
+    modo_demo: bool = False
+
     # Vimeo: sem token o backend usa o acervo de demonstração embutido, para
     # que a POC rode ponta a ponta antes de existir credencial.
     vimeo_access_token: str | None = None
@@ -38,7 +47,7 @@ class Settings(BaseSettings):
 
     app_host: str = "127.0.0.1"
     app_port: int = 8000
-    cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
+    cors_origins: str = "http://localhost:3000,http://127.0.0.1:3000"
 
     @field_validator("database_url", mode="before")
     @classmethod

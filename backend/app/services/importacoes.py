@@ -509,6 +509,11 @@ def _ids_dos_prints(db: Session, ident: Identidade, importacao_id: int) -> list[
     return ids
 
 
+def total_de_prints(db: Session, ident: Identidade, importacao_id: int) -> dict:
+    """Quantos prints chegaram — o portal pede a vista de cada um em seguida."""
+    return {"importacao_id": importacao_id, "total_prints": len(_ids_dos_prints(db, ident, importacao_id))}
+
+
 def _print(db: Session, ids: list[int], numero: int) -> Image.Image:
     if not 1 <= numero <= len(ids):
         raise RegraDeNegocio(f"O print {numero} não existe: esta importação tem de 1 a {len(ids)}.")

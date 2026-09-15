@@ -40,7 +40,7 @@ services**. O MCP não tem atalho para o banco.
 
 ## Rodando
 
-Pré-requisitos: Python 3.11+, Node 20+, PostgreSQL 17.
+Pré-requisitos: Python 3.11+, Node 22+, PostgreSQL 17.
 
 ```bash
 brew services start postgresql@17
@@ -60,14 +60,26 @@ Tudo em `http://127.0.0.1:8000`: portal na raiz, MCP em `/mcp`, API em `/api`,
 documentação da API em `/docs`.
 
 Para mexer no frontend com recarregamento automático: `npm run dev` em
-`frontend/` (porta 5173, com proxy para o backend).
+`frontend/` (Next.js na porta 3000, com `/api` reescrito para o backend). O
+portal é Next.js + Tailwind, exportado como site estático em `frontend/out` e
+servido pelo próprio backend — mesma origem para o cookie da sessão.
+
+### Sessão e senhas
+
+O login grava a sessão num cookie `httpOnly`, `SameSite=Strict`, restrito a
+`/api` (e `Secure` com `SESSAO_COOKIE_SEGURO=true`, o padrão). Erro de senha
+responde a mesma frase para conta inexistente; 5 falhas numa conta ou 20 num IP
+travam o login por 15 minutos. Aluno cadastrado pelo professor recebe senha
+temporária e só navega depois de trocá-la; trocar a senha derruba as outras
+sessões. Contas e tokens do MCP se administram no portal (Turmas › Alunos e
+Conectar ao Claude).
 
 ### Deploy no Railway
 
 Crie **um serviço de aplicação** conectado a este repositório e um serviço
 PostgreSQL. Mantenha a raiz do repositório como Root Directory: o Railway
 [detecta o Dockerfile da raiz](https://docs.railway.com/builds/dockerfiles).
-O build usa Node 20 e a execução usa Python 3.11; o mesmo Uvicorn serve o
+O build usa Node 22 e a execução usa Python 3.11; o mesmo Uvicorn serve o
 frontend, `/api` e `/mcp`, em `0.0.0.0:$PORT`. Deixe o Start Command sem override
 para usar o comando do Dockerfile.
 
@@ -79,6 +91,10 @@ DATABASE_URL=${{Postgres.DATABASE_URL}}
 JWT_SECRET=<segredo aleatório próprio do ambiente>
 CORS_ORIGINS=https://<domínio público da aplicação>
 ```
+
+`SESSAO_COOKIE_SEGURO` fica no padrão (`true`) e `MODO_DEMO` desligado: com
+ele ligado, a tela de entrada lista as contas de demonstração e entra nelas sem
+senha.
 
 `DATABASE_URL` é uma [referência ao serviço PostgreSQL](https://docs.railway.com/databases/postgresql).
 O Railway a entrega como `postgresql://…`, sem driver; a aplicação troca o
@@ -101,7 +117,8 @@ o MCP em `/mcp`.
 
 ### Contas da demonstração
 
-Senha de todas: `demo1234`
+Senha de todas: `demo1234` — só para o banco local. Num ambiente publicado,
+troque essas senhas em Minha conta.
 
 | conta | papel | turma |
 |---|---|---|
@@ -191,7 +208,7 @@ backend/app/
   api/               controllers REST
   mcp_server/        instância, autenticação e tools do MCP
   vimeo/client.py    API REST do Vimeo + acervo de demonstração
-frontend/src/        React + Vite: portal do professor e do aluno
+frontend/            Next.js + Tailwind: portal do professor e do aluno
 backend/tests/       47 testes
 scripts/             emissão de tokens e ensaio dos quatro fluxos
 docs/                especificação, arquitetura, roteiro, Vimeo

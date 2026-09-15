@@ -5,7 +5,10 @@
 **/.env.*
 **/.venv
 **/node_modules
-frontend/dist
+frontend/.next
+frontend/out
+frontend/next-env.d.ts
+frontend/*.tsbuildinfo
 **/__pycache__
 **/*.py[cod]
 **/*.egg-info

@@ -17,6 +17,8 @@ dependencies = [
     "httpx>=0.27",
     "bcrypt>=4.2",
     "pyjwt>=2.9",
+    # EmailStr no login e na matrícula; hoje também vem pelo fastmcp, mas é uso direto.
+    "email-validator>=2.0",
     "python-multipart>=0.0.12",
     # Recorta a margem branca das figuras que o LibreOffice converte: ele
     # devolve a folha A4 inteira com o desenho no meio.

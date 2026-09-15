@@ -14,7 +14,7 @@ from __future__ import annotations
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
-from app.errors import NaoAutorizado, NaoEncontrado
+from app.errors import NaoAutorizado, NaoEncontrado, RegraDeNegocio
 from app.identidade import Identidade
 from app.models import (
     Item,
@@ -28,7 +28,7 @@ from app.models import (
     Video,
 )
 from app.services import acesso, estrutura, taxonomia
-from app.services.consultas import selecionar, vivos
+from app.services.consultas import selecionar, tocar, vivos
 
 # --- resolução de referências ------------------------------------------------
 #
@@ -222,6 +222,8 @@ def buscar_questoes(
     status: str | None = None,
     dificuldade: str | None = None,
     limite: int = 50,
+    busca: str | None = None,
+    deslocamento: int = 0,
 ) -> list[dict]:
     """Questões de simulado do acervo.
 
@@ -252,6 +254,53 @@ def buscar_questoes(
         consulta = consulta.where(Questao.status == status.upper())
     if dificuldade:
         consulta = consulta.where(Questao.dificuldade == dificuldade.upper())
+    if busca and busca.strip():
+        # O texto digitado é literal: % e _ não viram curinga.
+        literal = busca.strip().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        consulta = consulta.where(Questao.enunciado.ilike(f"%{literal}%", escape="\\"))
 
-    questoes = list(db.scalars(consulta.limit(limite)))
+    questoes = list(db.scalars(consulta.offset(max(0, deslocamento)).limit(limite)))
     return [descrever_questao(db, q, incluir_gabarito=True) for q in questoes]
+
+
+# --- cadastro de turma -------------------------------------------------------
+
+
+def _turma(turma: Turma) -> dict:
+    return {"id": turma.id, "nome": turma.nome, "ano": turma.ano}
+
+
+def _exigir_nome_livre(db: Session, nome: str, exceto: int | None = None) -> str:
+    nome = (nome or "").strip()
+    if not nome:
+        raise RegraDeNegocio("A turma precisa de um nome, ex.: 'Extensivo 2027'.")
+    consulta = selecionar(Turma).where(func.lower(Turma.nome) == nome.lower())
+    if exceto is not None:
+        consulta = consulta.where(Turma.id != exceto)
+    if db.scalar(consulta) is not None:
+        raise RegraDeNegocio(f"Já existe uma turma chamada '{nome}'.")
+    return nome
+
+
+def criar_turma(db: Session, ident: Identidade, nome: str, ano: int) -> dict:
+    ident.exigir_operador()
+    turma = Turma(nome=_exigir_nome_livre(db, nome), ano=ano)
+    tocar(ident, turma)
+    db.add(turma)
+    db.commit()
+    return _turma(turma)
+
+
+def editar_turma(
+    db: Session, ident: Identidade, turma: str | int, nome: str | None = None, ano: int | None = None
+) -> dict:
+    """Muda nome e ano. A turma é endereço de módulo, matrícula e simulado: todos a acompanham."""
+    ident.exigir_operador()
+    alvo = resolver_turma(db, turma)
+    if nome is not None:
+        alvo.nome = _exigir_nome_livre(db, nome, exceto=alvo.id)
+    if ano is not None:
+        alvo.ano = ano
+    tocar(ident, alvo)
+    db.commit()
+    return _turma(alvo)

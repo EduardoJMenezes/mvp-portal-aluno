@@ -1,0 +1,197 @@
+@import "tailwindcss";
+@import "katex/dist/katex.min.css";
+
+/*
+ * Tokens do estilo escolhido (Quizlet, via Refero), com as correções:
+ * a cor principal é a de ação e link; #282e3e (não #282e3); botão principal em
+ * pílula, campo com 4px, cartão com 8px; line-height em proporção, não em px.
+ * Por cima, a camada de estados que o estilo não tem: acerto, erro, em branco,
+ * rascunho e publicado.
+ */
+@theme {
+  --color-canvas: #f6f7fb;
+  --color-papel: #ffffff;
+  --color-lilas: #edefff;
+  --color-tinta: #282e3e;
+  --color-tinta-2: #2e3856;
+  --color-suave: #586380;
+  --color-apagado: #939bb4; /* só placeholder e desabilitado: 2,8:1 não serve para texto */
+  --color-borda: #d9dde8; /* cartão e divisória */
+  --color-borda-campo: #8a93ad; /* campo de formulário: 3:1 no branco */
+  --color-acento: #4255ff;
+  --color-acento-forte: #2f3fd6;
+
+  --color-sucesso: #11683f;
+  --color-sucesso-fundo: #e3f5ec;
+  --color-sucesso-borda: #9fd9bc;
+  --color-atencao: #8a5100;
+  --color-atencao-fundo: #fdf1dc;
+  --color-atencao-borda: #f0cf8f;
+  --color-erro: #b42318;
+  --color-erro-fundo: #fef3f2;
+  --color-erro-borda: #fecdca;
+
+  --font-sans: var(--fonte-sans), ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-serif: var(--fonte-serifa), Georgia, "Times New Roman", serif;
+  --font-mono: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+
+  --radius-cartao: 8px;
+  --radius-campo: 4px;
+  --shadow-suave: 0 4px 16px rgb(40 46 62 / 0.1);
+  --shadow-botao: 0 2px 4px rgb(40 46 62 / 0.1);
+}
+
+@layer base {
+  html {
+    color-scheme: light;
+    -webkit-text-size-adjust: 100%;
+  }
+  body {
+    background: var(--color-canvas);
+    color: var(--color-tinta);
+    font-family: var(--font-sans);
+    font-size: 16px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+  h1,
+  h2,
+  h3 {
+    text-wrap: balance;
+  }
+  :focus-visible {
+    outline: 2px solid var(--color-acento);
+    outline-offset: 2px;
+  }
+  ::placeholder {
+    color: var(--color-apagado);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      transition-duration: 0.01ms !important;
+      animation-duration: 0.01ms !important;
+    }
+  }
+}
+
+@layer components {
+  .campo {
+    width: 100%;
+    border: 1px solid var(--color-borda-campo);
+    border-radius: var(--radius-campo);
+    background: var(--color-papel);
+    padding: 0.5rem 0.75rem;
+    font-size: 15px;
+    line-height: 1.4;
+    color: var(--color-tinta);
+  }
+  .campo:focus {
+    outline: 2px solid var(--color-acento);
+    outline-offset: 0;
+    border-color: var(--color-acento);
+  }
+  .campo:disabled {
+    background: var(--color-canvas);
+    color: var(--color-suave);
+  }
+  textarea.campo {
+    font-family: var(--font-mono);
+    font-size: 14px;
+    line-height: 1.5;
+    min-height: 7rem;
+  }
+
+  .tabela {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 14px;
+    font-variant-numeric: tabular-nums;
+  }
+  .tabela th {
+    text-align: left;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--color-suave);
+    padding: 0.625rem 0.75rem;
+    border-bottom: 1px solid var(--color-borda);
+  }
+  .tabela td {
+    padding: 0.625rem 0.75rem;
+    border-bottom: 1px solid var(--color-borda);
+    vertical-align: top;
+  }
+  .tabela tr:last-child td {
+    border-bottom: 0;
+  }
+
+  /* Texto da questão: Markdown, fórmula (KaTeX, \ce{}) e figura. Em serifa,
+     que casa com a fórmula e dá cara de prova impressa. */
+  .texto {
+    font-family: var(--font-serif);
+    font-size: 17px;
+    line-height: 1.65;
+    color: var(--color-tinta);
+    overflow-wrap: anywhere;
+  }
+  .texto p {
+    margin: 0 0 0.6em;
+  }
+  .texto p:last-child {
+    margin-bottom: 0;
+  }
+  .texto table {
+    border-collapse: collapse;
+    margin: 0.6em 0;
+    font-size: 15px;
+    display: block;
+    overflow-x: auto;
+  }
+  .texto th,
+  .texto td {
+    border: 1px solid var(--color-borda);
+    padding: 0.25rem 0.625rem;
+  }
+  .texto ul,
+  .texto ol {
+    margin: 0 0 0.6em 1.25rem;
+    list-style: revert;
+  }
+  .texto .katex {
+    font-size: 1.05em;
+  }
+  .texto .katex-display {
+    margin: 0.6em 0;
+    overflow-x: auto;
+    overflow-y: hidden;
+  }
+  .texto img.figura {
+    display: inline-block;
+    vertical-align: middle;
+    max-width: 100%;
+    max-height: 2.2em;
+  }
+  .texto img.figura.sozinha {
+    display: block;
+    max-height: none;
+    margin: 0.6em 0;
+    border-radius: 6px;
+  }
+  .texto .figura-pendente {
+    display: inline-block;
+    padding: 0 0.5rem;
+    border-radius: 6px;
+    font-family: var(--font-sans);
+    font-size: 13px;
+    color: var(--color-atencao);
+    background: var(--color-atencao-fundo);
+    border: 1px dashed var(--color-atencao-borda);
+  }
+  .texto.compacto {
+    font-size: 15px;
+    line-height: 1.55;
+  }
+}

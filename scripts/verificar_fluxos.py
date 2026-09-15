@@ -38,7 +38,8 @@ async def handler(message, response_type, params, context):
 def entrar(email):
     r = httpx.post(f"{API}/api/login", json={"email": email, "senha": "demo1234"})
     r.raise_for_status()
-    return {"authorization": "Bearer " + r.json()["token"]}
+    # O login grava a sessão no cookie httpOnly; a API aceita o mesmo JWT como Bearer.
+    return {"authorization": "Bearer " + r.cookies["sessao"]}
 
 
 def secao(t):

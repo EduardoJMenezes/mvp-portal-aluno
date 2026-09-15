@@ -369,6 +369,59 @@ def onde_o_video_aparece(db: Session, video_id: int) -> list[dict]:
     ]
 
 
+def editar_assunto(db: Session, ident: Identidade, assunto: str | int, nome: str) -> dict:
+    alvo = resolver_assunto(db, assunto)
+    novo = (nome or "").strip()
+    outro = db.scalar(
+        selecionar(Assunto).where(func.lower(Assunto.nome) == novo.lower(), Assunto.id != alvo.id)
+    )
+    if outro is not None:
+        raise RegraDeNegocio(f"Já existe o assunto '{outro.nome}'.")
+    renomear_assunto(db, ident, alvo, novo)
+    db.commit()
+    return {"assunto_id": alvo.id, "assunto": alvo.nome}
+
+
+def excluir_assunto(db: Session, ident: Identidade, assunto: str | int) -> dict:
+    saida = remover_assunto(db, ident, resolver_assunto(db, assunto))
+    db.commit()
+    return saida
+
+
+def editar_subassunto(
+    db: Session, ident: Identidade, assunto: str | int, subassunto: str | int, nome: str
+) -> dict:
+    ident.exigir_operador()
+    pai = resolver_assunto(db, assunto)
+    alvo = resolver_subassunto(db, pai, subassunto)
+    novo = (nome or "").strip()
+    if not novo:
+        raise RegraDeNegocio("O nome do sub-assunto não pode ficar vazio.")
+    outro = db.scalar(
+        selecionar(SubAssunto).where(
+            SubAssunto.assunto_id == pai.id,
+            func.lower(SubAssunto.nome) == novo.lower(),
+            SubAssunto.id != alvo.id,
+        )
+    )
+    if outro is not None:
+        raise RegraDeNegocio(f"'{pai.nome}' já tem o sub-assunto '{outro.nome}'.")
+    alvo.nome = novo
+    tocar(ident, alvo)
+    db.commit()
+    return {"assunto": pai.nome, "subassunto_id": alvo.id, "subassunto": alvo.nome}
+
+
+def excluir_subassunto(db: Session, ident: Identidade, assunto: str | int, subassunto: str | int) -> dict:
+    """Remoção lógica, como a do assunto: os vínculos voltam a valer se ele for restaurado."""
+    ident.exigir_operador()
+    pai = resolver_assunto(db, assunto)
+    alvo = resolver_subassunto(db, pai, subassunto)
+    remover(db, ident, alvo)
+    db.commit()
+    return {"assunto": pai.nome, "subassunto": alvo.nome, "reversivel": True}
+
+
 def cadastrar_assunto(
     db: Session, ident: Identidade, nome: str, subassuntos: list[str] | None = None
 ) -> dict:

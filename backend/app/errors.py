@@ -22,6 +22,23 @@ class RegraDeNegocio(ErroDominio):
     """Operação válida na forma, recusada pelo estado ou pelas regras."""
 
 
+class CredenciaisInvalidas(ErroDominio):
+    """E-mail ou senha errados — sem dizer qual dos dois, de propósito."""
+
+    def __init__(self) -> None:
+        super().__init__("E-mail ou senha incorretos.")
+
+
+class MuitasTentativas(ErroDominio):
+    """Login travado por excesso de tentativas; `segundos` diz quando tentar de novo."""
+
+    def __init__(self, segundos: int) -> None:
+        self.segundos = segundos
+        minutos = max(1, -(-segundos // 60))
+        plural = "s" if minutos > 1 else ""
+        super().__init__(f"Muitas tentativas de entrar. Tente de novo em {minutos} minuto{plural}.")
+
+
 class AprovacaoNecessaria(RegraDeNegocio):
     """Publicação barrada por falta de aprovação humana explícita.
 

@@ -18,15 +18,23 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
 from sqlalchemy.exc import OperationalError
+from starlette.datastructures import MutableHeaders
 from starlette.exceptions import HTTPException
 from starlette.middleware import Middleware
 from starlette.middleware.cors import CORSMiddleware
 from starlette.routing import Mount
 
 from app.api import admin_routes, aluno_routes, auth_routes, envio_routes
-from app.config import get_settings
+from app.config import Settings, get_settings
 from app.db import engine
-from app.errors import AprovacaoNecessaria, NaoAutorizado, NaoEncontrado, RegraDeNegocio
+from app.errors import (
+    AprovacaoNecessaria,
+    CredenciaisInvalidas,
+    MuitasTentativas,
+    NaoAutorizado,
+    NaoEncontrado,
+    RegraDeNegocio,
+)
 from app.integracoes.vimeo import VimeoErro
 
 # Importar os módulos de tools registra todas elas na instância `mcp`.
@@ -43,22 +51,84 @@ settings = get_settings()
 
 CAMINHO_MCP = "/mcp"
 
+if settings.jwt_secret == Settings.model_fields["jwt_secret"].default:
+    logger.warning("JWT_SECRET é o valor de desenvolvimento: defina um segredo aleatório fora da máquina local")
+if settings.modo_demo:
+    logger.warning("MODO_DEMO ligado: a tela de login entra nas contas .demo sem senha")
 
-class SpaEstatica(StaticFiles):
-    """StaticFiles que devolve o index.html nas rotas do React Router.
+# O export estático do Next injeta scripts inline e não há servidor para dar
+# nonce a eles. ponytail: 'unsafe-inline' em script-src; o XSS fica contido
+# pelo texto da questão escapado e pela sessão httpOnly. Nonce exige o Next
+# rodando como servidor.
+CSP_DO_PORTAL = "; ".join(
+    [
+        "default-src 'self'",
+        "script-src 'self' 'unsafe-inline'",
+        "style-src 'self' 'unsafe-inline'",
+        "img-src 'self' data: blob: https://i.vimeocdn.com",
+        "font-src 'self' data:",
+        "connect-src 'self'",
+        "frame-src https://player.vimeo.com",
+        "object-src 'none'",
+        "base-uri 'self'",
+        "form-action 'self'",
+        "frame-ancestors 'none'",
+    ]
+)
 
-    Sem isso, abrir /rascunhos direto (ou recarregar a página) dá 404: esses
-    caminhos existem só no cliente.
+
+class PortalEstatico(StaticFiles):
+    """O portal exportado pelo Next: cada rota é um index.html na pasta dela.
+
+    Três casos fogem do arquivo em disco:
+
+    * `/enviar/<token>` cai na página `/enviar/`, que lê o token do endereço —
+      o link chega pelo chat e não existe como arquivo;
+    * `/api/...` que não é rota devolve JSON, não a página 404;
+    * o resto que não existe recebe a 404 do portal, com status 404.
     """
 
     async def get_response(self, path: str, scope):  # type: ignore[override]
+        caminho = path.replace("\\", "/")  # o Starlette normaliza com o separador do sistema
+        if caminho.startswith("api/"):
+            return JSONResponse(status_code=404, content={"detail": "Não encontrado."})
         try:
-            return await super().get_response(path, scope)
+            resposta = await super().get_response(path, scope)
         except HTTPException as e:
             if e.status_code != 404:
                 raise
-            # Caminho que o React Router conhece e o disco não: entrega o app.
-            return await super().get_response("index.html", scope)
+            resposta = JSONResponse(status_code=404, content={"detail": "Não encontrado."})
+        if resposta.status_code == 404 and caminho.startswith("enviar/"):
+            resposta = await super().get_response("enviar/index.html", scope)
+        resposta.headers["Content-Security-Policy"] = CSP_DO_PORTAL
+        return resposta
+
+
+class CabecalhosDeSeguranca:
+    """Headers que valem para toda resposta: portal, API, MCP e OAuth."""
+
+    def __init__(self, app) -> None:
+        self.app = app
+
+    async def __call__(self, scope, receive, send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        async def enviar(mensagem) -> None:
+            if mensagem["type"] == "http.response.start":
+                headers = MutableHeaders(scope=mensagem)
+                headers.setdefault("X-Content-Type-Options", "nosniff")
+                headers.setdefault("X-Frame-Options", "DENY")
+                headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+                headers.setdefault(
+                    "Permissions-Policy", "camera=(), microphone=(), geolocation=(), payment=()"
+                )
+                if settings.sessao_cookie_seguro:
+                    headers.setdefault("Strict-Transport-Security", "max-age=31536000")
+            await send(mensagem)
+
+        await self.app(scope, receive, enviar)
 
 
 class BarraFinalDoMcp:
@@ -91,6 +161,18 @@ def _nao_encontrado(_: Request, exc: NaoEncontrado) -> JSONResponse:
 @api.exception_handler(NaoAutorizado)
 def _nao_autorizado(_: Request, exc: NaoAutorizado) -> JSONResponse:
     return JSONResponse(status_code=403, content={"detail": str(exc)})
+
+
+@api.exception_handler(CredenciaisInvalidas)
+def _credenciais(_: Request, exc: CredenciaisInvalidas) -> JSONResponse:
+    return JSONResponse(status_code=401, content={"detail": str(exc)})
+
+
+@api.exception_handler(MuitasTentativas)
+def _tentativas(_: Request, exc: MuitasTentativas) -> JSONResponse:
+    return JSONResponse(
+        status_code=429, content={"detail": str(exc)}, headers={"Retry-After": str(exc.segundos)}
+    )
 
 
 @api.exception_handler(AprovacaoNecessaria)
@@ -154,6 +236,7 @@ def saude() -> JSONResponse:
             "vimeo": "api-real" if settings.vimeo_real else "acervo-de-demonstracao",
             "mcp": CAMINHO_MCP,
             "mcp_oauth": "github" if settings.oauth_mcp_ativo else "token-bearer",
+            "modo_demo": get_settings().modo_demo,
         },
     )
 
@@ -163,12 +246,13 @@ api.include_router(admin_routes.router)
 api.include_router(aluno_routes.router)
 api.include_router(envio_routes.router)
 
-# O frontend compilado, quando existe, é servido pelo mesmo host — assim a demo
-# roda em uma porta só. Em desenvolvimento usa-se o Vite (porta 5173).
-_dist = Path(__file__).resolve().parents[2] / "frontend" / "dist"
-if _dist.is_dir():
-    api.mount("/", SpaEstatica(directory=str(_dist), html=True), name="frontend")
-    logger.info("frontend servido de %s", _dist)
+# O portal exportado, quando existe, é servido pelo mesmo host: mesma origem
+# para o cookie da sessão e uma porta só. Em desenvolvimento, `npm run dev` na
+# porta 3000 repassa /api para cá.
+_portal = Path(__file__).resolve().parents[2] / "frontend" / "out"
+if _portal.is_dir():
+    api.mount("/", PortalEstatico(directory=str(_portal), html=True), name="frontend")
+    logger.info("portal servido de %s", _portal)
 
 
 # Quem hospeda é o app do MCP, não o FastAPI — e a ordem importa muito.
@@ -193,6 +277,7 @@ app = mcp.http_app(
             allow_headers=["*"],
         ),
         Middleware(BarraFinalDoMcp),
+        Middleware(CabecalhosDeSeguranca),
     ],
 )
 app.router.routes.append(Mount("/", app=api))

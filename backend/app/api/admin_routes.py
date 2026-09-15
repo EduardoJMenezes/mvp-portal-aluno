@@ -1,22 +1,22 @@
 """API do professor/gerenciador.
 
 Mesmíssimos services que as tools do MCP chamam — o que muda é só a borda.
-Toda operação do MCP tem aqui o endpoint equivalente: é a API que o portal
-novo (Next.js) vai consumir, com o cliente tipado gerado do `openapi.json`
-(docs/MODELO-SIMULADO.md). As referências aceitam id ou nome, como nas tools.
+Toda operação do MCP tem aqui o endpoint equivalente, e o portal em Next.js
+consome esta API. As referências aceitam id ou nome, como nas tools.
 
-O portal atual só lê. Os endpoints de escrita existem para o front novo e para
-sessões do Claude Code — que entram com o token do MCP, e por isso não aprovam
-nem descartam rascunho (ver `deps._pelo_token_do_mcp`).
+Além do que o MCP faz, moram aqui o que só o portal faz: turmas, alunos e
+matrículas, senha de aluno e tokens do MCP. Sessões do Claude Code entram com
+o token do MCP e por isso não aprovam nem descartam rascunho, não cadastram
+aluno e não emitem token (ver `deps._pelo_token_do_mcp`).
 """
 
 from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, Depends, File, Form, UploadFile
+from fastapi import APIRouter, Depends, File, Form, Query, UploadFile
 from fastapi.responses import Response
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, EmailStr, Field
 from starlette.concurrency import run_in_threadpool
 from sqlalchemy.orm import Session
 
@@ -26,6 +26,7 @@ from app.identidade import Identidade
 from app.services import (
     analytics,
     catalogo,
+    contas,
     estrutura,
     importacoes,
     publicacao,
@@ -55,6 +56,79 @@ def turmas(ident: Identidade = Operador, db: Session = Banco) -> list[dict]:
     return catalogo.listar_turmas(db, ident)
 
 
+class TurmaIn(BaseModel):
+    nome: str = Field(min_length=1, max_length=120)
+    ano: int = Field(ge=2000, le=2100)
+
+
+class EdicaoTurmaIn(BaseModel):
+    nome: str | None = Field(None, min_length=1, max_length=120)
+    ano: int | None = Field(None, ge=2000, le=2100)
+
+
+@router.post("/turmas")
+def criar_turma(dados: TurmaIn, ident: Identidade = Operador, db: Session = Banco) -> dict:
+    return catalogo.criar_turma(db, ident, dados.nome, dados.ano)
+
+
+@router.patch(TURMA)
+def editar_turma(turma: str, dados: EdicaoTurmaIn, ident: Identidade = Operador, db: Session = Banco) -> dict:
+    return catalogo.editar_turma(db, ident, turma, dados.nome, dados.ano)
+
+
+# --- alunos e matrículas -----------------------------------------------------
+
+
+class MatriculaIn(BaseModel):
+    email: EmailStr
+    nome: str = Field("", max_length=120, description="Obrigatório quando o aluno ainda não tem conta")
+
+
+@router.get(TURMA + "/alunos")
+def alunos_da_turma(turma: str, ident: Identidade = Operador, db: Session = Banco) -> dict:
+    return contas.alunos_da_turma(db, ident, turma)
+
+
+@router.post(TURMA + "/alunos")
+def matricular(turma: str, dados: MatriculaIn, ident: Identidade = Operador, db: Session = Banco) -> dict:
+    """Matricula; se o e-mail não tem conta, cria com senha temporária (mostrada uma vez)."""
+    return contas.matricular(db, ident, turma, dados.nome, str(dados.email))
+
+
+@router.delete(TURMA + "/alunos/{aluno}")
+def desmatricular(turma: str, aluno: str, ident: Identidade = Operador, db: Session = Banco) -> dict:
+    return contas.desmatricular(db, ident, turma, aluno)
+
+
+@router.post("/alunos/{aluno}/senha")
+def redefinir_senha(aluno: str, ident: Identidade = Operador, db: Session = Banco) -> dict:
+    """Senha temporária nova, mostrada uma vez. As sessões do aluno caem."""
+    return contas.redefinir_senha(db, ident, aluno)
+
+
+# --- tokens do MCP -----------------------------------------------------------
+
+
+class TokenIn(BaseModel):
+    nome: str = Field("Claude", max_length=120)
+
+
+@router.get("/tokens")
+def tokens(ident: Identidade = Operador, db: Session = Banco) -> list[dict]:
+    return contas.tokens_do_operador(db, ident)
+
+
+@router.post("/tokens")
+def emitir_token(dados: TokenIn, ident: Identidade = Operador, db: Session = Banco) -> dict:
+    """O valor do token aparece só nesta resposta."""
+    return contas.emitir_token(db, ident, dados.nome)
+
+
+@router.delete("/tokens/{token_id}")
+def revogar_token(token_id: int, ident: Identidade = Operador, db: Session = Banco) -> dict:
+    return contas.revogar_token(db, ident, token_id)
+
+
 @router.get("/modulos")
 def modulos(turma: str | None = None, ident: Identidade = Operador, db: Session = Banco) -> list[dict]:
     """A árvore do curso: módulos, sub-módulos e itens de cada turma."""
@@ -71,13 +145,15 @@ def lista_questoes(
     assunto: str | None = None,
     status: str | None = None,
     dificuldade: str | None = None,
-    limite: int = 200,
+    busca: str | None = Query(None, max_length=200, description="Trecho do enunciado"),
+    limite: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
     ident: Identidade = Operador,
     db: Session = Banco,
 ) -> list[dict]:
     """Acervo de questões de simulado — não as questões da apostila, que são
-    vídeos e aparecem em /modulos."""
-    return catalogo.buscar_questoes(db, ident, assunto, status, dificuldade, limite)
+    vídeos e aparecem em /modulos. Página seguinte: `offset` += `limite`."""
+    return catalogo.buscar_questoes(db, ident, assunto, status, dificuldade, limite, busca, offset)
 
 
 @router.get("/alunos/{aluno}/desempenho")
@@ -211,7 +287,35 @@ class AssuntoIn(BaseModel):
 
 @router.post("/assuntos")
 def cadastrar_assunto(dados: AssuntoIn, ident: Identidade = Operador, db: Session = Banco) -> dict:
+    """Cria o assunto e os sub-assuntos. Repetir o nome acrescenta sub-assuntos, não duplica."""
     return taxonomia.cadastrar_assunto(db, ident, dados.nome, dados.subassuntos)
+
+
+class NomeIn(BaseModel):
+    nome: str = Field(min_length=1, max_length=120)
+
+
+@router.patch("/assuntos/{assunto}")
+def editar_assunto(assunto: str, dados: NomeIn, ident: Identidade = Operador, db: Session = Banco) -> dict:
+    return taxonomia.editar_assunto(db, ident, assunto, dados.nome)
+
+
+@router.delete("/assuntos/{assunto}")
+def excluir_assunto(assunto: str, ident: Identidade = Operador, db: Session = Banco) -> dict:
+    """Remoção lógica: vídeos e questões perdem a etiqueta até ela ser restaurada."""
+    return taxonomia.excluir_assunto(db, ident, assunto)
+
+
+@router.patch("/assuntos/{assunto}/subassuntos/{subassunto}")
+def editar_subassunto(
+    assunto: str, subassunto: str, dados: NomeIn, ident: Identidade = Operador, db: Session = Banco
+) -> dict:
+    return taxonomia.editar_subassunto(db, ident, assunto, subassunto, dados.nome)
+
+
+@router.delete("/assuntos/{assunto}/subassuntos/{subassunto}")
+def excluir_subassunto(assunto: str, subassunto: str, ident: Identidade = Operador, db: Session = Banco) -> dict:
+    return taxonomia.excluir_subassunto(db, ident, assunto, subassunto)
 
 
 # --- Vimeo -------------------------------------------------------------------
@@ -299,6 +403,7 @@ class QuestaoIn(BaseModel):
     dificuldade: str | None = None
     vimeo_id: str | None = Field(None, description="Vídeo da resolução")
     imagem_pendente: bool = False
+    resolucao_comentada: str | None = Field(None, description="Markdown; o aluno vê depois do fechamento")
 
 
 class EdicaoQuestaoIn(BaseModel):
@@ -310,6 +415,7 @@ class EdicaoQuestaoIn(BaseModel):
     assunto: str | None = Field(None, description="Troca a classificação; '' tira")
     subassunto: str | None = None
     vimeo_id: str | None = Field(None, description="Vídeo da resolução; '' tira")
+    resolucao_comentada: str | None = Field(None, description="'' tira")
 
 
 @router.post("/questoes")
@@ -319,7 +425,7 @@ async def criar_questao(dados: QuestaoIn, ident: Identidade = Operador, db: Sess
     return await run_in_threadpool(
         rascunhos.criar_questao_rascunho, db, ident, dados.enunciado, dados.alternativas,
         dados.gabarito, dados.assunto, dados.subassunto, dados.dificuldade, resolucao,
-        dados.imagem_pendente,
+        dados.imagem_pendente, dados.resolucao_comentada,
     )
 
 
@@ -349,6 +455,7 @@ async def anexar_figura(
     questao_id: int,
     arquivo: UploadFile = File(description="PNG, JPEG, WEBP ou GIF, até 2 MB"),
     parte: str = Form("ENUNCIADO", description="ENUNCIADO, ALTERNATIVA ou RESOLUCAO"),
+    alternativa: str | None = Form(None, max_length=1, description="A letra, quando a parte é ALTERNATIVA"),
     ident: Identidade = Operador,
     db: Session = Banco,
 ) -> dict:
@@ -356,7 +463,7 @@ async def anexar_figura(
     # Lê um byte além do limite: basta para recusar sem carregar um arquivo gigante.
     conteudo = await arquivo.read(questoes.LIMITE_DA_IMAGEM + 1)
     return await run_in_threadpool(
-        questoes.anexar_figura, db, ident, questao_id, conteudo, arquivo.filename, parte
+        questoes.anexar_figura, db, ident, questao_id, conteudo, arquivo.filename, parte, alternativa
     )
 
 
@@ -422,6 +529,11 @@ class RecorteIn(BaseModel):
 def criar_link_de_prints(ident: Identidade = Operador, db: Session = Banco) -> dict:
     """O link de uso único pelo qual os prints chegam (ver /api/importacoes/{token}/prints)."""
     return importacoes.criar_link_de_prints(db, ident)
+
+
+@router.get("/importacoes/{importacao_id}/prints")
+def prints_da_importacao(importacao_id: int, ident: Identidade = Operador, db: Session = Banco) -> dict:
+    return importacoes.total_de_prints(db, ident, importacao_id)
 
 
 @router.get("/importacoes/{importacao_id}/prints/{numero}", response_class=Response)

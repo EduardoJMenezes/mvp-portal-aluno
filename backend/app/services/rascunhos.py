@@ -294,6 +294,7 @@ def criar_questao_rascunho(
     dificuldade: str | None = None,
     resolucao: dict | None = None,
     imagem_pendente: bool = False,
+    resolucao_comentada: str | None = None,
 ) -> dict:
     """Propõe uma questão para o acervo de simulado.
 
@@ -324,6 +325,7 @@ def criar_questao_rascunho(
             "dificuldade": dificuldade,
             "resolucao": resolucao,
             "imagem_pendente": imagem_pendente,
+            "resolucao_comentada": resolucao_comentada,
         },
     )
 

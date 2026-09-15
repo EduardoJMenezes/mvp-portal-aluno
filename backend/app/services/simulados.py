@@ -283,6 +283,7 @@ def abrir_simulado(
     if ident.e_operador:
         return {
             **base,
+            "rascunho_id": s.rascunho_id,
             "questoes": [
                 {
                     **_questao_da_prova(sq, com_gabarito=True),
@@ -582,6 +583,57 @@ def resultado(
         "analise": recomendar_videos(
             db, ident, [q["questao_id"] for q in questoes if not q["correta"]], agora=agora
         ),
+    }
+
+
+def historico_do_aluno(db: Session, ident: Identidade, agora: datetime | None = None) -> dict:
+    """Os simulados encerrados que o aluno fez, com nota e posição, e os tópicos
+    em que mais errou no conjunto.
+
+    Só encerrados: o resultado de cada prova só sai quando ela fecha, e o
+    histórico não pode ser uma porta dos fundos para ele.
+    """
+    from app.services.analytics import recomendar_videos
+
+    agora = _agora(agora)
+    if not ident.e_aluno:
+        raise RegraDeNegocio("O histórico é a visão do aluno. Para um aluno específico, use o desempenho.")
+
+    tentativas = db.scalars(
+        select(Tentativa)
+        .options(selectinload(Tentativa.respostas))
+        .where(Tentativa.aluno_id == ident.usuario_id)
+        .order_by(Tentativa.iniciado_em)
+    ).all()
+
+    linhas, erradas = [], []
+    for t in tentativas:
+        s = t.simulado
+        if s.removido_em is not None or situacao(s, agora) != Situacao.ENCERRADO:
+            continue
+        classificacao = _classificacao(db, s, agora)
+        minha = next((linha for linha in classificacao if linha["aluno_id"] == ident.usuario_id), None)
+        if minha is None:
+            continue
+        certas = {r.questao_id for r in t.respostas if r.correta}
+        erradas.extend(sq.questao_id for sq in s.questoes if sq.questao_id not in certas)
+        linhas.append(
+            {
+                "simulado_id": s.id,
+                "titulo": s.titulo,
+                "fechou_em": _iso(s.fecha_em),
+                "acertos": minha["acertos"],
+                "total": minha["total"],
+                "percentual": _percentual(minha["acertos"], minha["total"]),
+                "posicao": minha["posicao"],
+                "participantes": len(classificacao),
+            }
+        )
+    db.commit()
+
+    return {
+        "simulados": linhas,
+        "topicos": recomendar_videos(db, ident, erradas, limite=3, agora=agora)[:5],
     }
 
 

@@ -150,6 +150,14 @@ class Usuario(Base):
     senha_hash: Mapped[str] = mapped_column(String(200), nullable=False)
     papel: Mapped[str] = mapped_column(String(20), nullable=False)
     criado_em: Mapped[datetime] = _agora()
+    # Senha que outra pessoa definiu (o professor cadastrando ou redefinindo):
+    # até o dono trocar, a sessão só serve para trocar a senha.
+    senha_temporaria: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("false")
+    )
+    # Sessão emitida antes deste instante deixa de valer: trocar a senha
+    # derruba quem entrou com a antiga.
+    senha_alterada_em: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     __table_args__ = (
         CheckConstraint("papel in ('ADMIN','GERENCIADOR','ALUNO')", name="ck_users_papel"),
