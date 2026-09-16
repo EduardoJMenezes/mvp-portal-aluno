@@ -23,12 +23,23 @@ import { api, type PaginaAnotada, type Traco } from "@/lib/api";
 
 type Ferramenta = "mao" | "caneta" | "marcatexto" | "texto" | "borracha";
 type Tracos = Record<number, Traco[]>;
+// O Safari do iPad só tem a versão com prefixo, e é justamente onde a tela cheia
+// mais vale a pena.
+type ElementoDeTelaCheia = HTMLDivElement & { webkitRequestFullscreen?: () => Promise<void> | void };
+type DocumentoDeTelaCheia = Document & {
+  webkitFullscreenElement?: Element | null;
+  webkitExitFullscreen?: () => Promise<void> | void;
+};
 
 const CORES = ["#111827", "#2563eb", "#dc2626", "#16a34a"];
 const CORES_MARCATEXTO = ["#fde047", "#86efac", "#93c5fd", "#fda4af"];
 const ESPESSURAS = [0.0025, 0.005, 0.01];
+const TAMANHO_DO_TEXTO = 0.018;
 const ESPERA_PARA_SALVAR = 1500;
 const PAGINAS_VIZINHAS = 1;
+// Depois do último sinal da caneta o toque ainda é palma por este tempo. É o que
+// impede a mão apoiada de arrastar a página debaixo do traço.
+const ESPERA_DA_PALMA = 700;
 
 // --- desenho -----------------------------------------------------------------
 
@@ -80,6 +91,8 @@ function TracosDaPagina({ tracos, largura, altura }: { tracos: Traco[]; largura:
 
 type DimensoesDaPagina = { largura: number; altura: number };
 
+type CaixaAberta = { chave: number; x: number; y: number; txt: string; cor: string };
+
 function Pagina({
   documento,
   numero,
@@ -87,6 +100,10 @@ function Pagina({
   desenhar,
   tracos,
   emAndamento,
+  escrevendo,
+  aoEscrever,
+  aoFecharTexto,
+  aoDesistirDoTexto,
   aoMedir,
   ...eventos
 }: {
@@ -96,10 +113,16 @@ function Pagina({
   desenhar: boolean;
   tracos: Traco[];
   emAndamento: Traco | null;
+  escrevendo: CaixaAberta | null;
+  aoEscrever: (txt: string) => void;
+  aoFecharTexto: () => void;
+  aoDesistirDoTexto: () => void;
   aoMedir: (d: DimensoesDaPagina) => void;
   onPointerDown: (e: EventoDePonteiro<HTMLDivElement>) => void;
   onPointerMove: (e: EventoDePonteiro<HTMLDivElement>) => void;
   onPointerUp: (e: EventoDePonteiro<HTMLDivElement>) => void;
+  onPointerCancel: (e: EventoDePonteiro<HTMLDivElement>) => void;
+  onLostPointerCapture: (e: EventoDePonteiro<HTMLDivElement>) => void;
 }) {
   const canvas = useRef<HTMLCanvasElement>(null);
   const [tamanho, setTamanho] = useState<DimensoesDaPagina | null>(null);
@@ -162,6 +185,19 @@ function Pagina({
           )}
         </svg>
       )}
+      {medida && escrevendo && (
+        <CaixaDeTexto
+          key={escrevendo.chave}
+          x={escrevendo.x * medida.largura}
+          y={escrevendo.y * medida.altura}
+          tamanho={TAMANHO_DO_TEXTO * medida.largura}
+          cor={escrevendo.cor}
+          texto={escrevendo.txt}
+          aoEscrever={aoEscrever}
+          aoFechar={aoFecharTexto}
+          aoDesistir={aoDesistirDoTexto}
+        />
+      )}
     </div>
   );
 }
@@ -184,18 +220,25 @@ export function LeitorPdf({ materialId }: { materialId: number }) {
 
   const [tracos, setTracos] = useState<Tracos>({});
   const [emAndamento, setEmAndamento] = useState<{ pagina: number; traco: Traco } | null>(null);
-  const [escrevendo, setEscrevendo] = useState<{ pagina: number; x: number; y: number } | null>(null);
+  const [escrevendo, setEscrevendo] = useState<{ id: number; pagina: number; x: number; y: number; txt: string } | null>(
+    null,
+  );
+  const [canetaPerto, setCanetaPerto] = useState(false);
+  const [cheia, setCheia] = useState(false);
   const [salvando, setSalvando] = useState(false);
   const [salvoEm, setSalvoEm] = useState<Date | null>(null);
 
+  const caixa = useRef<HTMLDivElement>(null);
   const rolagem = useRef<HTMLDivElement>(null);
   const atuais = useRef<Tracos>({});
   const sujas = useRef<Set<number>>(new Set());
   const relogio = useRef<ReturnType<typeof setTimeout> | null>(null);
   const historico = useRef<{ pagina: number; antes: Traco[] }[]>([]);
   const refeitos = useRef<{ pagina: number; antes: Traco[] }[]>([]);
-  const canetaVista = useRef(false);
-  const desenhando = useRef<{ pagina: number; pontos: [number, number, number][] } | null>(null);
+  const textoFechado = useRef(0);
+  const desenhando = useRef<{ pagina: number; ponteiro: number; pontos: [number, number, number][] } | null>(null);
+
+  const marcando = ferramenta === "caneta" || ferramenta === "marcatexto" || ferramenta === "borracha";
 
   atuais.current = tracos;
 
@@ -313,6 +356,61 @@ export function LeitorPdf({ materialId }: { materialId: number }) {
     return () => window.removeEventListener("keydown", semImprimir);
   }, []);
 
+  // --- palma ------------------------------------------------------------------
+  // Enquanto a caneta está na tela — encostada ou pairando —, o toque não vale
+  // nada: nem marca (isso é regra em `comecar`) nem rola (isso é o touch-action
+  // que este estado liga lá embaixo).
+  useEffect(() => {
+    const alvo = rolagem.current;
+    if (!alvo) return;
+    let sono: ReturnType<typeof setTimeout> | null = null;
+    const viuCaneta = (e: PointerEvent) => {
+      if (e.pointerType !== "pen") return;
+      setCanetaPerto(true);
+      if (sono) clearTimeout(sono);
+      sono = setTimeout(() => setCanetaPerto(false), ESPERA_DA_PALMA);
+    };
+    alvo.addEventListener("pointerdown", viuCaneta, true);
+    alvo.addEventListener("pointermove", viuCaneta, true);
+    return () => {
+      if (sono) clearTimeout(sono);
+      alvo.removeEventListener("pointerdown", viuCaneta, true);
+      alvo.removeEventListener("pointermove", viuCaneta, true);
+    };
+  }, []);
+
+  // --- tela cheia --------------------------------------------------------------
+  const alternarTelaCheia = () => {
+    const doc = document as DocumentoDeTelaCheia;
+    if (cheia) {
+      setCheia(false);
+      if (document.fullscreenElement || doc.webkitFullscreenElement) {
+        void (document.exitFullscreen ?? doc.webkitExitFullscreen)?.call(document);
+      }
+      return;
+    }
+    setCheia(true);
+    // Onde a API não existe (iPhone, navegador antigo), o modo continua valendo:
+    // é o nosso CSS que cobre a tela, só a barra do navegador fica.
+    const alvo = caixa.current as ElementoDeTelaCheia | null;
+    void Promise.resolve((alvo?.requestFullscreen ?? alvo?.webkitRequestFullscreen)?.call(alvo)).catch(
+      () => undefined,
+    );
+  };
+
+  useEffect(() => {
+    const doc = document as DocumentoDeTelaCheia;
+    const aoTrocar = () => {
+      if (!document.fullscreenElement && !doc.webkitFullscreenElement) setCheia(false);
+    };
+    document.addEventListener("fullscreenchange", aoTrocar);
+    document.addEventListener("webkitfullscreenchange", aoTrocar);
+    return () => {
+      document.removeEventListener("fullscreenchange", aoTrocar);
+      document.removeEventListener("webkitfullscreenchange", aoTrocar);
+    };
+  }, []);
+
   // --- que páginas desenhar --------------------------------------------------
   useEffect(() => {
     const alvo = rolagem.current;
@@ -382,25 +480,46 @@ export function LeitorPdf({ materialId }: { materialId: number }) {
     if (restantes.length !== (atuais.current[numero] ?? []).length) guardar(numero, restantes);
   };
 
+  // Fecha a caixa de texto aberta: `guardando` diz se o que está escrito vira
+  // anotação. A chave evita gravar duas vezes — o blur chega depois do clique
+  // que já fechou a caixa.
+  const fecharTexto = (guardando: boolean) => {
+    const aberta = escrevendo;
+    setEscrevendo(null);
+    if (!aberta || textoFechado.current === aberta.id) return;
+    textoFechado.current = aberta.id;
+    if (!guardando || !aberta.txt.trim()) return;
+    guardar(aberta.pagina, [
+      ...(atuais.current[aberta.pagina] ?? []),
+      { t: "texto", cor, x: aberta.x, y: aberta.y, tam: TAMANHO_DO_TEXTO, txt: aberta.txt.trim() },
+    ]);
+  };
+
   const comecar = (numero: number) => (e: EventoDePonteiro<HTMLDivElement>) => {
-    if (e.pointerType === "pen") canetaVista.current = true;
-    // Com caneta em uso, o dedo volta a ser só rolagem e zoom.
-    const soRola = ferramenta === "mao" || (e.pointerType === "touch" && canetaVista.current);
-    if (soRola) return;
+    if (ferramenta === "mao") return;
+    // Palm rejection: com caneta, marca-texto ou borracha na mão, o que é toque é
+    // palma — só rola a página, nunca marca. Dedo desenhando fica para a Mão.
+    if (marcando && e.pointerType === "touch") return;
+    // Um ponteiro de cada vez: a palma que encosta no meio do traço não o rouba.
+    if (desenhando.current) return;
 
     if (ferramenta === "texto") {
+      // Sem isto o mousedown que vem atrás devolve o foco para a página e a
+      // caixa recém-aberta fecha no mesmo instante, antes de dar para escrever.
+      e.preventDefault();
       const [x, y] = pontoDaPagina(e);
-      setEscrevendo({ pagina: numero, x, y });
+      fecharTexto(true); // o que estava escrito em outro ponto vira anotação
+      setEscrevendo({ id: Date.now(), pagina: numero, x, y, txt: "" });
       return;
     }
     e.currentTarget.setPointerCapture(e.pointerId);
     const ponto = pontoDaPagina(e);
     if (ferramenta === "borracha") {
       apagarEm(numero, ponto);
-      desenhando.current = { pagina: numero, pontos: [] };
+      desenhando.current = { pagina: numero, ponteiro: e.pointerId, pontos: [] };
       return;
     }
-    desenhando.current = { pagina: numero, pontos: [ponto] };
+    desenhando.current = { pagina: numero, ponteiro: e.pointerId, pontos: [ponto] };
     setEmAndamento({ pagina: numero, traco: tracoEmAndamento([ponto]) });
   };
 
@@ -411,7 +530,7 @@ export function LeitorPdf({ materialId }: { materialId: number }) {
 
   const mover = (numero: number) => (e: EventoDePonteiro<HTMLDivElement>) => {
     const atual = desenhando.current;
-    if (!atual || atual.pagina !== numero) return;
+    if (!atual || atual.pagina !== numero || atual.ponteiro !== e.pointerId) return;
     const ponto = pontoDaPagina(e);
     if (ferramenta === "borracha") {
       apagarEm(numero, ponto);
@@ -423,15 +542,24 @@ export function LeitorPdf({ materialId }: { materialId: number }) {
     setEmAndamento({ pagina: numero, traco: tracoEmAndamento([...atual.pontos]) });
   };
 
-  const terminar = (numero: number) => () => {
+  const terminar = (numero: number) => (e: EventoDePonteiro<HTMLDivElement>) => {
     const atual = desenhando.current;
+    if (!atual || atual.pagina !== numero || atual.ponteiro !== e.pointerId) return;
     desenhando.current = null;
     setEmAndamento(null);
-    if (!atual || atual.pagina !== numero || atual.pontos.length === 0) return;
+    if (atual.pontos.length === 0) return;
     const arredondado = atual.pontos.map(
       ([x, y, p]) => [Number(x.toFixed(4)), Number(y.toFixed(4)), Number(p.toFixed(2))] as [number, number, number],
     );
     guardar(numero, [...(atuais.current[numero] ?? []), tracoEmAndamento(arredondado)]);
+  };
+
+  const cancelar = (e: EventoDePonteiro<HTMLDivElement>) => {
+    // O navegador tomou o gesto para si (rolagem, gesto do sistema). Sem isto o
+    // traço fica preso e nenhum outro começa.
+    if (desenhando.current?.ponteiro !== e.pointerId) return;
+    desenhando.current = null;
+    setEmAndamento(null);
   };
 
   const desfazer = () => {
@@ -456,12 +584,17 @@ export function LeitorPdf({ materialId }: { materialId: number }) {
   const escala = base * zoom;
 
   return (
-    <div className="flex h-[calc(100dvh-3.5rem)] flex-col">
+    <div
+      ref={caixa}
+      className={
+        cheia ? "fixed inset-0 z-50 flex flex-col bg-canvas" : "flex h-[calc(100dvh-3.5rem)] flex-col"
+      }
+    >
       <Barra
         ferramenta={ferramenta}
         aoTrocarFerramenta={(f) => {
           ferramentaEscolhida(f);
-          setEscrevendo(null); // trocar de ferramenta fecha a caixa de texto aberta
+          fecharTexto(true); // trocar de ferramenta guarda o que estava escrito
         }}
         cor={ferramenta === "marcatexto" ? corMarcatexto : cor}
         cores={ferramenta === "marcatexto" ? CORES_MARCATEXTO : CORES}
@@ -474,6 +607,8 @@ export function LeitorPdf({ materialId }: { materialId: number }) {
         aoZoom={setZoom}
         pagina={pagina}
         total={total}
+        cheia={cheia}
+        aoTelaCheia={alternarTelaCheia}
         salvando={salvando}
         salvoEm={salvoEm}
       />
@@ -484,7 +619,13 @@ export function LeitorPdf({ materialId }: { materialId: number }) {
         </div>
       )}
 
-      <div ref={rolagem} className="flex-1 overflow-auto overscroll-contain bg-canvas px-3 py-4">
+      <div
+        ref={rolagem}
+        className="flex-1 overflow-auto overscroll-contain bg-canvas px-3 py-4"
+        // Caneta na tela: o toque para de rolar. É a outra metade do palm
+        // rejection — sem isto a mão apoiada arrasta a página no meio da frase.
+        style={marcando && canetaPerto ? { touchAction: "none" } : undefined}
+      >
         <div className="flex w-fit min-w-full flex-col items-center gap-4">
           {!documento && !erro && <p className="py-12 text-[15px] text-suave">Abrindo o material…</p>}
           {documento &&
@@ -509,31 +650,28 @@ export function LeitorPdf({ materialId }: { materialId: number }) {
                     desenhar={desenhar}
                     tracos={tracos[numero] ?? []}
                     emAndamento={emAndamento?.pagina === numero ? emAndamento.traco : null}
+                    escrevendo={
+                      escrevendo?.pagina === numero
+                        ? { chave: escrevendo.id, x: escrevendo.x, y: escrevendo.y, txt: escrevendo.txt, cor }
+                        : null
+                    }
+                    aoEscrever={(txt) => setEscrevendo((c) => (c ? { ...c, txt } : c))}
+                    aoFecharTexto={() => fecharTexto(true)}
+                    aoDesistirDoTexto={() => fecharTexto(false)}
                     aoMedir={setDimensoes}
                     onPointerDown={comecar(numero)}
                     onPointerMove={mover(numero)}
                     onPointerUp={terminar(numero)}
+                    onPointerCancel={cancelar}
+                    // Solta o traço se a página sumir debaixo dele: um traço
+                    // preso aqui trava todos os próximos.
+                    onLostPointerCapture={cancelar}
                   />
                 </div>
               );
             })}
         </div>
       </div>
-
-      {escrevendo && (
-        <CaixaDeTexto
-          aoConfirmar={(txt) => {
-            if (txt.trim()) {
-              guardar(escrevendo.pagina, [
-                ...(atuais.current[escrevendo.pagina] ?? []),
-                { t: "texto", cor, x: escrevendo.x, y: escrevendo.y, tam: 0.018, txt: txt.trim() },
-              ]);
-            }
-            setEscrevendo(null);
-          }}
-          aoCancelar={() => setEscrevendo(null)}
-        />
-      )}
     </div>
   );
 }
@@ -562,6 +700,8 @@ function Barra({
   aoZoom,
   pagina,
   total,
+  cheia,
+  aoTelaCheia,
   salvando,
   salvoEm,
 }: {
@@ -578,10 +718,12 @@ function Barra({
   aoZoom: (z: number) => void;
   pagina: number;
   total: number;
+  cheia: boolean;
+  aoTelaCheia: () => void;
   salvando: boolean;
   salvoEm: Date | null;
 }) {
-  const risca = ferramenta === "caneta" || ferramenta === "marcatexto";
+  const risca = ferramenta === "caneta" || ferramenta === "marcatexto" || ferramenta === "texto";
   return (
     <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-borda bg-papel px-3 py-2">
       <div role="radiogroup" aria-label="Ferramenta" className="flex gap-1">
@@ -656,6 +798,15 @@ function Barra({
         </button>
       </div>
 
+      <button
+        type="button"
+        aria-pressed={cheia}
+        onClick={aoTelaCheia}
+        className="rounded-full px-3 py-1.5 text-sm font-semibold text-suave hover:bg-canvas hover:text-tinta"
+      >
+        {cheia ? "Sair da tela cheia" : "Tela cheia"}
+      </button>
+
       <p className="ml-auto flex items-center gap-3 text-[13px] text-suave">
         <span className="tabular-nums">
           Página {pagina}
@@ -669,30 +820,58 @@ function Barra({
   );
 }
 
-function CaixaDeTexto({ aoConfirmar, aoCancelar }: { aoConfirmar: (txt: string) => void; aoCancelar: () => void }) {
-  const [texto, setTexto] = useState("");
+// A caixa nasce onde a pessoa tocou, do tamanho e da cor que o texto vai ter, e
+// some deixando a anotação no mesmo lugar — nada de campo no rodapé.
+function CaixaDeTexto({
+  x,
+  y,
+  tamanho,
+  cor,
+  texto,
+  aoEscrever,
+  aoFechar,
+  aoDesistir,
+}: {
+  x: number;
+  y: number;
+  tamanho: number;
+  cor: string;
+  texto: string;
+  aoEscrever: (txt: string) => void;
+  aoFechar: () => void;
+  aoDesistir: () => void;
+}) {
   return (
-    <div className="border-t border-borda bg-papel px-3 py-2">
-      <form
-        className="mx-auto flex max-w-2xl gap-2"
-        onSubmit={(e) => {
-          e.preventDefault();
-          aoConfirmar(texto);
+    <form
+      className="absolute z-10"
+      // O SVG desenha o texto sobre a linha de base; a caixa sobe para a letra
+      // cair onde o dedo encostou.
+      style={{ left: x, top: y, transform: "translateY(-0.85em)" }}
+      onPointerDown={(e) => e.stopPropagation()}
+      onSubmit={(e) => {
+        e.preventDefault();
+        aoFechar();
+      }}
+    >
+      <input
+        autoFocus
+        value={texto}
+        onChange={(e) => aoEscrever(e.target.value)}
+        onBlur={aoFechar}
+        onKeyDown={(e) => {
+          // Enter fecha aqui mesmo: em formulário de um campo só, o envio
+          // implícito do navegador é promessa que nem todo teclado cumpre.
+          if (e.key === "Enter") {
+            e.preventDefault();
+            aoFechar();
+          }
+          if (e.key === "Escape") aoDesistir();
         }}
-      >
-        <input
-          autoFocus
-          value={texto}
-          onChange={(e) => setTexto(e.target.value)}
-          onKeyDown={(e) => e.key === "Escape" && aoCancelar()}
-          placeholder="Escreva e tecle Enter"
-          className="campo flex-1"
-          aria-label="Texto da anotação"
-        />
-        <button type="submit" className="rounded-full bg-acento px-4 py-2 text-sm font-semibold text-white">
-          Pôr na página
-        </button>
-      </form>
-    </div>
+        placeholder="Escreva aqui"
+        aria-label="Texto da anotação"
+        style={{ fontSize: tamanho, color: cor, width: `${Math.max(10, texto.length + 6)}ch` }}
+        className="rounded border border-acento bg-papel/95 px-1 py-0.5 leading-tight shadow-suave outline-none"
+      />
+    </form>
   );
 }

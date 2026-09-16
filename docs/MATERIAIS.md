@@ -52,8 +52,8 @@ camada nossa por cima, em SVG. Isso dá, sem depender do que o projeto deles
 ainda não decidiu:
 
 * **caneta com pressão**, porque o evento de ponteiro traz a força do stylus;
-* **rejeição de palma**: quando aparece uma caneta, o dedo rola e dá zoom em vez
-  de riscar;
+* **rejeição de palma**: com caneta, marca-texto ou borracha na mão, o que é
+  toque não marca — rola;
 * **mouse e mesa digitalizadora** pelo mesmo caminho, sem código separado;
 * **borracha que apaga o traço inteiro**, não pixel — é o que a pessoa espera de
   caneta, e o que mantém o dado pequeno;
@@ -62,6 +62,37 @@ ainda não decidiu:
 Um PDF de 323 páginas só roda liso no tablet se o leitor desenhar as páginas
 perto da tela e descartar as distantes. É a mesma razão de guardar a marcação
 por página.
+
+### A palma não é um dedo
+
+Rejeição de palma não é adivinhar qual toque é mão apoiada: é decidir que, com
+uma ferramenta de marcar na mão, **toque nenhum marca**. Quem risca é a caneta
+(ou o mouse, ou a mesa digitalizadora); o dedo rola a página, como sempre fez.
+Isso tira o problema da adivinhação — e tira também o desenho a dedo, que não
+faz falta em material de estudo e era a porta pela qual a palma entrava.
+
+Duas coisas completam a defesa, porque palma que não risca ainda atrapalha:
+
+* **um ponteiro de cada vez.** A mão que encosta no meio de uma frase não rouba
+  o traço da caneta: o segundo ponteiro é ignorado até o primeiro levantar.
+* **enquanto a caneta está na tela, o toque não rola** (`touch-action: none` por
+  `ESPERA_DA_PALMA` depois do último sinal dela). Sem isso a mão apoiada arrasta
+  a página debaixo do traço. Caneta que paira — S Pen, Pencil novo — avisa antes
+  de encostar; nas que só avisam no contato, o primeiro traço ainda pode escapar.
+  O número é o botão de ajuste.
+
+### Onde a pessoa tocou é onde a coisa acontece
+
+A caixa de texto nasce no ponto tocado, com a cor e o tamanho que o texto vai
+ter — não é campo no rodapé. Enter fecha, Esc desiste, tocar em outro lugar
+guarda o que estava escrito e abre a caixa lá. Detalhe que custou uma tarde: o
+`mousedown` que vem atrás do `pointerdown` devolve o foco para a página e fecha
+a caixa recém-aberta; por isso o toque com a ferramenta de texto é cancelado
+(`preventDefault`) antes de abrir.
+
+**Tela cheia** usa a API do navegador quando existe e, quando não existe (iPhone,
+navegador antigo, portal dentro de um quadro), cai num modo nosso de CSS que
+cobre a tela do mesmo jeito — só a barra do navegador fica.
 
 ### A marcação é privada, e por página
 
@@ -160,8 +191,8 @@ páginas que mudaram. Limite de 200 KB por página, o que dá muita tinta.
 ## Fases
 
 1. **Aba Materiais** — envio, acesso por turma ou aluno, publicação, leitor com
-   caneta, marca-texto, texto, borracha, cores, espessura, desfazer e refazer, e
-   salvamento automático.
+   caneta, marca-texto, texto, borracha, cores, espessura, desfazer, refazer,
+   tela cheia e salvamento automático.
 2. **Dentro do curso** — o mesmo material aparecendo como item do sub-módulo, ao
    lado dos vídeos.
 3. **Venda** — acesso individual pago, entrega por página com marca d'água.
