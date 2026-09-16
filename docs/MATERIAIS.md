@@ -85,7 +85,17 @@ mostra, alguém fotografa. O que a plataforma faz:
 * o arquivo só sai para quem tem sessão e acesso àquele material, conferido a
   cada faixa de bytes;
 * o endereço do arquivo não é um link que se repassa: sem o cookie da sessão,
-  ele responde 401.
+  ele responde 401;
+* **imprimir não sai**: `Ctrl+P` não abre a caixa, e pelo menu do navegador a
+  folha sai com um recado no lugar do material. Isso fecha a cópia fácil — o
+  "imprimir para PDF", que geraria a apostila inteira, limpa, em dois cliques.
+
+**Print de tela não dá para bloquear**, e é honesto dizer isso em vez de vender
+o contrário: não existe API de navegador para impedir captura, nem no iPad nem
+no Android, porque o print é do sistema e a página nem fica sabendo. Bloqueio de
+verdade só dentro de um aplicativo instalado, e mesmo assim: no Android o
+sistema recusa a captura, no iOS nem para app nativo existe. E sempre sobra a
+foto com outro celular.
 
 O passo seguinte, se o material virar produto, é entregar página por página com
 marca d'água gravada pelo servidor — aí o vazamento tem dono. A marca d'água com
@@ -155,6 +165,14 @@ páginas que mudaram. Limite de 200 KB por página, o que dá muita tinta.
 2. **Dentro do curso** — o mesmo material aparecendo como item do sub-módulo, ao
    lado dos vídeos.
 3. **Venda** — acesso individual pago, entrega por página com marca d'água.
+
+### Registro de leitura, para quando fizer falta
+
+Guardar quem abriu qual material, quando e quantas páginas viu. Serve para duas
+coisas: o professor saber quem nem tocou na apostila, e o padrão de quem está
+fotografando o material inteiro aparecer — 323 páginas percorridas em dois
+minutos não é leitura. Uma linha por abertura, com material, aluno, página e
+horário, e a agregação feita na consulta. Não bloqueia nada; só torna visível.
 
 ## Fora de escopo por enquanto
 

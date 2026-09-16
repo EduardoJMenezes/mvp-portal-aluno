@@ -21,7 +21,11 @@ function Leitura() {
   const atual = material.dados?.find((m) => m.material_id === id);
 
   return (
-    <main>
+    <main data-sem-impressao>
+      <p className="recado-de-impressao">
+        Este material não sai do portal em papel nem em PDF. Abra em
+        app-production-e5b7.up.railway.app para ler e marcar.
+      </p>
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 border-b border-borda bg-papel px-4 py-2">
         <Link href="/materiais/" className="text-sm font-medium text-suave hover:text-acento">
           <span aria-hidden="true">←</span> Materiais

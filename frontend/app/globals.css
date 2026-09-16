@@ -195,3 +195,23 @@
     line-height: 1.55;
   }
 }
+
+/* Material não se imprime. Imprimir para PDF sairia com a apostila inteira,
+   limpa, em dois cliques — é a cópia fácil que dá para fechar. Print de tela
+   não dá: nenhum navegador deixa a página bloquear isso (docs/MATERIAIS.md). */
+@media print {
+  [data-sem-impressao] {
+    display: none !important;
+  }
+  .recado-de-impressao {
+    display: block !important;
+    padding: 2rem;
+    font-family: var(--font-sans);
+    font-size: 16px;
+    color: #111827;
+  }
+}
+
+.recado-de-impressao {
+  display: none;
+}

@@ -301,6 +301,18 @@ export function LeitorPdf({ materialId }: { materialId: number }) {
     };
   }, [materialId]);
 
+  // --- impressão ---------------------------------------------------------------
+  useEffect(() => {
+    // O atalho nem chega a abrir a caixa de impressão; pelo menu do navegador,
+    // a regra de @media print entrega só o recado. Print de tela continua
+    // possível — e por isso a marca d'água é a defesa que fica faltando.
+    const semImprimir = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "p") e.preventDefault();
+    };
+    window.addEventListener("keydown", semImprimir);
+    return () => window.removeEventListener("keydown", semImprimir);
+  }, []);
+
   // --- que páginas desenhar --------------------------------------------------
   useEffect(() => {
     const alvo = rolagem.current;
