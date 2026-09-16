@@ -329,14 +329,18 @@ export function LeitorPdf({ materialId }: { materialId: number }) {
   useEffect(() => {
     if (!documento) return;
     const medir = async () => {
-      const primeira = await documento.getPage(1);
+      const vista = (await documento.getPage(1)).getViewport({ scale: 1 });
       const largura = (rolagem.current?.clientWidth ?? 900) - 24;
-      setBase(Math.max(0.2, largura / primeira.getViewport({ scale: 1 }).width));
+      const cabe = Math.max(0.2, largura / vista.width);
+      setBase(cabe);
+      // O espaço reservado de cada página nasce com a medida da primeira: sem
+      // isso as 323 ficariam com altura zero, todas dentro da tela ao mesmo tempo.
+      setDimensoes({ largura: vista.width * cabe * zoom, altura: vista.height * cabe * zoom });
     };
     void medir();
     window.addEventListener("resize", medir);
     return () => window.removeEventListener("resize", medir);
-  }, [documento]);
+  }, [documento, zoom]);
 
   // --- marcar ----------------------------------------------------------------
   const pontoDaPagina = (e: EventoDePonteiro<HTMLDivElement>): [number, number, number] => {
@@ -434,6 +438,7 @@ export function LeitorPdf({ materialId }: { materialId: number }) {
     marcarSuja(passo.pagina);
   };
 
+  const foco = visiveis.size ? Math.min(...visiveis) : 1;
   const total = documento?.numPages ?? 0;
   const numeros = useMemo(() => Array.from({ length: total }, (_, i) => i + 1), [total]);
   const escala = base * zoom;
@@ -472,7 +477,9 @@ export function LeitorPdf({ materialId }: { materialId: number }) {
           {!documento && !erro && <p className="py-12 text-[15px] text-suave">Abrindo o material…</p>}
           {documento &&
             numeros.map((numero) => {
-              const desenhar = [...visiveis].some((v) => Math.abs(v - numero) <= PAGINAS_VIZINHAS);
+              // Janela curta em volta da página em foco. Vale mais do que confiar
+              // no observador: enquanto ele não mediu nada, tudo parece visível.
+              const desenhar = numero >= foco - PAGINAS_VIZINHAS && numero <= foco + PAGINAS_VIZINHAS + 1;
               return (
                 <div
                   key={numero}
