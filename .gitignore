@@ -17,6 +17,10 @@ frontend/out/
 frontend/next-env.d.ts
 frontend/*.tsbuildinfo
 
+# Skills: a cópia portátil fica em .agents/skills; .claude/skills é a ligação
+# que cada máquina refaz sozinha.
+.claude/skills/
+
 # macOS
 .DS_Store
 # saída da POC da API do Vimeo (respostas cruas, podem conter metadados)
