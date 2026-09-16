@@ -354,6 +354,27 @@ export type Desempenho = {
 
 export type Assunto = { id: number; nome: string; subassuntos: { id: number; nome: string }[] };
 
+export type Material = {
+  material_id: number;
+  titulo: string;
+  arquivo: string | null;
+  tamanho: number;
+  status: StatusConteudo;
+  turmas: string[];
+  alunos: { id: number; nome: string; email: string }[];
+  criado_em: string | null;
+  publicado_em: string | null;
+  paginas_anotadas?: number;
+};
+
+/** Um traço do aluno, em coordenadas relativas à página (0 a 1). */
+export type Traco =
+  | { t: "caneta" | "marcatexto"; cor: string; larg: number; p: [number, number, number][] }
+  | { t: "texto"; cor: string; x: number; y: number; tam: number; txt: string };
+
+export type PaginaAnotada = { v: number; tracos: Traco[] };
+export type Anotacoes = { material_id: number; paginas: Record<string, PaginaAnotada> };
+
 export type Aluno = { id: number; nome: string; email: string; senha_temporaria: boolean; criado_em: string | null };
 
 export type TokenMcp = { id: number; nome: string; criado_em: string | null; ultimo_uso_em: string | null; revogado: boolean };
@@ -434,6 +455,17 @@ export const api = {
   entregar: (id: number) => pedir<{ mensagem: string; resultado_em: string }>(`/aluno/simulados/${id}/entregar`, { method: "POST" }),
   resultado: (id: number) => pedir<Resultado>(`/aluno/simulados/${id}/resultado`),
   historico: () => pedir<Historico>("/aluno/desempenho"),
+
+  // materiais
+  materiais: () => pedir<Material[]>("/aluno/materiais"),
+  /** O PDF sai daqui, em faixas de bytes e só com a sessão aberta. */
+  enderecoDoMaterial: (id: number) => `/api/aluno/materiais/${id}/arquivo`,
+  anotacoes: (id: number) => pedir<Anotacoes>(`/aluno/materiais/${id}/anotacoes`),
+  salvarAnotacao: (id: number, pagina: number, tracos: Traco[]) =>
+    pedir<{ material_id: number; pagina: number; tracos: number }>(
+      `/aluno/materiais/${id}/anotacoes/${pagina}`,
+      { method: "PUT", json: { tracos } },
+    ),
 
   // envio pelo link (sem login)
   envio: (token: string) =>
@@ -540,6 +572,21 @@ export const api = {
   totalDePrints: (id: number) => pedir<{ importacao_id: number; total_prints: number }>(`/admin/importacoes/${id}/prints`),
   recortar: (id: number, dados: { print: number; questao: number; retangulo: number[]; parte: string; alternativa?: string; estender?: boolean }) =>
     pedir<{ figura_id: number }>(`/admin/importacoes/${id}/recortes`, { method: "POST", json: dados }),
+
+  // materiais do professor
+  materiaisDoProfessor: () => pedir<Material[]>("/admin/materiais"),
+  enviarMaterial: (arquivo: File, titulo: string, turmas: string[], alunos: string[]) => {
+    const corpo = new FormData();
+    corpo.append("arquivo", arquivo);
+    corpo.append("titulo", titulo);
+    turmas.forEach((t) => corpo.append("turmas", t));
+    alunos.forEach((a) => corpo.append("alunos", a));
+    // Apostila de 40 MB em rede de escola: o tempo padrão de 15 s não serve.
+    return pedir<Material>("/admin/materiais", { method: "POST", body: corpo, signal: AbortSignal.timeout(600_000) });
+  },
+  editarMaterial: (id: number, dados: { titulo?: string; status?: string; turmas?: string[]; alunos?: string[] }) =>
+    pedir<Material>(`/admin/materiais/${id}`, { method: "PATCH", json: dados }),
+  removerMaterial: (id: number) => pedir<{ material_id: number; titulo: string }>(`/admin/materiais/${id}`, { method: "DELETE" }),
 
   // tokens do MCP
   tokens: () => pedir<TokenMcp[]>("/admin/tokens"),

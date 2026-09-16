@@ -132,6 +132,13 @@ Ensaio geral dos quatro fluxos do §21, contra o servidor no ar:
   modelo. Não confie no retângulo nem na conferência do Claude: em print
   pequeno ele corta o desenho e aceita; quem garante a figura inteira é a
   extensão até a faixa em branco. Ver [docs/IMPORTADOR-SIMULADO.md](docs/IMPORTADOR-SIMULADO.md).
+* **Material é PDF no Postgres, servido em faixas de bytes.** A coluna é
+  `EXTERNAL` (sem compressão) para o `substring` devolver um pedaço do arquivo
+  sem ler o resto — é o que faz uma apostila de 323 páginas abrir na página 180.
+  O leitor usa o pdf.js só para desenhar: a marcação do aluno é camada SVG
+  nossa, em coordenadas relativas, porque o editor embutido do pdf.js grava
+  dentro do arquivo e ao reabrir vira desenho fixo. Ver
+  [docs/MATERIAIS.md](docs/MATERIAIS.md).
 * **Simulado: o relógio entra como parâmetro.** Os services de
   [simulados.py](backend/app/services/simulados.py) recebem `agora`; não há job
   de entrega automática — a tentativa vencida é consolidada na próxima consulta.

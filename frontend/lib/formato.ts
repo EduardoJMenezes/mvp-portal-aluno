@@ -60,6 +60,11 @@ export function duracao(segundos?: number | null): string {
   return m >= 60 ? `${Math.floor(m / 60)} h ${m % 60} min` : `${m}:${String(s).padStart(2, "0")}`;
 }
 
+export function tamanhoDoArquivo(bytes: number): string {
+  const mb = bytes / 1024 / 1024;
+  return mb >= 1 ? `${mb.toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`;
+}
+
 export function porcento(valor: number): string {
   return `${valor.toLocaleString("pt-BR", { maximumFractionDigits: 1 })}%`;
 }

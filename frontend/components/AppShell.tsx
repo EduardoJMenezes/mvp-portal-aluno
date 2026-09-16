@@ -11,6 +11,7 @@ const DO_ALUNO: Destino[] = [
   { href: "/", rotulo: "Início", exato: true },
   { href: "/curso/", rotulo: "Curso" },
   { href: "/simulados/", rotulo: "Simulados" },
+  { href: "/materiais/", rotulo: "Materiais" },
   { href: "/desempenho/", rotulo: "Desempenho" },
 ];
 
@@ -20,6 +21,7 @@ const DO_OPERADOR: Destino[] = [
   { href: "/admin/rascunhos/", rotulo: "Rascunhos" },
   { href: "/admin/questoes/", rotulo: "Questões" },
   { href: "/admin/simulados/", rotulo: "Simulados" },
+  { href: "/admin/materiais/", rotulo: "Materiais" },
   { href: "/admin/importar/", rotulo: "Importar" },
   { href: "/admin/assuntos/", rotulo: "Assuntos" },
 ];

@@ -29,6 +29,7 @@ from app.services import (
     contas,
     estrutura,
     importacoes,
+    materiais,
     publicacao,
     questoes,
     rascunhos,
@@ -624,3 +625,60 @@ def ranking(simulado: str, ident: Identidade = Operador, db: Session = Banco) ->
 @router.get("/simulados/{simulado}/estatisticas")
 def estatisticas(simulado: str, ident: Identidade = Operador, db: Session = Banco) -> dict:
     return analytics.estatisticas_simulado(db, ident, simulado)
+
+
+# --- materiais ---------------------------------------------------------------
+
+
+class EdicaoMaterialIn(BaseModel):
+    titulo: str | None = Field(None, min_length=1, max_length=200)
+    status: str | None = Field(None, description="RASCUNHO tira do ar; PUBLICADO libera")
+    turmas: list[str] | None = Field(None, description="Turmas que passam a alcançar; troca a lista")
+    alunos: list[str] | None = Field(None, description="Alunos avulsos; troca a lista")
+
+
+@router.get("/materiais")
+def lista_materiais(ident: Identidade = Operador, db: Session = Banco) -> list[dict]:
+    """Os materiais, com quem cada um alcança. Inclui os que ainda são rascunho."""
+    return materiais.listar_materiais(db, ident)
+
+
+@router.post("/materiais")
+async def enviar_material(
+    arquivo: UploadFile = File(description="PDF, até 60 MB"),
+    titulo: str = Form("", max_length=200),
+    turmas: list[str] = Form([], description="Nomes ou ids das turmas que alcançam"),
+    alunos: list[str] = Form([], description="Nomes, e-mails ou ids de alunos avulsos"),
+    ident: Identidade = Operador,
+    db: Session = Banco,
+) -> dict:
+    """Envia o PDF. Nasce em rascunho: publicar é um PATCH depois de conferir."""
+    conteudo = await arquivo.read(materiais.LIMITE_DO_ARQUIVO + 1)
+    nome = (arquivo.filename or "").strip()
+    return await run_in_threadpool(
+        materiais.criar_material,
+        db,
+        ident,
+        titulo.strip() or nome.removesuffix(".pdf"),
+        conteudo,
+        nome,
+        turmas,
+        alunos,
+    )
+
+
+@router.get("/materiais/{material_id}")
+def detalhar_material(material_id: int, ident: Identidade = Operador, db: Session = Banco) -> dict:
+    return materiais.detalhar_material(db, ident, material_id)
+
+
+@router.patch("/materiais/{material_id}")
+def editar_material(
+    material_id: int, dados: EdicaoMaterialIn, ident: Identidade = Operador, db: Session = Banco
+) -> dict:
+    return materiais.editar_material(db, ident, material_id, **dados.model_dump(exclude_unset=True))
+
+
+@router.delete("/materiais/{material_id}")
+def remover_material(material_id: int, ident: Identidade = Operador, db: Session = Banco) -> dict:
+    return materiais.remover_material(db, ident, material_id)

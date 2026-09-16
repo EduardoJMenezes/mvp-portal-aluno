@@ -39,6 +39,9 @@ ALTERACOES = [
     # conta: senha temporária e sessões que caem quando a senha muda
     "ALTER TABLE users ADD COLUMN IF NOT EXISTS senha_temporaria boolean NOT NULL DEFAULT false",
     "ALTER TABLE users ADD COLUMN IF NOT EXISTS senha_alterada_em timestamptz",
+    # Material: PDF sem compressão, para o Postgres devolver uma faixa de bytes
+    # com substring em vez de descomprimir o arquivo inteiro a cada página.
+    "ALTER TABLE materials ALTER COLUMN conteudo SET STORAGE EXTERNAL",
 ]
 
 

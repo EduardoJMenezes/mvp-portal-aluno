@@ -680,3 +680,93 @@ class TokenMCP(Base):
     revogado: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
     usuario: Mapped[Usuario] = relationship()
+
+
+# --- materiais ---------------------------------------------------------------
+
+
+class Material(Base, Rastreavel):
+    """PDF que o professor publica: apostila, lista de exercícios, gabarito.
+
+    O arquivo mora aqui mesmo. A coluna é `EXTERNAL` (ver `migracoes.py`): sem
+    compressão, o Postgres devolve uma faixa de bytes com `substring`, e o
+    leitor abre a página 180 de uma apostila de 323 sem baixar as anteriores.
+    PDF já vem comprimido por dentro, então não se perde espaço com isso.
+
+    ponytail: bytes no Postgres servem à escala desta escola (menos de 1 GB por
+    ano, ver docs/MATERIAIS.md). Com dezenas de GB isto vira bucket, e só quem
+    lê e grava os bytes muda.
+    """
+
+    __tablename__ = "materials"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    titulo: Mapped[str] = mapped_column(String(200), nullable=False)
+    arquivo_nome: Mapped[str | None] = mapped_column(String(200))
+    tipo: Mapped[str] = mapped_column(String(60), nullable=False)
+    tamanho: Mapped[int] = mapped_column(Integer, nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default=Status.RASCUNHO)
+    criado_por_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    criado_em: Mapped[datetime] = _agora()
+    publicado_em: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Carregada só por quem lê o arquivo: sem isto, listar 20 materiais traria
+    # meio giga de PDF junto.
+    conteudo: Mapped[bytes] = mapped_column(LargeBinary, nullable=False, deferred=True)
+
+    __table_args__ = (
+        CheckConstraint("status in ('RASCUNHO','PUBLICADO')", name="ck_materials_status"),
+    )
+
+    turmas: Mapped[list[Turma]] = relationship(secondary="material_classes", order_by="Turma.nome")
+    alunos: Mapped[list[Usuario]] = relationship(
+        secondary="material_students", order_by="Usuario.nome"
+    )
+
+
+class MaterialTurma(Base):
+    """Acesso da turma inteira."""
+
+    __tablename__ = "material_classes"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    material_id: Mapped[int] = mapped_column(ForeignKey("materials.id"), nullable=False)
+    turma_id: Mapped[int] = mapped_column(ForeignKey("classes.id"), nullable=False)
+
+    __table_args__ = (UniqueConstraint("material_id", "turma_id", name="uq_material_turma"),)
+
+
+class MaterialAluno(Base):
+    """Acesso de uma pessoa só — é aqui que uma compra futura escreve."""
+
+    __tablename__ = "material_students"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    material_id: Mapped[int] = mapped_column(ForeignKey("materials.id"), nullable=False)
+    usuario_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    criado_em: Mapped[datetime] = _agora()
+
+    __table_args__ = (UniqueConstraint("material_id", "usuario_id", name="uq_material_aluno"),)
+
+
+class MaterialAnotacao(Base):
+    """O que um aluno riscou numa página — só dele, nem o professor lê.
+
+    Uma linha por página: salvar é gravar a página que mudou, e uma apostila de
+    323 páginas não vira um documento único que se reescreve inteiro a cada
+    traço. Os traços vão em coordenadas relativas (0 a 1), para zoom e rotação
+    não mexerem no dado.
+    """
+
+    __tablename__ = "material_annotations"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    material_id: Mapped[int] = mapped_column(ForeignKey("materials.id"), nullable=False)
+    usuario_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    pagina: Mapped[int] = mapped_column(Integer, nullable=False)
+    dados: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    criado_em: Mapped[datetime] = _agora()
+    atualizado_em: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (
+        UniqueConstraint("material_id", "usuario_id", "pagina", name="uq_material_anotacao"),
+    )

@@ -6,15 +6,15 @@ services deixam a identidade ver (seção 11).
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends
-from fastapi.responses import Response
-from pydantic import BaseModel
+from fastapi import APIRouter, Depends, Request
+from fastapi.responses import Response, StreamingResponse
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.api.deps import usuario_atual
 from app.db import get_db
 from app.identidade import Identidade
-from app.services import catalogo, questoes, simulados
+from app.services import catalogo, materiais, questoes, simulados
 
 router = APIRouter(prefix="/api/aluno", tags=["aluno"])
 
@@ -96,3 +96,108 @@ def figura(
         media_type=imagem.tipo,
         headers={"X-Content-Type-Options": "nosniff", "Cache-Control": "private, max-age=3600"},
     )
+
+
+# --- materiais ---------------------------------------------------------------
+
+
+CABECALHOS_DO_ARQUIVO = {
+    "accept-ranges": "bytes",
+    # Sem download e sem cópia no disco do navegador: o material sai do portal
+    # só enquanto a sessão está aberta.
+    "cache-control": "private, no-store",
+    "content-disposition": "inline",
+    "x-content-type-options": "nosniff",
+}
+
+
+def _faixa(cabecalho: str | None, total: int) -> tuple[int, int] | None:
+    """Traduz o `Range` em (início, fim). Uma faixa só — é o que o leitor pede."""
+    if not cabecalho or not cabecalho.strip().startswith("bytes="):
+        return None
+    de, _, ate = cabecalho.strip().removeprefix("bytes=").split(",")[0].strip().partition("-")
+    try:
+        if de:
+            inicio, fim = int(de), (int(ate) if ate else total - 1)
+        elif ate:  # "bytes=-500": os últimos 500
+            inicio, fim = max(0, total - int(ate)), total - 1
+        else:
+            return None
+    except ValueError:
+        return None
+    return inicio, min(fim, total - 1)
+
+
+@router.get("/materiais")
+def materiais_do_aluno(
+    ident: Identidade = Depends(usuario_atual), db: Session = Depends(get_db)
+) -> list[dict]:
+    """Os materiais publicados que alcançam quem pergunta — pela turma ou pelo nome."""
+    return materiais.listar_materiais(db, ident)
+
+
+@router.get("/materiais/{material_id}/arquivo", response_class=Response)
+def arquivo_do_material(
+    material_id: int,
+    request: Request,
+    ident: Identidade = Depends(usuario_atual),
+    db: Session = Depends(get_db),
+) -> Response:
+    """O PDF, em faixas de bytes.
+
+    Cada faixa passa pela sessão: o endereço não é link que se repassa. É assim
+    que o leitor abre a página 180 de uma apostila de 323 sem baixar o resto.
+    """
+    material = materiais.abrir_arquivo(db, ident, material_id)
+    total = material.tamanho
+    faixa = _faixa(request.headers.get("range"), total)
+
+    if faixa is None:
+        # O `content-length` é o que faz o leitor passar a pedir faixas em vez
+        # de arrastar o arquivo inteiro para ver uma página.
+        return StreamingResponse(
+            materiais.pedacos(material.id, total),
+            media_type=materiais.TIPO,
+            headers={**CABECALHOS_DO_ARQUIVO, "content-length": str(total)},
+        )
+
+    inicio, fim = faixa
+    if inicio > fim or inicio >= total:
+        return Response(
+            status_code=416,
+            headers={**CABECALHOS_DO_ARQUIVO, "content-range": f"bytes */{total}"},
+        )
+    return Response(
+        materiais.fatia(db, material, inicio, fim - inicio + 1),
+        status_code=206,
+        media_type=materiais.TIPO,
+        headers={**CABECALHOS_DO_ARQUIVO, "content-range": f"bytes {inicio}-{fim}/{total}"},
+    )
+
+
+@router.get("/materiais/{material_id}/anotacoes")
+def anotacoes_do_material(
+    material_id: int,
+    ident: Identidade = Depends(usuario_atual),
+    db: Session = Depends(get_db),
+) -> dict:
+    """O que **quem pergunta** riscou neste material, página a página."""
+    return materiais.anotacoes(db, ident, material_id)
+
+
+class AnotacaoIn(BaseModel):
+    tracos: list[dict] = Field(
+        default_factory=list, description="Traços da página, em coordenadas relativas (0 a 1)"
+    )
+
+
+@router.put("/materiais/{material_id}/anotacoes/{pagina}")
+def salvar_anotacao(
+    material_id: int,
+    pagina: int,
+    dados: AnotacaoIn,
+    ident: Identidade = Depends(usuario_atual),
+    db: Session = Depends(get_db),
+) -> dict:
+    """Grava uma página. É o que o salvamento automático chama."""
+    return materiais.salvar_anotacao(db, ident, material_id, pagina, dados.model_dump())
