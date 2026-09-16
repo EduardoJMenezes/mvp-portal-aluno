@@ -23,6 +23,9 @@ dependencies = [
     # Recorta a margem branca das figuras que o LibreOffice converte: ele
     # devolve a folha A4 inteira com o desenho no meio.
     "pillow>=10",
+    # XML de .docx que veio de fora: recusa DTD e entidade (a "billion laughs"
+    # que a biblioteca padrão expande alegremente).
+    "defusedxml>=0.7",
 ]
 
 [project.optional-dependencies]

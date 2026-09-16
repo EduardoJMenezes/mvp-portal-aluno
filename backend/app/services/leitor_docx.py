@@ -24,7 +24,8 @@ import tempfile
 import zipfile
 from dataclasses import dataclass, field
 from pathlib import Path
-from xml.etree import ElementTree as ET
+from defusedxml import ElementTree as ET
+from defusedxml.common import DefusedXmlException
 
 from app.errors import RegraDeNegocio
 from app.models import LETRAS, ParteDaQuestao
@@ -210,6 +211,22 @@ def _omml(no) -> str:  # noqa: C901 — um caso por elemento da especificação
     return "".join(_omml(filho) for filho in no)  # oMath, e, box, borderBox…
 
 
+def _xml(dados: bytes):
+    """Lê XML que veio de fora: sem DTD e sem entidade declarada.
+
+    Documento do Word não traz nenhuma das duas, e é por elas que um arquivo de
+    poucos KB vira gigabytes de memória ao ser lido — a "billion laughs", que o
+    limite de tamanho do zip não pega, porque a explosão acontece depois.
+    """
+    try:
+        return ET.fromstring(dados, forbid_dtd=True)
+    except DefusedXmlException:
+        raise RegraDeNegocio(
+            "Este .docx declara entidades ou DTD no XML, o que um documento do Word não faz. "
+            "Recusado: um arquivo assim derruba o servidor ao ser lido."
+        ) from None
+
+
 # --- parágrafo, tabela e figura ----------------------------------------------
 
 
@@ -220,7 +237,7 @@ class _Leitor:
         self._por_nome: dict[str, str] = {}
         self.rels = {}
         try:
-            raiz = ET.fromstring(zipado.read("word/_rels/document.xml.rels"))
+            raiz = _xml(zipado.read("word/_rels/document.xml.rels"))
             for rel in raiz.iter(REL + "Relationship"):
                 if rel.get("TargetMode") != "External":
                     alvo = rel.get("Target") or ""
@@ -377,7 +394,7 @@ def ler_docx(conteudo: bytes) -> Documento:
         if len(entradas) > LIMITE_DE_ENTRADAS or sum(e.file_size for e in entradas) > LIMITE_DESCOMPACTADO:
             raise RegraDeNegocio("O .docx é grande demais depois de descompactado.")
         try:
-            raiz = ET.fromstring(zipado.read("word/document.xml"))
+            raiz = _xml(zipado.read("word/document.xml"))
         except KeyError:
             raise RegraDeNegocio("O arquivo não é um .docx: falta o documento do Word.") from None
         leitor = _Leitor(zipado)

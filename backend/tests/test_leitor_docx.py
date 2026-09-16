@@ -113,3 +113,22 @@ def test_figura_convertida_perde_a_folha_em_branco_em_volta():
 
     with Image.open(io.BytesIO(aparar_margem(arquivo.getvalue()))) as recortada:
         assert recortada.size == (201 + 16, 61 + 16)
+
+
+def test_docx_com_bomba_de_entidades_e_recusado():
+    """Poucos KB no disco, gigabytes na memória: o XML de fora não declara entidade."""
+    import io
+    import zipfile
+
+    bomba = io.BytesIO()
+    with zipfile.ZipFile(bomba, "w") as z:
+        z.writestr(
+            "word/document.xml",
+            '<?xml version="1.0"?><!DOCTYPE lolz [<!ENTITY lol "lol">'
+            '<!ENTITY lol2 "&lol;&lol;&lol;&lol;&lol;&lol;&lol;&lol;&lol;&lol;">'
+            '<!ENTITY lol3 "&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;">]>'
+            "<w:document><w:body>&lol3;</w:body></w:document>",
+        )
+
+    with pytest.raises(RegraDeNegocio, match="entidades ou DTD"):
+        ler_docx(bomba.getvalue())
