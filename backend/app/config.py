@@ -31,6 +31,19 @@ class Settings(BaseSettings):
     vimeo_access_token: str | None = None
     vimeo_api_base: str = "https://api.vimeo.com"
 
+    # Zoom das aulas ao vivo (app Server-to-Server OAuth). Sem as três
+    # primeiras, o backend usa um Zoom de mentira e a POC roda inteira assim.
+    # `zoom_host` é o e-mail do usuário do Zoom que hospeda as aulas — a conta
+    # é dividida com outra plataforma, então esse endereço importa.
+    zoom_account_id: str | None = None
+    zoom_client_id: str | None = None
+    zoom_client_secret: str | None = None
+    zoom_webhook_secret: str | None = None
+    zoom_host: str | None = None
+    # A única operação destrutiva do plano: apagar a gravação da nuvem do Zoom
+    # depois que ela já subiu ao Vimeo. Nasce desligada, de propósito.
+    zoom_apagar_gravacao: bool = False
+
     # OAuth do MCP. O Claude Code manda um header fixo e se contenta com o
     # token opaco; conector remoto (claude.ai) só fala OAuth. Preenchendo as
     # três variáveis abaixo, o servidor passa a aceitar os dois — ver
