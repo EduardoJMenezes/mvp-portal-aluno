@@ -91,7 +91,7 @@ def test_aula_sem_turma_nem_aluno_nao_publica(db, mundo, zoom):
     aula = _agendar(api, professor, turmas=[])
 
     r = api.patch(f"/api/admin/aulas/{aula['aula_id']}", headers=professor, json={"status": "PUBLICADO"})
-    assert r.status_code == 422
+    assert r.status_code == 400
     assert "não alcança ninguém" in r.json()["detail"]
     assert zoom.aulas == {}
 
@@ -115,7 +115,7 @@ def test_a_porta_so_abre_perto_da_hora(db, mundo, zoom):
     _publicar(api, professor, aula["aula_id"])
 
     cedo = api.post(f"/api/aluno/aulas/{aula['aula_id']}/entrar", headers=joao)
-    assert cedo.status_code == 422
+    assert cedo.status_code == 400
     assert "15 minutos antes" in cedo.json()["detail"]
     assert zoom.inscricoes == 0
 
@@ -131,7 +131,7 @@ def test_aula_que_ja_acabou_nao_deixa_entrar(db, mundo, zoom):
     _publicar(api, professor, aula["aula_id"])
 
     r = api.post(f"/api/aluno/aulas/{aula['aula_id']}/entrar", headers=joao)
-    assert r.status_code == 422
+    assert r.status_code == 400
     assert "já terminou" in r.json()["detail"]
     assert api.get("/api/aluno/aulas", headers=joao).json()[0]["estado"] == "ENCERRADA"
 

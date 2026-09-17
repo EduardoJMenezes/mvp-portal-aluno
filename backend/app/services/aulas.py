@@ -265,7 +265,7 @@ def editar_aula(
             aula.zoom_meeting_id, titulo=aula.titulo, inicio=aula.inicio_em, minutos=aula.minutos
         )
 
-    tocar(aula, ident)
+    tocar(ident, aula)
     db.commit()
     return _resumo(aula, datetime.now(UTC))
 
