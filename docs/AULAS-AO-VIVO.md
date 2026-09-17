@@ -133,6 +133,76 @@ Tudo o que não era sobre o tamanho da sala:
   O que sobra é rastro nominal — e é o mesmo acordo que já fizemos com a
   apostila.
 
+## Cadastrar o app no Zoom
+
+App do tipo **Server-to-Server OAuth**, criado por quem é dono ou administrador
+da conta. No [marketplace.zoom.us](https://marketplace.zoom.us): menu
+**Developer** (canto inferior esquerdo) → **Develop** → **Build an app** →
+**Server-to-Server OAuth** → *Create*.
+
+Na aba **Basic Information** ficam as três credenciais: **Account ID**,
+**Client ID** e **Client Secret**. Nome da empresa e contato do desenvolvedor
+são obrigatórios para ativar.
+
+Na aba **Scopes**, só estas — a lista curta é proposital, e o porquê está na
+seção seguinte:
+
+| escopo | para quê |
+|---|---|
+| `meeting:write:meeting:admin` | criar a aula |
+| `meeting:update:meeting:admin` | mudar hora ou duração |
+| `meeting:delete:meeting:admin` | cancelar |
+| `meeting:read:meeting:admin` | pegar o `start_url` fresco do professor |
+| `meeting:write:registrant:admin` | inscrever o aluno e gerar o link dele |
+| `cloud_recording:read:list_recording_files:admin` | achar o arquivo da gravação |
+| `cloud_recording:delete:meeting_recording:admin` | apagar do Zoom depois de subir ao Vimeo (opcional) |
+
+Na aba **Feature**, ligar **Event Subscriptions**: ali fica o **Secret Token**,
+que é o que valida a assinatura do webhook. O endereço do webhook só pode ser
+cadastrado **depois** que o endpoint existir no ar — a Zoom faz um desafio e
+exige resposta em 3 segundos. Então a ordem é: criar o app com os escopos,
+implementar, e só então voltar aqui para colar a URL e escolher os eventos
+(`recording.completed` na fase 1; entrada e saída de participante na fase 2).
+
+Por fim, **Activate** o app.
+
+As credenciais entram como variáveis no Railway — `ZOOM_ACCOUNT_ID`,
+`ZOOM_CLIENT_ID`, `ZOOM_CLIENT_SECRET`, `ZOOM_WEBHOOK_SECRET`, `ZOOM_HOST` — e
+não passam por chat, arquivo do projeto nem commit. Sem elas, o backend usa o
+Zoom de mentira e a POC roda inteira assim.
+
+## Dividir a conta com outra plataforma
+
+A conta do Zoom já é usada por outro sistema, com aulas agendadas. Um app novo
+não mexe no app deles — mas o **token do nosso app enxerga a conta inteira**.
+Então a proteção é de desenho, não de sorte:
+
+* **Escopo de menos, de propósito.** Não pedimos `meeting:read:list_meetings`
+  nem `list_registrants`. Sem eles, o nosso app **não consegue nem listar** as
+  reuniões da conta — o que ele não vê, ele não quebra.
+* **Só mexe no que é nosso.** Toda chamada que altera (`PATCH`, `DELETE`,
+  apagar gravação) sai com um id que veio da nossa tabela `live_classes`. Id
+  que não está lá não é nosso, e o código não tem caminho para chegar nele.
+* **O webhook escuta a conta toda.** Vamos receber `recording.completed` das
+  aulas deles também. A primeira linha do handler é procurar o id na nossa
+  tabela; não achou, responde 200 e esquece. Nunca baixar, nunca apagar,
+  nunca reagir ao que não é nosso.
+* **Apagar gravação do Zoom começa desligado.** É a única operação destrutiva
+  do plano. Fica atrás de uma variável, e só para gravação de aula nossa que já
+  subiu ao Vimeo com sucesso.
+* **Teste tem hora e tem nome.** As reuniões de teste nascem com `[TESTE
+  PORTAL]` no título, fora do horário das aulas deles, e são apagadas uma a uma
+  no fim — pelo id, nunca por varredura.
+* **Nada de configuração de conta.** Gravação na nuvem, senha padrão, sala de
+  espera: o que estiver ligado hoje fica como está. Ligar ou desligar isso
+  mudaria o comportamento das aulas deles.
+
+Um limite que **é compartilhado** e vale saber: a Zoom conta 100 criações de
+reunião por dia **por usuário**. Se as nossas aulas forem hospedadas no mesmo
+usuário que o outro sistema usa, os dois dividem esse teto. Dá folga de sobra
+para aula, mas é motivo para preferir um usuário só nosso, se a conta tiver
+mais de um.
+
 ## Fases
 
 1. **Agendar, entrar, gravar** — credencial, cliente do Zoom, modelo, rotas,
@@ -145,8 +215,10 @@ Fase 1 é o que eu começaria. A 2 é barata depois que o webhook já existe.
 
 ## O que eu preciso que você decida
 
-1. **Zoom Pro, hoje, já é seu?** Se sim, a fase 1 não custa assinatura nova.
-2. **Uma conta hospeda todas as aulas** (a sua) ou cada professor a sua?
+1. **Qual usuário do Zoom hospeda as nossas aulas** — o mesmo que o outro
+   sistema usa, ou um só nosso, se a conta tiver mais de um?
+2. **Em que dias e horários as aulas do outro sistema acontecem**, para os
+   testes ficarem longe delas.
 3. **A gravação publica sozinha** no sub-módulo escolhido, ou espera sua
    revisão por padrão?
 4. **Janela de entrada**: 15 minutos antes está bom? E até quando depois?
