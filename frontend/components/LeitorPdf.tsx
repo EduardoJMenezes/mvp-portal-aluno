@@ -11,6 +11,7 @@
 import { getStroke } from "perfect-freehand";
 import type { PDFDocumentProxy } from "pdfjs-dist";
 import {
+  memo,
   useCallback,
   useEffect,
   useMemo,
@@ -21,8 +22,10 @@ import {
 import { Aviso } from "@/components/ui";
 import { api, type PaginaAnotada, type Traco } from "@/lib/api";
 
-type Ferramenta = "mao" | "caneta" | "marcatexto" | "texto" | "borracha";
+type Ferramenta = "mao" | "caneta" | "marcatexto" | "texto" | "borracha" | "selecao";
 type Tracos = Record<number, Traco[]>;
+// x0, y0, x1, y1 no mesmo 0 a 1 da página.
+type Caixa = [number, number, number, number];
 // O Safari do iPad só tem a versão com prefixo, e é justamente onde a tela cheia
 // mais vale a pena.
 type ElementoDeTelaCheia = HTMLDivElement & { webkitRequestFullscreen?: () => Promise<void> | void };
@@ -33,7 +36,10 @@ type DocumentoDeTelaCheia = Document & {
 
 const CORES = ["#111827", "#2563eb", "#dc2626", "#16a34a"];
 const CORES_MARCATEXTO = ["#fde047", "#86efac", "#93c5fd", "#fda4af"];
-const ESPESSURAS = [0.0025, 0.005, 0.01];
+// Tudo em fração da largura da página: o traço fino continua fino no zoom.
+const ESPESSURAS = [0.0012, 0.0025, 0.005, 0.01, 0.018];
+const LARGURAS_MARCATEXTO = [0.012, 0.02, 0.035];
+const RAIOS_DA_BORRACHA = [0.008, 0.016, 0.03];
 const TAMANHO_DO_TEXTO = 0.018;
 const ESPERA_PARA_SALVAR = 1500;
 const PAGINAS_VIZINHAS = 1;
@@ -58,7 +64,63 @@ function caminhoDoTraco(traco: Traco, largura: number, altura: number): string {
   return `M${contorno.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join("L")}Z`;
 }
 
-function TracosDaPagina({ tracos, largura, altura }: { tracos: Traco[]; largura: number; altura: number }) {
+// --- geometria da seleção ----------------------------------------------------
+
+// A caixa do texto é estimada: a letra tem largura média de meio tamanho. Serve
+// para saber onde pegar e o que cabe no quadro, não para desenhar.
+function limitesDo(traco: Traco): Caixa {
+  if (traco.t === "texto") {
+    return [traco.x, traco.y - traco.tam, traco.x + traco.tam * 0.55 * traco.txt.length, traco.y + traco.tam * 0.3];
+  }
+  const meio = traco.larg / 2;
+  let [x0, y0, x1, y1] = [Infinity, Infinity, -Infinity, -Infinity];
+  for (const [x, y] of traco.p) {
+    x0 = Math.min(x0, x);
+    y0 = Math.min(y0, y);
+    x1 = Math.max(x1, x);
+    y1 = Math.max(y1, y);
+  }
+  return [x0 - meio, y0 - meio, x1 + meio, y1 + meio];
+}
+
+function uniaoDe(caixas: Caixa[]): Caixa | null {
+  if (!caixas.length) return null;
+  return caixas.reduce((a, b) => [
+    Math.min(a[0], b[0]),
+    Math.min(a[1], b[1]),
+    Math.max(a[2], b[2]),
+    Math.max(a[3], b[3]),
+  ]);
+}
+
+const contida = (o: Caixa, dentro: Caixa) =>
+  o[0] >= dentro[0] && o[1] >= dentro[1] && o[2] <= dentro[2] && o[3] <= dentro[3];
+
+const pega = ([x, y]: [number, number], c: Caixa, folga = 0) =>
+  x >= c[0] - folga && x <= c[2] + folga && y >= c[1] - folga && y <= c[3] + folga;
+
+function deslocar(traco: Traco, dx: number, dy: number): Traco {
+  const arredonda = (n: number) => Number(n.toFixed(4));
+  if (traco.t === "texto") return { ...traco, x: arredonda(traco.x + dx), y: arredonda(traco.y + dy) };
+  return {
+    ...traco,
+    p: traco.p.map(([x, y, pressao]) => [arredonda(x + dx), arredonda(y + dy), pressao] as [number, number, number]),
+  };
+}
+
+// --- camada de marcação ------------------------------------------------------
+
+// `memo` porque riscar numa página não pode recalcular o contorno das vizinhas:
+// cada traço passa pelo perfect-freehand a cada render.
+const TracosDaPagina = memo(function TracosDaPagina({
+  tracos,
+  largura,
+  altura,
+}: {
+  tracos: Traco[];
+  largura: number;
+  altura: number;
+}) {
   return (
     <>
       {tracos.map((traco, i) =>
@@ -85,7 +147,7 @@ function TracosDaPagina({ tracos, largura, altura }: { tracos: Traco[]; largura:
       )}
     </>
   );
-}
+});
 
 // --- uma página --------------------------------------------------------------
 
@@ -100,6 +162,8 @@ function Pagina({
   desenhar,
   tracos,
   emAndamento,
+  quadro,
+  selecionado,
   escrevendo,
   aoEscrever,
   aoFecharTexto,
@@ -113,6 +177,8 @@ function Pagina({
   desenhar: boolean;
   tracos: Traco[];
   emAndamento: Traco | null;
+  quadro: Caixa | null;
+  selecionado: Caixa | null;
   escrevendo: CaixaAberta | null;
   aoEscrever: (txt: string) => void;
   aoFecharTexto: () => void;
@@ -183,6 +249,8 @@ function Pagina({
           {emAndamento && (
             <TracosDaPagina tracos={[emAndamento]} largura={medida.largura} altura={medida.altura} />
           )}
+          {selecionado && <Moldura caixa={selecionado} medida={medida} escolhido />}
+          {quadro && <Moldura caixa={quadro} medida={medida} />}
         </svg>
       )}
       {medida && escrevendo && (
@@ -202,6 +270,32 @@ function Pagina({
   );
 }
 
+function Moldura({
+  caixa,
+  medida,
+  escolhido,
+}: {
+  caixa: Caixa;
+  medida: DimensoesDaPagina;
+  escolhido?: boolean;
+}) {
+  const folga = escolhido ? 6 : 0;
+  return (
+    <rect
+      x={caixa[0] * medida.largura - folga}
+      y={caixa[1] * medida.altura - folga}
+      width={(caixa[2] - caixa[0]) * medida.largura + folga * 2}
+      height={(caixa[3] - caixa[1]) * medida.altura + folga * 2}
+      rx={folga}
+      fill="var(--color-acento)"
+      fillOpacity={escolhido ? 0.06 : 0.1}
+      stroke="var(--color-acento)"
+      strokeWidth={1.5}
+      strokeDasharray={escolhido ? "7 5" : "4 4"}
+    />
+  );
+}
+
 // --- o leitor ----------------------------------------------------------------
 
 export function LeitorPdf({ materialId }: { materialId: number }) {
@@ -216,7 +310,9 @@ export function LeitorPdf({ materialId }: { materialId: number }) {
   const [ferramenta, ferramentaEscolhida] = useState<Ferramenta>("caneta");
   const [cor, setCor] = useState(CORES[0]);
   const [corMarcatexto, setCorMarcatexto] = useState(CORES_MARCATEXTO[0]);
-  const [espessura, setEspessura] = useState(ESPESSURAS[1]);
+  const [espessura, setEspessura] = useState(ESPESSURAS[2]);
+  const [larguraMarcatexto, setLarguraMarcatexto] = useState(LARGURAS_MARCATEXTO[1]);
+  const [raioDaBorracha, setRaioDaBorracha] = useState(RAIOS_DA_BORRACHA[1]);
 
   const [tracos, setTracos] = useState<Tracos>({});
   const [emAndamento, setEmAndamento] = useState<{ pagina: number; traco: Traco } | null>(null);
@@ -225,6 +321,9 @@ export function LeitorPdf({ materialId }: { materialId: number }) {
   );
   const [canetaPerto, setCanetaPerto] = useState(false);
   const [cheia, setCheia] = useState(false);
+  // O que está escolhido são os índices na lista da página; a caixa sai deles.
+  const [selecao, setSelecao] = useState<{ pagina: number; indices: number[] } | null>(null);
+  const [quadro, setQuadro] = useState<{ pagina: number; caixa: Caixa } | null>(null);
   const [salvando, setSalvando] = useState(false);
   const [salvoEm, setSalvoEm] = useState<Date | null>(null);
 
@@ -236,9 +335,18 @@ export function LeitorPdf({ materialId }: { materialId: number }) {
   const historico = useRef<{ pagina: number; antes: Traco[] }[]>([]);
   const refeitos = useRef<{ pagina: number; antes: Traco[] }[]>([]);
   const textoFechado = useRef(0);
-  const desenhando = useRef<{ pagina: number; ponteiro: number; pontos: [number, number, number][] } | null>(null);
+  // Um gesto de cada vez, seja ele traço, quadro de seleção ou arrasto.
+  const desenhando = useRef<{
+    pagina: number;
+    ponteiro: number;
+    pontos: [number, number, number][];
+    historiado?: boolean;
+    quadro?: boolean;
+    movendo?: { de: [number, number]; original: Traco[] };
+  } | null>(null);
 
-  const marcando = ferramenta === "caneta" || ferramenta === "marcatexto" || ferramenta === "borracha";
+  // Ferramenta que altera a página: aí o toque é palma, e só rola.
+  const marcando = ferramenta !== "mao" && ferramenta !== "texto";
 
   atuais.current = tracos;
 
@@ -462,22 +570,61 @@ export function LeitorPdf({ materialId }: { materialId: number }) {
     ];
   };
 
-  const guardar = (numero: number, proximos: Traco[]) => {
-    historico.current = [...historico.current.slice(-29), { pagina: numero, antes: atuais.current[numero] ?? [] }];
-    refeitos.current = [];
+  const aplicar = (numero: number, proximos: Traco[]) => {
     setTracos((tudo) => ({ ...tudo, [numero]: proximos }));
     marcarSuja(numero);
   };
 
+  // Um passo de desfazer por gesto, não por evento: uma passada de borracha
+  // volta inteira, e não come os 30 passos guardados.
+  const anotarHistorico = (numero: number) => {
+    historico.current = [...historico.current.slice(-29), { pagina: numero, antes: atuais.current[numero] ?? [] }];
+    refeitos.current = [];
+  };
+
+  const guardar = (numero: number, proximos: Traco[]) => {
+    anotarHistorico(numero);
+    aplicar(numero, proximos);
+  };
+
+  // Marca no gesto que o histórico já foi anotado, para o resto da passada não
+  // anotar de novo. Fora de um gesto (não deve acontecer), anota e pronto.
+  const historiarGesto = (numero: number) => {
+    const gesto = desenhando.current;
+    if (gesto?.historiado) return;
+    anotarHistorico(numero);
+    if (gesto) gesto.historiado = true;
+  };
+
   const apagarEm = (numero: number, [x, y]: [number, number, number]) => {
-    const perto = (traco: Traco) => {
-      // Alcance generoso: a borracha some com o traço inteiro, e errar por um
-      // dedo de distância seria pior do que apagar de mais.
-      if (traco.t === "texto") return Math.hypot(traco.x - x, traco.y - y) < 0.05;
-      return traco.p.some(([px, py]) => Math.hypot(px - x, py - y) < 0.03);
-    };
-    const restantes = (atuais.current[numero] ?? []).filter((t) => !perto(t));
-    if (restantes.length !== (atuais.current[numero] ?? []).length) guardar(numero, restantes);
+    const antes = atuais.current[numero] ?? [];
+    const depois: Traco[] = [];
+    let mudou = false;
+    for (const traco of antes) {
+      if (traco.t === "texto") {
+        // Texto não se corta ao meio: ou fica, ou some inteiro.
+        if (pega([x, y], limitesDo(traco), raioDaBorracha)) mudou = true;
+        else depois.push(traco);
+        continue;
+      }
+      // A borracha come pedaço: o traço vira os trechos que sobraram de fora.
+      const trechos: [number, number, number][][] = [[]];
+      for (const ponto of traco.p) {
+        if (Math.hypot(ponto[0] - x, ponto[1] - y) < raioDaBorracha) {
+          if (trechos[trechos.length - 1].length) trechos.push([]);
+        } else trechos[trechos.length - 1].push(ponto);
+      }
+      if (trechos.length === 1 && trechos[0].length === traco.p.length) {
+        depois.push(traco);
+        continue;
+      }
+      mudou = true;
+      // Trecho de um ponto só não desenha nada; vira sujeira no arquivo.
+      for (const trecho of trechos) if (trecho.length > 1) depois.push({ ...traco, p: trecho });
+    }
+    if (!mudou) return;
+    historiarGesto(numero);
+    aplicar(numero, depois);
   };
 
   // Fecha a caixa de texto aberta: `guardando` diz se o que está escrito vira
@@ -493,6 +640,35 @@ export function LeitorPdf({ materialId }: { materialId: number }) {
       ...(atuais.current[aberta.pagina] ?? []),
       { t: "texto", cor, x: aberta.x, y: aberta.y, tam: TAMANHO_DO_TEXTO, txt: aberta.txt.trim() },
     ]);
+  };
+
+  // A caixa do que está escolhido sai dos traços de agora: ela segue o arrasto
+  // sem ninguém precisar atualizá-la.
+  const caixaDaSelecao = useMemo(() => {
+    if (!selecao) return null;
+    const lista = tracos[selecao.pagina] ?? [];
+    return uniaoDe(selecao.indices.map((i) => lista[i]).filter(Boolean).map(limitesDo));
+  }, [selecao, tracos]);
+
+  const escolherNaArea = (numero: number, area: Caixa) => {
+    const lista = atuais.current[numero] ?? [];
+    const indices = lista.reduce<number[]>((acc, traco, i) => {
+      if (contida(limitesDo(traco), area)) acc.push(i);
+      return acc;
+    }, []);
+    setSelecao(indices.length ? { pagina: numero, indices } : null);
+  };
+
+  const escolherNoPonto = (numero: number, ponto: [number, number]) => {
+    const lista = atuais.current[numero] ?? [];
+    // De trás para a frente: o traço de cima é o que a pessoa vê.
+    for (let i = lista.length - 1; i >= 0; i--) {
+      if (pega(ponto, limitesDo(lista[i]), 0.005)) {
+        setSelecao({ pagina: numero, indices: [i] });
+        return;
+      }
+    }
+    setSelecao(null);
   };
 
   const comecar = (numero: number) => (e: EventoDePonteiro<HTMLDivElement>) => {
@@ -514,9 +690,27 @@ export function LeitorPdf({ materialId }: { materialId: number }) {
     }
     e.currentTarget.setPointerCapture(e.pointerId);
     const ponto = pontoDaPagina(e);
+
+    if (ferramenta === "selecao") {
+      const [x, y] = ponto;
+      // Dentro do que já está escolhido, o arrasto move. Fora, começa de novo.
+      if (selecao?.pagina === numero && caixaDaSelecao && pega([x, y], caixaDaSelecao, 0.01)) {
+        desenhando.current = {
+          pagina: numero,
+          ponteiro: e.pointerId,
+          pontos: [ponto],
+          movendo: { de: [x, y], original: atuais.current[numero] ?? [] },
+        };
+        return;
+      }
+      desenhando.current = { pagina: numero, ponteiro: e.pointerId, pontos: [ponto], quadro: true };
+      setQuadro({ pagina: numero, caixa: [x, y, x, y] });
+      return;
+    }
+
     if (ferramenta === "borracha") {
-      apagarEm(numero, ponto);
       desenhando.current = { pagina: numero, ponteiro: e.pointerId, pontos: [] };
+      apagarEm(numero, ponto);
       return;
     }
     desenhando.current = { pagina: numero, ponteiro: e.pointerId, pontos: [ponto] };
@@ -525,7 +719,7 @@ export function LeitorPdf({ materialId }: { materialId: number }) {
 
   const tracoEmAndamento = (pontos: [number, number, number][]): Traco =>
     ferramenta === "marcatexto"
-      ? { t: "marcatexto", cor: corMarcatexto, larg: 0.02, p: pontos }
+      ? { t: "marcatexto", cor: corMarcatexto, larg: larguraMarcatexto, p: pontos }
       : { t: "caneta", cor, larg: espessura, p: pontos };
 
   const mover = (numero: number) => (e: EventoDePonteiro<HTMLDivElement>) => {
@@ -534,6 +728,32 @@ export function LeitorPdf({ materialId }: { materialId: number }) {
     const ponto = pontoDaPagina(e);
     if (ferramenta === "borracha") {
       apagarEm(numero, ponto);
+      return;
+    }
+    if (atual.quadro) {
+      const [x0, y0] = atual.pontos[0];
+      setQuadro({
+        pagina: numero,
+        caixa: [
+          Math.min(x0, ponto[0]),
+          Math.min(y0, ponto[1]),
+          Math.max(x0, ponto[0]),
+          Math.max(y0, ponto[1]),
+        ],
+      });
+      return;
+    }
+    if (atual.movendo) {
+      const dx = ponto[0] - atual.movendo.de[0];
+      const dy = ponto[1] - atual.movendo.de[1];
+      // Sempre a partir do original: somar deslocamento em cima de deslocamento
+      // acumula erro de arredondamento e o desenho escorrega.
+      const alvos = new Set(selecao?.indices ?? []);
+      historiarGesto(numero);
+      aplicar(
+        numero,
+        atual.movendo.original.map((traco, i) => (alvos.has(i) ? deslocar(traco, dx, dy) : traco)),
+      );
       return;
     }
     const ultimo = atual.pontos[atual.pontos.length - 1];
@@ -547,6 +767,18 @@ export function LeitorPdf({ materialId }: { materialId: number }) {
     if (!atual || atual.pagina !== numero || atual.ponteiro !== e.pointerId) return;
     desenhando.current = null;
     setEmAndamento(null);
+
+    if (atual.quadro) {
+      setQuadro(null);
+      const [x0, y0] = atual.pontos[0];
+      const [x, y] = pontoDaPagina(e);
+      const area: Caixa = [Math.min(x0, x), Math.min(y0, y), Math.max(x0, x), Math.max(y0, y)];
+      // Toque parado não é quadro: aí vale escolher o que está debaixo do dedo.
+      if (area[2] - area[0] < 0.01 && area[3] - area[1] < 0.01) escolherNoPonto(numero, [x, y]);
+      else escolherNaArea(numero, area);
+      return;
+    }
+    if (atual.movendo) return; // o arrasto já foi aplicado e marcado para salvar
     if (atual.pontos.length === 0) return;
     const arredondado = atual.pontos.map(
       ([x, y, p]) => [Number(x.toFixed(4)), Number(y.toFixed(4)), Number(p.toFixed(2))] as [number, number, number],
@@ -560,6 +792,7 @@ export function LeitorPdf({ materialId }: { materialId: number }) {
     if (desenhando.current?.ponteiro !== e.pointerId) return;
     desenhando.current = null;
     setEmAndamento(null);
+    setQuadro(null);
   };
 
   const desfazer = () => {
@@ -567,6 +800,7 @@ export function LeitorPdf({ materialId }: { materialId: number }) {
     if (!passo) return;
     refeitos.current.push({ pagina: passo.pagina, antes: atuais.current[passo.pagina] ?? [] });
     setTracos((tudo) => ({ ...tudo, [passo.pagina]: passo.antes }));
+    setSelecao(null); // os índices escolhidos não valem para a lista de antes
     marcarSuja(passo.pagina);
   };
 
@@ -575,8 +809,29 @@ export function LeitorPdf({ materialId }: { materialId: number }) {
     if (!passo) return;
     historico.current.push({ pagina: passo.pagina, antes: atuais.current[passo.pagina] ?? [] });
     setTracos((tudo) => ({ ...tudo, [passo.pagina]: passo.antes }));
+    setSelecao(null);
     marcarSuja(passo.pagina);
   };
+
+  // Cada ferramenta tem sua régua de tamanho; a barra mostra a da que está na mão.
+  const tamanhos =
+    ferramenta === "caneta"
+      ? { rotulo: "Espessura", valores: ESPESSURAS, valor: espessura, aoTrocar: setEspessura }
+      : ferramenta === "marcatexto"
+        ? {
+            rotulo: "Largura",
+            valores: LARGURAS_MARCATEXTO,
+            valor: larguraMarcatexto,
+            aoTrocar: setLarguraMarcatexto,
+          }
+        : ferramenta === "borracha"
+          ? {
+              rotulo: "Tamanho da borracha",
+              valores: RAIOS_DA_BORRACHA,
+              valor: raioDaBorracha,
+              aoTrocar: setRaioDaBorracha,
+            }
+          : null;
 
   const foco = visiveis.size ? Math.min(...visiveis) : 1;
   const total = documento?.numPages ?? 0;
@@ -595,12 +850,12 @@ export function LeitorPdf({ materialId }: { materialId: number }) {
         aoTrocarFerramenta={(f) => {
           ferramentaEscolhida(f);
           fecharTexto(true); // trocar de ferramenta guarda o que estava escrito
+          setSelecao(null);
         }}
         cor={ferramenta === "marcatexto" ? corMarcatexto : cor}
         cores={ferramenta === "marcatexto" ? CORES_MARCATEXTO : CORES}
         aoTrocarCor={ferramenta === "marcatexto" ? setCorMarcatexto : setCor}
-        espessura={espessura}
-        aoTrocarEspessura={setEspessura}
+        tamanhos={tamanhos}
         aoDesfazer={desfazer}
         aoRefazer={refazer}
         zoom={zoom}
@@ -650,6 +905,8 @@ export function LeitorPdf({ materialId }: { materialId: number }) {
                     desenhar={desenhar}
                     tracos={tracos[numero] ?? []}
                     emAndamento={emAndamento?.pagina === numero ? emAndamento.traco : null}
+                    quadro={quadro?.pagina === numero ? quadro.caixa : null}
+                    selecionado={selecao?.pagina === numero ? caixaDaSelecao : null}
                     escrevendo={
                       escrevendo?.pagina === numero
                         ? { chave: escrevendo.id, x: escrevendo.x, y: escrevendo.y, txt: escrevendo.txt, cor }
@@ -684,7 +941,10 @@ const FERRAMENTAS: { valor: Ferramenta; rotulo: string }[] = [
   { valor: "marcatexto", rotulo: "Marca-texto" },
   { valor: "texto", rotulo: "Texto" },
   { valor: "borracha", rotulo: "Borracha" },
+  { valor: "selecao", rotulo: "Seleção" },
 ];
+
+type Tamanhos = { rotulo: string; valores: number[]; valor: number; aoTrocar: (v: number) => void };
 
 function Barra({
   ferramenta,
@@ -692,8 +952,7 @@ function Barra({
   cor,
   cores,
   aoTrocarCor,
-  espessura,
-  aoTrocarEspessura,
+  tamanhos,
   aoDesfazer,
   aoRefazer,
   zoom,
@@ -710,8 +969,7 @@ function Barra({
   cor: string;
   cores: string[];
   aoTrocarCor: (c: string) => void;
-  espessura: number;
-  aoTrocarEspessura: (e: number) => void;
+  tamanhos: Tamanhos | null;
   aoDesfazer: () => void;
   aoRefazer: () => void;
   zoom: number;
@@ -744,39 +1002,41 @@ function Barra({
       </div>
 
       {risca && (
-        <>
-          <div role="radiogroup" aria-label="Cor" className="flex gap-1.5">
-            {cores.map((c) => (
-              <button
-                key={c}
-                type="button"
-                role="radio"
-                aria-checked={cor === c}
-                aria-label={`Cor ${c}`}
-                onClick={() => aoTrocarCor(c)}
-                style={{ background: c }}
-                className={`size-6 rounded-full border-2 ${cor === c ? "border-tinta" : "border-transparent"}`}
+        <div role="radiogroup" aria-label="Cor" className="flex gap-1.5">
+          {cores.map((c) => (
+            <button
+              key={c}
+              type="button"
+              role="radio"
+              aria-checked={cor === c}
+              aria-label={`Cor ${c}`}
+              onClick={() => aoTrocarCor(c)}
+              style={{ background: c }}
+              className={`size-6 rounded-full border-2 ${cor === c ? "border-tinta" : "border-transparent"}`}
+            />
+          ))}
+        </div>
+      )}
+
+      {tamanhos && (
+        <div role="radiogroup" aria-label={tamanhos.rotulo} className="flex items-center gap-1">
+          {tamanhos.valores.map((v, i) => (
+            <button
+              key={v}
+              type="button"
+              role="radio"
+              aria-checked={tamanhos.valor === v}
+              aria-label={`${tamanhos.rotulo} ${i + 1} de ${tamanhos.valores.length}`}
+              onClick={() => tamanhos.aoTrocar(v)}
+              className={`flex size-7 items-center justify-center rounded-full ${tamanhos.valor === v ? "bg-lilas" : "hover:bg-canvas"}`}
+            >
+              <span
+                className="rounded-full bg-tinta"
+                style={{ width: 3 + i * 3, height: 3 + i * 3 }}
               />
-            ))}
-          </div>
-          {ferramenta === "caneta" && (
-            <div role="radiogroup" aria-label="Espessura" className="flex items-center gap-1.5">
-              {ESPESSURAS.map((e, i) => (
-                <button
-                  key={e}
-                  type="button"
-                  role="radio"
-                  aria-checked={espessura === e}
-                  aria-label={["Fina", "Média", "Grossa"][i]}
-                  onClick={() => aoTrocarEspessura(e)}
-                  className={`flex size-7 items-center justify-center rounded-full ${espessura === e ? "bg-lilas" : "hover:bg-canvas"}`}
-                >
-                  <span className="rounded-full bg-tinta" style={{ width: 4 + i * 4, height: 4 + i * 4 }} />
-                </button>
-              ))}
-            </div>
-          )}
-        </>
+            </button>
+          ))}
+        </div>
       )}
 
       <div className="flex gap-1">

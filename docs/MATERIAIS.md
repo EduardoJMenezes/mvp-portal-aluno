@@ -55,8 +55,10 @@ ainda não decidiu:
 * **rejeição de palma**: com caneta, marca-texto ou borracha na mão, o que é
   toque não marca — rola;
 * **mouse e mesa digitalizadora** pelo mesmo caminho, sem código separado;
-* **borracha que apaga o traço inteiro**, não pixel — é o que a pessoa espera de
-  caneta, e o que mantém o dado pequeno;
+* **borracha que come pedaço**: o traço encostado vira os trechos que sobraram
+  de fora dela, e o texto (que não se corta ao meio) some inteiro;
+* **escolher e mover**: o quadro pega o que estiver inteiro dentro dele, e o
+  arrasto leva tudo junto — traço, marca-texto e texto;
 * **salvar só a página que mudou**.
 
 Um PDF de 323 páginas só roda liso no tablet se o leitor desenhar as páginas
@@ -93,6 +95,30 @@ a caixa recém-aberta; por isso o toque com a ferramenta de texto é cancelado
 **Tela cheia** usa a API do navegador quando existe e, quando não existe (iPhone,
 navegador antigo, portal dentro de um quadro), cai num modo nosso de CSS que
 cobre a tela do mesmo jeito — só a barra do navegador fica.
+
+**Escolher** é um quadro arrastado com a caneta: leva o que estiver **inteiro**
+dentro dele (é o que fazem GoodNotes e o Notas da Apple — pegar quem só encosta
+carregaria junto o sublinhado que atravessa a página). Toque parado, sem quadro,
+escolhe o que está debaixo da ponta, que é o jeito curto de pegar um texto. De
+dentro do que está escolhido, o arrasto move tudo; de fora, começa um quadro
+novo. O deslocamento sai sempre da lista de antes do gesto: somar deslocamento
+em cima de deslocamento acumula arredondamento e o desenho escorrega.
+
+**Um passo de desfazer por gesto**, não por evento. Uma passada de borracha
+parcial mexe em dezenas de traços; sem isso, ela sozinha comeria os 30 passos
+que o histórico guarda.
+
+### Até onde aguenta
+
+Uma página cheia — 300 traços de 20 pontos, 110 KB, perto do teto de 200 KB —
+foi medida com o leitor no ar: riscar em cima dela reescreve **um** caminho por
+evento, não os 300. Cada traço só passa pelo perfect-freehand quando a lista da
+página muda, porque a camada de marcação é `memo`. Isso é o que dá para prometer
+sem inventar: o custo de riscar não cresce com o que já está riscado.
+
+Se um dia crescer — página com milhares de traços, tablet velho —, o próximo
+passo é desenhar a marcação já parada num canvas e deixar no SVG só o traço em
+andamento. Não é preciso hoje.
 
 ### A marcação é privada, e por página
 
@@ -191,8 +217,8 @@ páginas que mudaram. Limite de 200 KB por página, o que dá muita tinta.
 ## Fases
 
 1. **Aba Materiais** — envio, acesso por turma ou aluno, publicação, leitor com
-   caneta, marca-texto, texto, borracha, cores, espessura, desfazer, refazer,
-   tela cheia e salvamento automático.
+   caneta, marca-texto, texto, borracha, seleção, cores, tamanhos, desfazer,
+   refazer, tela cheia e salvamento automático.
 2. **Dentro do curso** — o mesmo material aparecendo como item do sub-módulo, ao
    lado dos vídeos.
 3. **Venda** — acesso individual pago, entrega por página com marca d'água.
