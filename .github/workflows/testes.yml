@@ -34,10 +34,18 @@ jobs:
           cache: pip
       - run: python -m pip install -e ".[dev]"
       - name: pytest
-        shell: bash # -eo pipefail: a falha do pytest não se perde no tee
+        shell: bash
+        # O resumo sai sempre, e o nome de cada teste que caiu vira anotação:
+        # sem isso, quem não tem login no Actions só enxerga "exit code 1".
         run: |
-          python -m pytest backend/tests -q -rs | tee pytest.txt
+          set +e
+          python -m pytest backend/tests -q -rs -rf | tee pytest.txt
+          codigo=${PIPESTATUS[0]}
           echo "::notice title=pytest::$(tail -n 1 pytest.txt)"
+          grep -E "^(FAILED|ERROR)" pytest.txt | head -20 | while IFS= read -r linha; do
+            echo "::error title=teste::$linha"
+          done
+          exit "$codigo"
 
   frontend:
     runs-on: ubuntu-latest

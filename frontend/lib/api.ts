@@ -354,6 +354,23 @@ export type Desempenho = {
 
 export type Assunto = { id: number; nome: string; subassuntos: { id: number; nome: string }[] };
 
+/** Aula ao vivo. O endereço da sala nunca vem em listagem: nasce no clique. */
+export type Aula = {
+  aula_id: number;
+  titulo: string;
+  descricao: string | null;
+  inicio_em: string;
+  minutos: number;
+  status: StatusConteudo;
+  estado: "RASCUNHO" | "AGENDADA" | "ABERTA" | "ENCERRADA";
+  abre_em: string;
+  grava: boolean;
+  tem_sala: boolean;
+  turmas: string[];
+  alunos: { id: number; nome: string; email: string }[];
+  gravacao_item_id: number | null;
+};
+
 export type Material = {
   material_id: number;
   titulo: string;
@@ -458,6 +475,11 @@ export const api = {
 
   // materiais
   materiais: () => pedir<Material[]>("/aluno/materiais"),
+
+  // aulas ao vivo
+  aulas: () => pedir<Aula[]>("/aluno/aulas"),
+  entrarNaAula: (id: number) =>
+    pedir<{ aula_id: number; titulo: string; url: string }>(`/aluno/aulas/${id}/entrar`, { method: "POST" }),
   /** O PDF sai daqui, em faixas de bytes e só com a sessão aberta. */
   enderecoDoMaterial: (id: number) => `/api/aluno/materiais/${id}/arquivo`,
   anotacoes: (id: number) => pedir<Anotacoes>(`/aluno/materiais/${id}/anotacoes`),
@@ -574,6 +596,23 @@ export const api = {
     pedir<{ figura_id: number }>(`/admin/importacoes/${id}/recortes`, { method: "POST", json: dados }),
 
   // materiais do professor
+  aulasDoProfessor: () => pedir<Aula[]>("/admin/aulas"),
+  agendarAula: (dados: {
+    titulo: string;
+    inicio_em: string;
+    minutos: number;
+    descricao?: string;
+    gravar?: boolean;
+    turmas?: string[];
+    alunos?: string[];
+  }) => pedir<Aula>("/admin/aulas", { method: "POST", json: dados }),
+  editarAula: (
+    id: number,
+    dados: { titulo?: string; inicio_em?: string; minutos?: number; status?: string; turmas?: string[]; alunos?: string[] },
+  ) => pedir<Aula>(`/admin/aulas/${id}`, { method: "PATCH", json: dados }),
+  removerAula: (id: number) => pedir<{ aula_id: number; titulo: string }>(`/admin/aulas/${id}`, { method: "DELETE" }),
+  iniciarAula: (id: number) => pedir<{ aula_id: number; url: string }>(`/admin/aulas/${id}/iniciar`, { method: "POST" }),
+
   materiaisDoProfessor: () => pedir<Material[]>("/admin/materiais"),
   enviarMaterial: (arquivo: File, titulo: string, turmas: string[], alunos: string[]) => {
     const corpo = new FormData();
