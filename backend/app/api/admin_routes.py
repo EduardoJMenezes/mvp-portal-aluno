@@ -12,6 +12,7 @@ aluno e não emitem token (ver `deps._pelo_token_do_mcp`).
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any
 
 from fastapi import APIRouter, Depends, File, Form, Query, UploadFile
@@ -23,8 +24,10 @@ from sqlalchemy.orm import Session
 from app.api.deps import operador_atual
 from app.db import get_db
 from app.identidade import Identidade
+from app.integracoes.zoom import de_configuracao as cliente_zoom
 from app.services import (
     analytics,
+    aulas,
     catalogo,
     contas,
     estrutura,
@@ -43,6 +46,7 @@ router = APIRouter(prefix="/api/admin", tags=["admin"], dependencies=[Depends(op
 
 Operador = Depends(operador_atual)
 Banco = Depends(get_db)
+Zoom = Depends(cliente_zoom)
 
 TURMA = "/turmas/{turma}"
 MODULO = TURMA + "/modulos/{modulo}"
@@ -682,3 +686,65 @@ def editar_material(
 @router.delete("/materiais/{material_id}")
 def remover_material(material_id: int, ident: Identidade = Operador, db: Session = Banco) -> dict:
     return materiais.remover_material(db, ident, material_id)
+
+
+# --- aulas ao vivo -----------------------------------------------------------
+#
+# A sala é do Zoom, a porta é nossa. A conta do Zoom é dividida com outra
+# plataforma que tem aula rodando: nenhuma rota daqui alcança reunião que não
+# tenha nascido nesta tabela (ver docs/AULAS-AO-VIVO.md).
+
+
+class AulaIn(BaseModel):
+    titulo: str = Field(min_length=1, max_length=200)
+    inicio_em: datetime = Field(description="Começo da aula, com fuso (ISO 8601)")
+    minutos: int = Field(60, ge=5, le=480)
+    descricao: str = Field("", max_length=2000)
+    gravar: bool = Field(True, description="Grava na nuvem do Zoom para virar aula gravada")
+    turmas: list[str] = Field(default_factory=list, description="Turmas que alcançam")
+    alunos: list[str] = Field(default_factory=list, description="Alunos avulsos")
+    submodulo_id: int | None = Field(None, description="Onde a gravação deve entrar no curso")
+    publicar_gravacao: bool = True
+
+
+class EdicaoAulaIn(BaseModel):
+    titulo: str | None = Field(None, min_length=1, max_length=200)
+    inicio_em: datetime | None = None
+    minutos: int | None = Field(None, ge=5, le=480)
+    status: str | None = Field(None, description="PUBLICADO abre a sala no Zoom; RASCUNHO desmarca")
+    turmas: list[str] | None = None
+    alunos: list[str] | None = None
+    gravar: bool | None = None
+    submodulo_id: int | None = None
+    publicar_gravacao: bool | None = None
+
+
+@router.get("/aulas")
+def lista_aulas(ident: Identidade = Operador, db: Session = Banco) -> list[dict]:
+    """As aulas ao vivo, com quem cada uma alcança. Inclui rascunho."""
+    return aulas.listar_aulas(db, ident)
+
+
+@router.post("/aulas")
+def criar_aula(dados: AulaIn, ident: Identidade = Operador, db: Session = Banco, zoom=Zoom) -> dict:
+    """Agenda a aula. Nasce em rascunho, e a sala do Zoom só abre ao publicar."""
+    return aulas.criar_aula(db, ident, zoom, **dados.model_dump())
+
+
+@router.patch("/aulas/{aula_id}")
+def editar_aula(
+    aula_id: int, dados: EdicaoAulaIn, ident: Identidade = Operador, db: Session = Banco, zoom=Zoom
+) -> dict:
+    return aulas.editar_aula(db, ident, zoom, aula_id, **dados.model_dump(exclude_unset=True))
+
+
+@router.delete("/aulas/{aula_id}")
+def remover_aula(aula_id: int, ident: Identidade = Operador, db: Session = Banco, zoom=Zoom) -> dict:
+    """Some do portal e desmarca a sala — a nossa, pelo id que guardamos."""
+    return aulas.remover_aula(db, ident, zoom, aula_id)
+
+
+@router.post("/aulas/{aula_id}/iniciar")
+def iniciar_aula(aula_id: int, ident: Identidade = Operador, db: Session = Banco, zoom=Zoom) -> dict:
+    """O link de iniciar, buscado na hora: o do Zoom expira em duas horas."""
+    return aulas.link_do_professor(db, ident, aula_id, zoom)

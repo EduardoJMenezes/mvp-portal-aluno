@@ -191,8 +191,10 @@ Então a proteção é de desenho, não de sorte:
   do plano. Fica atrás de uma variável, e só para gravação de aula nossa que já
   subiu ao Vimeo com sucesso.
 * **Teste tem hora e tem nome.** As reuniões de teste nascem com `[TESTE
-  PORTAL]` no título, fora do horário das aulas deles, e são apagadas uma a uma
-  no fim — pelo id, nunca por varredura.
+  PORTAL]` no título e são apagadas uma a uma no fim — pelo id, nunca por
+  varredura. E ficam **fora de terça e de quarta**: as aulas do outro sistema
+  são terça às 17h e quarta às 19h, e a combinação é não encostar nesses dois
+  dias, nem em outro horário deles. Domingo de manhã é o lugar de um teste.
 * **Nada de configuração de conta.** Gravação na nuvem, senha padrão, sala de
   espera: o que estiver ligado hoje fica como está. Ligar ou desligar isso
   mudaria o comportamento das aulas deles.

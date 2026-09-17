@@ -14,7 +14,8 @@ from sqlalchemy.orm import Session
 from app.api.deps import usuario_atual
 from app.db import get_db
 from app.identidade import Identidade
-from app.services import catalogo, materiais, questoes, simulados
+from app.integracoes.zoom import de_configuracao as cliente_zoom
+from app.services import aulas, catalogo, materiais, questoes, simulados
 
 router = APIRouter(prefix="/api/aluno", tags=["aluno"])
 
@@ -201,3 +202,30 @@ def salvar_anotacao(
 ) -> dict:
     """Grava uma página. É o que o salvamento automático chama."""
     return materiais.salvar_anotacao(db, ident, material_id, pagina, dados.model_dump())
+
+
+# --- aulas ao vivo -----------------------------------------------------------
+
+
+@router.get("/aulas")
+def aulas_do_aluno(
+    ident: Identidade = Depends(usuario_atual), db: Session = Depends(get_db)
+) -> list[dict]:
+    """As aulas ao vivo que alcançam quem pergunta — pela turma ou pelo nome."""
+    return aulas.listar_aulas(db, ident)
+
+
+@router.post("/aulas/{aula_id}/entrar")
+def entrar_na_aula(
+    aula_id: int,
+    ident: Identidade = Depends(usuario_atual),
+    db: Session = Depends(get_db),
+    zoom=Depends(cliente_zoom),
+) -> dict:
+    """O link **daquele** aluno, conferindo acesso e horário.
+
+    Não existe endereço de entrada em listagem: ele nasce aqui, no clique, e
+    fica guardado porque o Zoom só deixa inscrever o mesmo e-mail três vezes
+    por dia na mesma reunião.
+    """
+    return aulas.entrar(db, ident, aula_id, zoom)

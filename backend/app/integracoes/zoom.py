@@ -29,6 +29,7 @@ import hmac
 import re
 import time
 from datetime import UTC, datetime
+from functools import lru_cache
 from typing import Any
 
 import httpx
@@ -283,6 +284,7 @@ class ZoomDeMentira:
         return self.aulas[meeting_id]
 
 
+@lru_cache(maxsize=1)
 def de_configuracao() -> ClienteZoom | ZoomDeMentira:
     """O cliente que a configuração pedir — e o de mentira quando não há chave."""
     from app.config import get_settings

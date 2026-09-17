@@ -770,3 +770,96 @@ class MaterialAnotacao(Base):
     __table_args__ = (
         UniqueConstraint("material_id", "usuario_id", "pagina", name="uq_material_anotacao"),
     )
+
+
+# --- aula ao vivo ------------------------------------------------------------
+
+
+class Aula(Base, Rastreavel):
+    """Aula ao vivo: a sala é do Zoom, a porta é nossa.
+
+    Quem alcança a aula é decidido aqui, do mesmo jeito que num material —
+    turma inteira ou pessoa a pessoa. O Zoom não sabe quem é aluno: ele só
+    hospeda a sala, e o `zoom_meeting_id` é o único fio entre as duas coisas.
+
+    O link de iniciar do professor **não tem coluna**: expira em duas horas, e
+    é buscado na hora (ver docs/AULAS-AO-VIVO.md).
+    """
+
+    __tablename__ = "live_classes"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    titulo: Mapped[str] = mapped_column(String(200), nullable=False)
+    descricao: Mapped[str | None] = mapped_column(Text)
+    inicio_em: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    minutos: Mapped[int] = mapped_column(Integer, nullable=False, default=60)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default=Status.RASCUNHO)
+    gravar: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+    zoom_meeting_id: Mapped[str | None] = mapped_column(String(40), index=True)
+    zoom_join_url: Mapped[str | None] = mapped_column(String(500))
+
+    # Onde a gravação deve cair quando ficar pronta, e se cai sozinha.
+    submodulo_id: Mapped[int | None] = mapped_column(ForeignKey("submodules.id"))
+    publicar_gravacao: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    gravacao_item_id: Mapped[int | None] = mapped_column(ForeignKey("items.id"))
+
+    criado_por_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    criado_em: Mapped[datetime] = _agora()
+    publicado_em: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (
+        CheckConstraint("status in ('RASCUNHO','PUBLICADO')", name="ck_live_classes_status"),
+    )
+
+    turmas: Mapped[list[Turma]] = relationship(secondary="live_class_classes", order_by="Turma.nome")
+    alunos: Mapped[list[Usuario]] = relationship(
+        secondary="live_class_students", order_by="Usuario.nome"
+    )
+    submodulo: Mapped[SubModulo | None] = relationship()
+
+
+class AulaTurma(Base):
+    """Acesso da turma inteira."""
+
+    __tablename__ = "live_class_classes"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    aula_id: Mapped[int] = mapped_column(ForeignKey("live_classes.id"), nullable=False)
+    turma_id: Mapped[int] = mapped_column(ForeignKey("classes.id"), nullable=False)
+
+    __table_args__ = (UniqueConstraint("aula_id", "turma_id", name="uq_aula_turma"),)
+
+
+class AulaAluno(Base):
+    """Acesso de uma pessoa só."""
+
+    __tablename__ = "live_class_students"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    aula_id: Mapped[int] = mapped_column(ForeignKey("live_classes.id"), nullable=False)
+    usuario_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    criado_em: Mapped[datetime] = _agora()
+
+    __table_args__ = (UniqueConstraint("aula_id", "usuario_id", name="uq_aula_aluno"),)
+
+
+class AulaPresenca(Base):
+    """O link pessoal do aluno naquela aula — e, depois, se ele entrou.
+
+    O link é guardado porque o Zoom só deixa inscrever o mesmo e-mail três
+    vezes por dia na mesma reunião: pedir de novo a cada clique queimaria a
+    cota e devolveria erro na cara do aluno.
+    """
+
+    __tablename__ = "live_class_attendance"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    aula_id: Mapped[int] = mapped_column(ForeignKey("live_classes.id"), nullable=False)
+    usuario_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    join_url: Mapped[str] = mapped_column(String(500), nullable=False)
+    criado_em: Mapped[datetime] = _agora()
+    entrou_em: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    saiu_em: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (UniqueConstraint("aula_id", "usuario_id", name="uq_aula_presenca"),)
