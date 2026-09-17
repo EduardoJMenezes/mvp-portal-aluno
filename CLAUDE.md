@@ -139,6 +139,12 @@ Ensaio geral dos quatro fluxos do §21, contra o servidor no ar:
   nossa, em coordenadas relativas, porque o editor embutido do pdf.js grava
   dentro do arquivo e ao reabrir vira desenho fixo. Ver
   [docs/MATERIAIS.md](docs/MATERIAIS.md).
+* **Um processo serve tudo, e isso é o teto.** O uvicorn sobe com
+  `WEB_CONCURRENCY` processos, hoje 1: são ~60 pedidos por segundo, um núcleo
+  de oito. Subir o número multiplica o teto **e quebra o MCP**, que guarda a
+  sessão do conector na memória do processo — antes de girar esse dial, separe
+  o `/mcp` do portal. Medições, gargalos e plano em
+  [docs/CARGA.md](docs/CARGA.md).
 * **Simulado: o relógio entra como parâmetro.** Os services de
   [simulados.py](backend/app/services/simulados.py) recebem `agora`; não há job
   de entrega automática — a tentativa vencida é consolidada na próxima consulta.
