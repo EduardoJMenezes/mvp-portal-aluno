@@ -101,6 +101,17 @@ class PortalEstatico(StaticFiles):
         if resposta.status_code == 404 and caminho.startswith("enviar/"):
             resposta = await super().get_response("enviar/index.html", scope)
         resposta.headers["Content-Security-Policy"] = CSP_DO_PORTAL
+        # O nome do arquivo em /_next/static carrega o hash do conteúdo: mudou o
+        # conteúdo, mudou o nome. Então ele pode ser guardado para sempre — e um
+        # aluno que volta não pede de novo o 1,1 MB do portal. Sem isto são 25
+        # revalidações por aba aberta, e 600 alunos entrando na aula fazem 15 mil
+        # pedidos só para ouvir "não mudou" (docs/CARGA.md).
+        if caminho.startswith("_next/static/"):
+            resposta.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+        else:
+            # O HTML aponta para os arquivos com hash: ele não pode envelhecer,
+            # senão o deploy novo demora a aparecer.
+            resposta.headers.setdefault("Cache-Control", "no-cache")
         return resposta
 
 
