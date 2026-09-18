@@ -151,6 +151,40 @@ transcodificar vídeo, processar imagem em escala ou algo assim — e mesmo aí 
 certo seria tirar **aquele pedaço** do caminho do aluno, não reescrever o
 portal.
 
+### 1b. A escrita da anotação: medida, e não é problema
+
+Medo legítimo: a turma inteira riscando a apostila **durante a aula**, cem mãos
+ao mesmo tempo. Fui medir, de dentro do contêiner, no processo único de hoje:
+
+| escritas simultâneas | gravações/s | p50 | p95 | erros |
+|---|---|---|---|---|
+| 10 | 100 | 93 ms | 136 ms | 0 |
+| 25 | 109 | 209 ms | 382 ms | 0 |
+| 50 | 92 | 493 ms | 787 ms | 0 |
+| 100 | 52 | 939 ms | 6,6 s | 42 |
+
+Antes de ler a tabela, desfazer um mal-entendido que muda tudo: **o PDF nunca é
+reescrito**. O arquivo de 37 MB é só leitura; o que a anotação grava é uma linha
+de **2,2 KB** — a página que mudou, em JSON. E o leitor espera 1,5 s depois do
+último traço para mandar.
+
+Então a tradução da tabela é esta: um aluno riscando manda, no pior caso, uma
+gravação a cada três segundos. Cem alunos riscando ao mesmo tempo são **33
+gravações por segundo** — um terço do que o processo único já faz hoje, com p50
+abaixo de 200 ms. O momento que assusta é justamente o que já está folgado.
+
+**Fila (RabbitMQ) não entra agora, e o motivo não é preguiça:** ela transformaria
+o "Salvo 20:02" numa mentira — o aluno lê que salvou enquanto a linha ainda está
+na fila. Para o caderno de alguém, durabilidade agora vale mais que vazão
+depois. E, se um dia a escrita apertar, há dois degraus mais baratos antes de um
+broker: mandar as páginas sujas numa requisição só (o leitor já sabe quais são)
+e os processos do item 1.
+
+**Onde uma fila é a ferramenta certa nesta plataforma:** o cano da gravação
+(Zoom → Vimeo), que dura minutos, falha no meio e precisa de nova tentativa. E
+mesmo lá, uma tabela de trabalhos no Postgres com um cron resolve sem subir
+broker nenhum.
+
 ### 2. Um CDN na frente do portal
 
 Mesmo com o cache imutável, o **primeiro** acesso de cada aluno baixa 1,1 MB do
@@ -185,6 +219,28 @@ sair do piloto.
 Hoje o servidor não registra tempo de resposta. Um log de acesso com duração,
 ou um middleware de dez linhas, responde a próxima pergunta dessas com dados do
 dia a dia em vez de uma madrugada de medição.
+
+## Vale continuar na Railway?
+
+Com os números na mão, hoje a resposta é sim, e com folga:
+
+| | |
+|---|---|
+| Conta do ciclo (10/09 a 10/10) | **US$ 0,75 gastos, US$ 1,43 estimados** — dentro dos US$ 5 que o plano Hobby já inclui |
+| CPU | 1% em média; **o pico foi exatamente 1,0 de 8 vCPU** — a métrica da própria Railway confirmando que o teto é de um processo, não da máquina |
+| Memória | 179 MB de 8 GB |
+| Egresso público | praticamente zero até agora |
+
+Não existe problema de preço nem de escala para resolver mudando de casa: sair
+agora custaria dias de trabalho para economizar centavos. O que de fato vai
+mexer na conta é **egresso** — apostila hoje, gravação de aula amanhã — e a
+resposta para isso não é trocar de provedor, é o CDN do item 2, que é grátis no
+plano de entrada da Cloudflare e ainda absorve o tranco da entrada da aula.
+
+Quando eu reabriria esta pergunta: se um dia forem vários processos sempre
+ligados **mais** dezenas de GB de egresso por mês, um servidor de preço fixo
+(Hetzner e parecidos) fica mais barato que cobrança por uso. É conversa para
+quando a conta estiver em dezenas de dólares, não em US$ 1,43.
 
 ## Se nada for feito
 
