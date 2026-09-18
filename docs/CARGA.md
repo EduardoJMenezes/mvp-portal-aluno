@@ -132,6 +132,25 @@ Dois caminhos, e a escolha é sua:
 Eu recomendo o **(a)**: mais previsível, e separa dois tipos de carga que não
 têm nada a ver um com o outro.
 
+#### Não, isso não é trocar de linguagem
+
+O teto de 60 req/s é de **um processo**, não do Python. Um processo Python
+executa um bytecode por vez (o GIL), e a resposta para isso não é reescrever
+nada: é rodar oito processos, um por núcleo, que é exatamente o que PHP, Ruby e
+Node fazem há vinte anos. Node, aliás, tem o mesmo laço único por processo e
+precisaria do mesmo `cluster`.
+
+E o número diz que a linguagem não é o gargalo: as rotas custam de **8 a 55 ms**
+de servidor, o banco está ocioso, a memória em 258 MB de 8 GB. Não há trabalho
+pesado de CPU aqui para uma linguagem compilada economizar — há fila. Reescrever
+em Go trocaria meses de trabalho e todos os testes por um ganho que uma linha no
+Dockerfile já dá.
+
+Quando eu levantaria a mão para trocar alguma coisa: se um dia o gargalo virar
+transcodificar vídeo, processar imagem em escala ou algo assim — e mesmo aí o
+certo seria tirar **aquele pedaço** do caminho do aluno, não reescrever o
+portal.
+
 ### 2. Um CDN na frente do portal
 
 Mesmo com o cache imutável, o **primeiro** acesso de cada aluno baixa 1,1 MB do
