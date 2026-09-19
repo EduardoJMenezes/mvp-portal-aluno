@@ -1,13 +1,28 @@
 # Quantos alunos a plataforma aguenta
 
-Medido em produção na madrugada de 17/09/2026, contra
-`app-production-e5b7.up.railway.app`, com a apostila real de 37,5 MB no banco.
-A pergunta era direta: **aguenta 500 a 600 alunos ao mesmo tempo?**
+Medido em produção contra `app-production-e5b7.up.railway.app`, com a apostila
+real de 37,5 MB no banco. A pergunta era direta: **aguenta 500 a 600 alunos ao
+mesmo tempo?**
 
-**Não, ainda não.** Hoje ela aguenta bem cerca de **100 alunos**, degrada até
-uns 150 e desmonta em 300. O motivo não é o banco nem a máquina — é um processo
-só usando um núcleo de oito. A correção é conhecida, está medida abaixo, e o
-que falta para aplicá-la é uma decisão sua sobre o MCP.
+**Em 17/09, não: aguentava uns 100.** Um processo só, usando um núcleo de oito.
+**Em 19/09, com o MCP separado e quatro processos no portal, sim — e sobra.**
+Abaixo estão as duas medições: primeiro o diagnóstico que levou à correção,
+depois os números do estado atual.
+
+> **Resumo do estado de hoje (19/09/2026), com quatro processos**
+>
+> | caminho | teto medido | folga para 600 alunos |
+> |---|---|---|
+> | navegação (mix pesado) | ~150–185 req/s | é o mais apertado |
+> | abrir o portal (aba nova) | ~267 req/s | 600 entram em ~11 s |
+> | portal frio (13 arquivos, 667 KB) | ~80 abas/s, 55 MB/s | 600 em ~7,5 s |
+> | escrever anotação | **~560 gravações/s** | folga de 2,8× |
+> | ler apostila (faixas de 256 KB) | ~130 faixas/s, **40 MB/s** | limite vira banda, não CPU |
+> | login (bcrypt) | 40/s | 600 logins em 15 s, uma vez por dia |
+>
+> Com 600 alunos virtuais batendo de fora, **o servidor respondeu em p50 de
+> 12 ms e p95 de 82 ms**. Quem engasgou foi o meu notebook, não a plataforma:
+> não consegui achar o teto real de fora.
 
 ## A infraestrutura de hoje
 
@@ -219,6 +234,98 @@ sair do piloto.
 Hoje o servidor não registra tempo de resposta. Um log de acesso com duração,
 ou um middleware de dez linhas, responde a próxima pergunta dessas com dados do
 dia a dia em vez de uma madrugada de medição.
+
+## Depois dos quatro processos — a medição completa (19/09/2026)
+
+Com o MCP num serviço próprio e o portal em `python -m app.servir portal
+--workers 4`. Carga gerada **de dentro do contêiner** (sem rede, sem TLS) por
+vários processos geradores, porque um gerador sozinho virava o gargalo e a
+medida seria do medidor.
+
+Um aviso de método: o gerador divide os mesmos 8 núcleos com o servidor, então
+estes tetos são **piso**, não teto. Rodando de fora, o servidor mal transpirou.
+
+### Navegação — o caminho mais apertado
+
+Mix realista: `conteudo` (duas vezes, é a rota mais pedida), `materiais`,
+`simulados`, abrir simulado, resultado, desempenho, aulas, figura, `eu`.
+
+| em voo | req/s | p50 | p95 | erros |
+|---|---|---|---|---|
+| 20 | 184 | 46 ms | 417 ms | 0 |
+| 60 | 153 | 211 ms | 1,3 s | 0 |
+| 120 | 143 | 479 ms | 2,9 s | 0 |
+
+Subir o número de geradores de 1 para 6 mudou pouco (129 → 148 req/s): o teto
+é do servidor, não do medidor. **Este é o número que limita a plataforma hoje.**
+
+### Entrar no portal e carregar a página
+
+| cenário | resultado |
+|---|---|
+| burst de aba nova (5 chamadas de API) | 267 req/s a 198 em voo, p50 597 ms, zero erro |
+| portal frio: 13 arquivos, 667 KB | **83 abas/s** a 10 em voo (p50 116 ms); 70/s a 60 em voo |
+
+Seiscentos alunos entrando na aula: ~7,5 s para servir o portal de todos e
+~11 s para as chamadas de API. Somado ao login, a turma inteira está dentro em
+menos de um minuto — e na segunda visita o portal nem é baixado, por causa do
+cache imutável.
+
+### Escrever anotação — o medo da aula, medido
+
+| em voo | gravações/s | p50 | p95 | erros |
+|---|---|---|---|---|
+| 24 | **562** | 40 ms | 69 ms | 0 |
+| 99 | 478 | 121 ms | 526 ms | 0 |
+| 198 | 369 | 343 ms | 778 ms | 0,9% |
+
+Cem alunos riscando ao mesmo tempo pedem ~33 gravações/s; seiscentos, ~200.
+Contra 560/s, é folga de quase três vezes. Com um processo eram 100/s.
+
+### Ler a apostila
+
+| em voo | faixas/s | MB/s | p50 | erros |
+|---|---|---|---|---|
+| 18 | 133 | 45 | 78 ms | 0 |
+| 60 | 124 | 39 | 283 ms | 0 |
+| 120 | 129 | 40 | 711 ms | 0 |
+
+Quarenta MB por segundo saindo do Postgres, sem erro. Aqui o limite deixa de
+ser nosso: vira banda de saída e a internet do aluno.
+
+### O que o contêiner mostrou
+
+| | antes (1 processo) | agora (4 processos) |
+|---|---|---|
+| pico de CPU | **1,0 de 8 vCPU** | **4,1 de 8 vCPU** |
+| memória em repouso | 179 MB | 561 MB |
+| memória depois de horas de teste | — | 3,0 GB, **estável** |
+
+A memória merece nota: depois de servir muita faixa de 256 KB, cada processo
+estaciona em ~750 MB e **não sobe mais** — conferido com duas rodadas extras,
+que a deixaram em 3058 MB, 3061 MB, 3067 MB. Não é vazamento; é o alocador do
+Python segurando o que já usou. Mas é o que decide o próximo passo: **oito
+processos não caberiam** nos 8 GB deste contêiner. Para ir além de quatro,
+primeiro um plano maior.
+
+### O que não foi medido, e por quê
+
+* **Responder simulado.** Os dois simulados publicados estão com a janela
+  fechada, e abrir um só para teste mexeria em conteúdo pedagógico. A escrita
+  da anotação (560/s) é a melhor aproximação que existe: mesma forma, uma linha
+  por chamada. Se quiser o número exato, dá para medir com um simulado
+  descartável, com sua autorização.
+* **Assistir vídeo.** Não passa por aqui: o player é iframe do Vimeo.
+* **MCP.** Fora do escopo por decisão sua — é um usuário só.
+
+### Onde o próximo teto vai aparecer
+
+1. **Navegação**, em ~150 req/s. É o caminho mais caro e o mais pedido. O ETag
+   do `conteudo` já alivia quem volta; se apertar, o passo seguinte é cache de
+   60 s por turma.
+2. **Memória**, se alguém dobrar os processos sem dobrar o plano.
+3. **Egresso**, quando a apostila (e depois a gravação das aulas) começar a
+   sair em gigabytes por aula. É o CDN.
 
 ## Vale continuar na Railway?
 
