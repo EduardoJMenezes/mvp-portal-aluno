@@ -13,6 +13,57 @@ conector cai no processo errado e o Claude perde o servidor.
 
 ---
 
+## Por que dois serviços e um repositório só
+
+A pergunta é justa — e a resposta não é gosto, é o padrão documentado.
+
+**Isto tem nome: *process types*.** O Twelve-Factor App, que é a referência
+que Heroku, Railway e Render seguem, descreve exatamente este arranjo:
+"o desenvolvedor pode arquitetar a aplicação para lidar com cargas diversas
+atribuindo cada tipo de trabalho a um *process type*… requisições HTTP podem
+ser atendidas por um processo `web`, e tarefas longas de fundo por um processo
+`worker`". O conjunto de tipos e de quantas cópias de cada um é o que eles
+chamam de *process formation*
+([12factor.net/concurrency](https://12factor.net/concurrency)). É o mesmo
+desenho: `portal` e `mcp` são dois tipos de processo da mesma aplicação.
+
+**E o mesmo documento desaconselha o que parecia mais organizado.** O fator I
+diz que "há sempre uma correlação de um para um entre o repositório e a
+aplicação" e, textualmente, que "múltiplas aplicações compartilhando o mesmo
+código é uma violação do twelve-factor — a solução é extrair o código
+compartilhado para bibliotecas"
+([12factor.net/codebase](https://12factor.net/codebase)). Dois repositórios
+aqui cairiam justamente nisso: o MCP usa os mesmos services, os mesmos modelos
+e a mesma regra de publicação do portal. Ou duplicaríamos a regra que não pode
+divergir, ou montaríamos uma biblioteca versionada para um projeto de uma
+pessoa só.
+
+**A Railway documenta este caminho.** Para repositório com código
+compartilhado, a orientação é conectar o mesmo repositório ao projeto e criar
+um serviço por componente, cada um com seu *start command* e suas *watch paths*
+([docs.railway.com/deployments/monorepo](https://docs.railway.com/deployments/monorepo)).
+
+**E há produto de gente grande fazendo assim.** O `docker-compose` oficial do
+Apache Airflow sobe `api-server`, `scheduler`, `worker` e `triggerer` a partir
+da **mesma imagem** `apache/airflow`, mudando só o papel de cada um
+([airflow.apache.org](https://airflow.apache.org/docs/apache-airflow/stable/howto/docker-compose/index.html)).
+
+**O FastMCP fecha o raciocínio do nosso caso específico.** A documentação de
+deployment dele diz, sobre rodar com vários workers: "rode com múltiplos
+workers em produção (exige modo stateless)", porque "as sessões ficam na
+memória de cada instância, o que cria dificuldade ao escalar horizontalmente".
+E explica que a sessão carrega "o canal de volta que pedidos iniciados pelo
+servidor, como *elicitation*, usam"
+([gofastmcp.com/deployment/http](https://gofastmcp.com/deployment/http)). Ou
+seja: as duas saídas possíveis são exatamente as duas que discutimos — separar
+o MCP num processo só, ou torná-lo stateless e perder o canal que o
+`publicar_rascunho` usa para pedir a aprovação do professor.
+
+Por isso a recomendação é separar. Se um dia o `publicar_rascunho` não
+depender mais de *elicitation*, o modo stateless junta tudo num serviço de novo.
+
+---
+
 ## Passo 1 — Um serviço só para o MCP
 
 O objetivo é tirar o `/mcp` do serviço do portal, porque é a única peça que não
