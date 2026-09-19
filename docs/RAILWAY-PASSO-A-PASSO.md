@@ -1,15 +1,14 @@
 # Ligar os oito núcleos: o que fazer no Railway
 
-O código já está pronto e no ar — e **inerte**: `PAPEL` nasce `tudo` e
-`WEB_CONCURRENCY` nasce `1`, exatamente como o portal roda hoje. O que falta é
-virar duas chaves, e este documento é a receita.
+O código já está no ar e **inerte**: sem nada configurado, o portal roda
+exatamente como hoje. O que falta são dois serviços bem nomeados e dois
+comandos de partida — este documento é a receita, clique a clique.
 
 Ganho medido: **55 → 239 pedidos por segundo, p50 de 159 ms para 22 ms**
 (docs/CARGA.md). Com isso, 600 alunos passam a usar um quarto da capacidade.
 
-**Ordem importa.** O passo 1 tem que terminar antes do passo 2: se o portal
-subir com vários processos enquanto ainda serve o `/mcp`, a sessão do seu
-conector cai no processo errado e o Claude perde o servidor.
+**Tempo:** uns 20 minutos, a maior parte esperando deploy.
+**Volta atrás:** apagar o comando de partida do serviço `app`. Duas linhas.
 
 ---
 
@@ -34,132 +33,212 @@ código é uma violação do twelve-factor — a solução é extrair o código
 compartilhado para bibliotecas"
 ([12factor.net/codebase](https://12factor.net/codebase)). Dois repositórios
 aqui cairiam justamente nisso: o MCP usa os mesmos services, os mesmos modelos
-e a mesma regra de publicação do portal. Ou duplicaríamos a regra que não pode
-divergir, ou montaríamos uma biblioteca versionada para um projeto de uma
-pessoa só.
+e a mesma regra de publicação do portal.
 
 **A Railway documenta este caminho.** Para repositório com código
 compartilhado, a orientação é conectar o mesmo repositório ao projeto e criar
-um serviço por componente, cada um com seu *start command* e suas *watch paths*
+um serviço por componente, **cada um com seu comando de partida**
 ([docs.railway.com/deployments/monorepo](https://docs.railway.com/deployments/monorepo)).
+É por isso que o papel não fica escondido numa variável: ele é o comando que
+você lê no painel.
 
 **E há produto de gente grande fazendo assim.** O `docker-compose` oficial do
 Apache Airflow sobe `api-server`, `scheduler`, `worker` e `triggerer` a partir
 da **mesma imagem** `apache/airflow`, mudando só o papel de cada um
 ([airflow.apache.org](https://airflow.apache.org/docs/apache-airflow/stable/howto/docker-compose/index.html)).
 
-**O FastMCP fecha o raciocínio do nosso caso específico.** A documentação de
-deployment dele diz, sobre rodar com vários workers: "rode com múltiplos
-workers em produção (exige modo stateless)", porque "as sessões ficam na
-memória de cada instância, o que cria dificuldade ao escalar horizontalmente".
-E explica que a sessão carrega "o canal de volta que pedidos iniciados pelo
-servidor, como *elicitation*, usam"
-([gofastmcp.com/deployment/http](https://gofastmcp.com/deployment/http)). Ou
-seja: as duas saídas possíveis são exatamente as duas que discutimos — separar
-o MCP num processo só, ou torná-lo stateless e perder o canal que o
-`publicar_rascunho` usa para pedir a aprovação do professor.
-
-Por isso a recomendação é separar. Se um dia o `publicar_rascunho` não
-depender mais de *elicitation*, o modo stateless junta tudo num serviço de novo.
+**O FastMCP fecha o raciocínio do nosso caso.** A documentação dele diz, sobre
+rodar com vários workers: "rode com múltiplos workers em produção (exige modo
+stateless)", porque "as sessões ficam na memória de cada instância, o que cria
+dificuldade ao escalar horizontalmente" — e a sessão carrega "o canal de volta
+que pedidos iniciados pelo servidor, como *elicitation*, usam"
+([gofastmcp.com/deployment/http](https://gofastmcp.com/deployment/http)). É
+justamente por esse canal que o `publicar_rascunho` pede a sua aprovação. Por
+isso separamos em vez de tornar stateless.
 
 ---
 
-## Passo 1 — Um serviço só para o MCP
+## Os comandos de partida
 
-O objetivo é tirar o `/mcp` do serviço do portal, porque é a única peça que não
-pode ser duplicada (a sessão do conector mora na memória do processo).
+São estes dois, e eles se explicam sozinhos no painel:
 
-1. No projeto `mvp-portal-aluno`, **New → GitHub Repo**, escolha o mesmo
-   repositório. Dê o nome **`mcp`** ao serviço.
-2. Em **Settings** do serviço `mcp`:
-   * **Healthcheck Path**: `/saude`
-     *(não é `/api/saude`: o portal não mora neste processo)*
-   * **Start Command**: deixe como está — o Dockerfile já resolve.
-3. Em **Variables** do serviço `mcp`, cole no Raw Editor:
+| serviço | comando de partida |
+|---|---|
+| `app` (portal e API) | `python -m app.servir portal --workers 4` |
+| `mcp` (só o conector) | `python -m app.servir mcp` |
 
-   ```bash
-   PAPEL=mcp
-   DATABASE_URL=${{Postgres.DATABASE_URL}}
-   JWT_SECRET=<o mesmo valor do serviço app>
-   MCP_OAUTH_GITHUB_CLIENT_ID=<o mesmo do app>
-   MCP_OAUTH_GITHUB_CLIENT_SECRET=<o mesmo do app>
-   MCP_OAUTH_OPERADORES=<o mesmo do app>
+O comando aplica as migrações e sobe o servidor. E ele **recusa** o que não
+pode: pedir vários processos sem ser no papel `portal` para o deploy com uma
+mensagem dizendo por quê. A configuração perigosa não chega a subir.
+
+---
+
+## Passo 1 — Criar o serviço do MCP
+
+O objetivo é tirar o `/mcp` do serviço do portal, porque é a única peça que
+não pode ser duplicada.
+
+### 1.1 — Copiar as variáveis que já existem
+
+1. Abra o projeto **mvp-portal-aluno** no [railway.com](https://railway.com).
+2. Clique no serviço **`app`** → aba **Variables**.
+3. Canto superior direito da lista, botão **Raw Editor**.
+4. **Selecione tudo e copie** (Ctrl+A, Ctrl+C). Guarde num bloco de notas:
+   você vai colar quase tudo no serviço novo.
+
+### 1.2 — Criar o serviço
+
+1. No canvas do projeto, botão **+ Create** (ou tecle `Cmd/Ctrl + K` →
+   *Deploy from GitHub repo*).
+2. Escolha **GitHub Repo** → **EduardoJMenezes/mvp-portal-aluno** — o mesmo
+   repositório de sempre.
+3. Railway cria o serviço e já começa um deploy. **Deixe-o terminar ou falhar,
+   tanto faz**: nos próximos passos ele será reconfigurado e subirá de novo.
+4. Clique no serviço novo → **Settings** → seção **Service** → campo
+   **Service Name**: troque para **`mcp`**.
+
+### 1.3 — Comando de partida e healthcheck
+
+Ainda em **Settings** do serviço `mcp`:
+
+1. Seção **Deploy** → campo **Custom Start Command**:
+
+   ```
+   python -m app.servir mcp
    ```
 
-   O `JWT_SECRET` precisa ser **o mesmo** dos dois lados: é ele que assina a
-   sessão, e o MCP confere sessão emitida pelo portal.
-4. Em **Settings → Networking → Generate Domain**, gere o domínio do serviço
-   `mcp` e anote o endereço (algo como `mcp-production-xxxx.up.railway.app`).
-5. Volte a **Variables** do `mcp` e acrescente, agora que o endereço existe:
+2. Seção **Deploy** → campo **Healthcheck Path**:
 
-   ```bash
-   MCP_BASE_URL=https://<o domínio que você acabou de gerar>
+   ```
+   /saude
    ```
 
-6. Espere o deploy e confira: `https://<domínio do mcp>/saude` responde
-   `{"status":"ok","papel":"mcp"}`.
-7. No claude.ai, **remova o conector antigo e adicione de novo**, agora com
-   `https://<domínio do mcp>/mcp`. (Isso você já faz quando uma tool muda de
-   descrição — o conector guarda a lista de ferramentas de quando foi criado.)
-8. Teste uma tool qualquer pelo chat, por exemplo "liste as turmas". Se
-   responder, o passo 1 está fechado.
+   Repare: **não** é `/api/saude`. O portal não mora neste processo; este
+   caminho existe só para a Railway aprovar o deploy.
+
+3. Seção **Deploy** → **Pre-Deploy Command**: **deixe vazio**. O serviço `app`
+   tem o seed ali; rodar o seed duas vezes não é o que a gente quer.
+
+### 1.4 — Variáveis do serviço `mcp`
+
+1. Aba **Variables** do serviço `mcp` → botão **Raw Editor**.
+2. Cole tudo o que você copiou do `app` e então **ajuste três coisas**:
+   * **apague** a linha `PAPEL` se ela existir (o comando de partida manda);
+   * **apague** `WEB_CONCURRENCY` se existir;
+   * **acrescente**, por enquanto sem valor definitivo:
+
+     ```bash
+     MCP_BASE_URL=https://trocar-depois
+     ```
+
+3. Confira que ficaram lá, vindas do `app`: `DATABASE_URL`, `JWT_SECRET`,
+   `MCP_OAUTH_GITHUB_CLIENT_ID`, `MCP_OAUTH_GITHUB_CLIENT_SECRET`,
+   `MCP_OAUTH_OPERADORES`, `VIMEO_ACCESS_TOKEN`.
+
+   O `JWT_SECRET` precisa ser **idêntico** ao do `app`: é ele que assina a
+   sessão do portal, e o MCP confere sessão emitida por lá.
+
+4. **Deploy** (o botão que aparece no topo quando há mudança pendente).
+
+### 1.5 — Gerar o endereço e fechar o MCP_BASE_URL
+
+1. Serviço `mcp` → **Settings** → seção **Networking** → **Generate Domain**.
+2. Railway mostra algo como `mcp-production-a1b2.up.railway.app`. **Copie.**
+3. Volte em **Variables** do `mcp` e troque a linha para o endereço de verdade:
+
+   ```bash
+   MCP_BASE_URL=https://mcp-production-a1b2.up.railway.app
+   ```
+
+4. **Deploy** de novo e espere ficar verde.
+
+### 1.6 — Conferir
+
+No navegador, abra `https://<domínio do mcp>/saude`. Tem que responder:
+
+```json
+{"status": "ok", "papel": "mcp"}
+```
+
+Se responder isso, o serviço do MCP está de pé.
+
+### 1.7 — Reapontar o conector no claude.ai
+
+1. Em [claude.ai](https://claude.ai) → **Settings** → **Connectors**.
+2. **Remova** o conector antigo da plataforma.
+3. **Add custom connector**, com o endereço novo:
+   `https://<domínio do mcp>/mcp`
+4. Faça o login do GitHub que ele pedir.
+5. No chat, peça algo simples: *"liste as turmas"*. Se vier a lista, o passo 1
+   está fechado.
+
+> Remover e adicionar de novo não é frescura: o conector guarda a lista de
+> ferramentas de quando foi criado, e reconectar não a atualiza.
+
+---
 
 ## Passo 2 — O portal com quatro processos
 
-Só depois que o passo 1 estiver funcionando.
+**Só depois que o passo 1 estiver respondendo no chat.**
 
-1. Em **Variables** do serviço **`app`**, acrescente:
+1. Serviço **`app`** → **Settings** → **Deploy** → **Custom Start Command**:
 
-   ```bash
-   PAPEL=portal
-   WEB_CONCURRENCY=4
+   ```
+   python -m app.servir portal --workers 4
    ```
 
-2. Salve. O Railway redeploy sozinho, leva uns 3 minutos.
-3. Confira: `https://app-production-e5b7.up.railway.app/api/saude` responde
-   `200`, e `https://app-production-e5b7.up.railway.app/mcp` agora responde
-   **404** — é o sinal de que o portal largou o MCP.
-4. Entre no portal e navegue um pouco: curso, materiais, simulados.
-
-Se algo sair errado, o retorno é imediato: apague `PAPEL` e `WEB_CONCURRENCY`
-do serviço `app` e ele volta a ser exatamente o que era.
+2. **Deploy**. Uns 3 minutos.
+3. Confira, nesta ordem:
+   * `https://app-production-e5b7.up.railway.app/api/saude` → **200**
+   * `https://app-production-e5b7.up.railway.app/mcp` → **404**
+     *(é o sinal de que o portal largou o MCP — antes respondia 401)*
+   * Entre no portal e navegue: curso, materiais, simulados.
+4. Em **Deployments** → **View Logs**, a primeira linha do app deve dizer:
+   `papel: portal (sem /mcp) — pode rodar com vários processos`.
 
 **Por que 4 e não 8:** cada processo carrega o app (~200 MB) e abre até 40
 conexões no banco. Quatro dão 160 conexões, com folga nos 500 que o Postgres
 aceita, e já entregam o salto medido. Oito é possível depois, olhando o
 `railway metrics`.
 
-## Passo 3 — CDN na frente (quando tiver domínio próprio)
+**Se algo der errado:** apague o Custom Start Command do serviço `app` e faça
+deploy. Ele volta a ser exatamente o que era, com MCP e portal juntos.
+
+---
+
+## Passo 3 — CDN na frente (quando houver domínio próprio)
 
 Este não dá para fazer hoje: o portal está num endereço `.up.railway.app`, e
 não se põe Cloudflare na frente do domínio da Railway.
 
 Quando o domínio próprio existir:
 
-1. Aponte o domínio para a Cloudflare (plano grátis serve).
-2. Na Railway, **Settings → Networking → Custom Domain**, adicione o domínio e
-   crie o CNAME que ele pedir, com a nuvem **laranja** (proxy ligado).
-3. Acrescente `CORS_ORIGINS=https://<seu domínio>` nas variáveis do `app`.
+1. Registre o domínio e aponte os *nameservers* para a Cloudflare (plano
+   grátis serve).
+2. Na Railway: serviço `app` → **Settings** → **Networking** → **Custom
+   Domain** → digite o domínio. Ele mostra um CNAME.
+3. Na Cloudflare, crie esse CNAME com a **nuvem laranja** (proxy ligado).
+4. Na Railway, acrescente às variáveis do `app`:
+   `CORS_ORIGINS=https://<seu domínio>`.
 
 Isso tira do nosso servidor os 660 MB de arquivos estáticos que 600 alunos
-baixam ao entrar na primeira aula, e o egresso sai da conta.
+baixam ao entrar na primeira aula.
 
 ---
 
-## O que já está feito, e que você não precisa tocar
+## O que já está feito, e você não precisa tocar
 
 * **Cache imutável** nos arquivos do portal: quem volta não rebaixa 1,1 MB.
 * **ETag no `/api/aluno/conteudo`**: quem volta recebe 304 no lugar de 48,7 KB.
-* **Fila do banco** de 20 + 20 conexões, com espera de 5 s — 503 rápido em vez
-  de meio minuto pendurado.
+* **Fila do banco** de 20 + 20 conexões, espera de 5 s — 503 rápido em vez de
+  meio minuto pendurado.
 * **Trava de login no Postgres**: com quatro processos, cinco tentativas por
-  conta continuam sendo cinco, não vinte.
-* **Log com o tempo de cada resposta** (método, rota, status, ms), para a
-  próxima pergunta de desempenho ser respondida com dado de dia normal.
+  conta continuam sendo cinco.
+* **Log com o tempo de cada resposta**, para a próxima pergunta de desempenho
+  ser respondida com dado de dia normal.
 
 ## Como saber se valeu
 
-Depois do passo 2, em `railway metrics --service app`, o pico de CPU deve
-passar de **1,0 vCPU** (o teto de um processo, medido antes) para algo acima
-disso quando houver carga. É a confirmação de que os outros núcleos entraram no
-jogo.
+Em `railway metrics --service app`, sob carga, o pico de CPU deve passar de
+**1,0 vCPU** — o teto de um processo, que foi o que medi antes — para mais do
+que isso. É a confirmação de que os outros núcleos entraram no jogo.

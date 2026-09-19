@@ -34,9 +34,9 @@ COPY scripts/ ./scripts/
 # Railway mantém a versão anterior no ar (ver app/migracoes.py).
 # --forwarded-allow-ips: o container só é alcançado pelo proxy do Railway, e é
 # do X-Forwarded-For que sai o IP do limite de tentativas de login.
-# WEB_CONCURRENCY: quantos processos servem o portal. Um só usa um núcleo dos
-# oito — é o teto de ~60 pedidos por segundo medido em docs/CARGA.md. Mais de um
-# processo multiplica esse teto, MAS o MCP guarda a sessão do conector na
-# memória do processo: com dois ou mais, um pedido pode cair no processo errado.
-# Por isso o padrão é 1, e subir daqui só depois de separar o MCP do portal.
-CMD ["sh", "-c", "python -m app.migracoes && exec python -m uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000} --workers ${WEB_CONCURRENCY:-1} --proxy-headers --forwarded-allow-ips '*'"]
+# Sem argumento, `app.servir` lê PAPEL e WEB_CONCURRENCY do ambiente e cai no
+# padrão de sempre: os dois papéis num processo só. Cada serviço da Railway
+# sobrescreve isto com o seu comando — `python -m app.servir portal --workers 4`
+# ou `python -m app.servir mcp` —, que é onde o papel fica visível no painel.
+# Ver docs/RAILWAY-PASSO-A-PASSO.md.
+CMD ["python", "-m", "app.servir"]
