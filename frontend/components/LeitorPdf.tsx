@@ -18,6 +18,7 @@ import {
   useRef,
   useState,
   type PointerEvent as EventoDePonteiro,
+  type ReactNode,
 } from "react";
 import { Aviso } from "@/components/ui";
 import { api, type PaginaAnotada, type Traco } from "@/lib/api";
@@ -46,6 +47,25 @@ const PAGINAS_VIZINHAS = 1;
 // Depois do último sinal da caneta o toque ainda é palma por este tempo. É o que
 // impede a mão apoiada de arrastar a página debaixo do traço.
 const ESPERA_DA_PALMA = 700;
+// Onde o aluno parou de ler. Fica no navegador dele: é preferência de leitura,
+// não conteúdo — e assim reabrir a apostila não espera resposta de servidor.
+const ONDE_PAREI = (material: number) => `leitor:pagina:${material}`;
+
+function guardarPagina(material: number, pagina: number): void {
+  try {
+    localStorage.setItem(ONDE_PAREI(material), String(pagina));
+  } catch {
+    // Aba anônima ou site bloqueado: reabrir na página 1 não é o fim do mundo.
+  }
+}
+
+function paginaGuardada(material: number): number {
+  try {
+    return Number(localStorage.getItem(ONDE_PAREI(material))) || 1;
+  } catch {
+    return 1;
+  }
+}
 
 // --- desenho -----------------------------------------------------------------
 
@@ -335,6 +355,7 @@ export function LeitorPdf({ materialId }: { materialId: number }) {
   const historico = useRef<{ pagina: number; antes: Traco[] }[]>([]);
   const refeitos = useRef<{ pagina: number; antes: Traco[] }[]>([]);
   const textoFechado = useRef(0);
+  const voltou = useRef(false);
   // Um gesto de cada vez, seja ele traço, quadro de seleção ou arrasto.
   const desenhando = useRef<{
     pagina: number;
@@ -542,6 +563,27 @@ export function LeitorPdf({ materialId }: { materialId: number }) {
     alvo.querySelectorAll("[data-pagina]").forEach((no) => observador.observe(no));
     return () => observador.disconnect();
   }, [documento]);
+
+  // --- voltar para onde parou -------------------------------------------------
+  // Guarda a página em foco e, ao reabrir, pula para ela. Só depois de as
+  // dimensões existirem: antes disso todas as páginas têm altura zero e rolar
+  // para a 180 pararia na 1.
+  // Só começa a gravar depois de ter voltado: ao abrir, `pagina` ainda é 1, e
+  // salvar esse 1 apagaria justamente a página que estava guardada. (A ordem
+  // dos dois efeitos importa: este roda antes e sai fora; o de baixo restaura
+  // e libera a gravação para o render seguinte.)
+  useEffect(() => {
+    if (documento && voltou.current && pagina > 0) guardarPagina(materialId, pagina);
+  }, [materialId, documento, pagina]);
+
+  useEffect(() => {
+    if (!documento || !dimensoes || voltou.current) return;
+    voltou.current = true;
+    const onde = paginaGuardada(materialId);
+    if (onde <= 1) return;
+    rolagem.current?.querySelector(`[data-pagina="${onde}"]`)?.scrollIntoView();
+    setPagina(onde);
+  }, [documento, dimensoes, materialId]);
 
   // --- largura que cabe na tela ----------------------------------------------
   useEffect(() => {
@@ -935,13 +977,105 @@ export function LeitorPdf({ materialId }: { materialId: number }) {
 
 // --- barra de ferramentas ----------------------------------------------------
 
-const FERRAMENTAS: { valor: Ferramenta; rotulo: string }[] = [
-  { valor: "mao", rotulo: "Mão" },
-  { valor: "caneta", rotulo: "Caneta" },
-  { valor: "marcatexto", rotulo: "Marca-texto" },
-  { valor: "texto", rotulo: "Texto" },
-  { valor: "borracha", rotulo: "Borracha" },
-  { valor: "selecao", rotulo: "Seleção" },
+// Ícones desenhados à mão aqui mesmo: são seis, e uma biblioteca inteira para
+// seis desenhos sairia mais cara que o traço. Todos no mesmo molde — 24×24,
+// contorno de 1.8 na cor do texto —, para lerem como uma família só.
+function Icone({ nome, className = "size-5" }: { nome: string; className?: string }) {
+  const traços: Record<string, ReactNode> = {
+    mao: (
+      <>
+        <path d="M9 11V6.2a1.5 1.5 0 0 1 3 0V11" />
+        <path d="M12 11V5.2a1.5 1.5 0 0 1 3 0V11" />
+        <path d="M15 11.5V7.2a1.5 1.5 0 0 1 3 0V14" />
+        <path d="M6 13.5v-3a1.5 1.5 0 0 1 3 0V11" />
+        <path d="M6 13.5v1.8a6.5 6.5 0 0 0 6.5 6.5h1A4.5 4.5 0 0 0 18 17.3V14" />
+      </>
+    ),
+    caneta: (
+      <>
+        <path d="M4 20.5l1-4L16 5.5a2.1 2.1 0 0 1 3 3L8 19.5l-4 1z" />
+        <path d="M14.5 7l3 3" />
+      </>
+    ),
+    marcatexto: (
+      <>
+        <path d="M5 15.5l6.5-6.5 4 4-6.5 6.5H5v-4z" />
+        <path d="M13.5 7l4 4" />
+        <path d="M4 21.2h16" strokeWidth="3" />
+      </>
+    ),
+    texto: (
+      <>
+        <path d="M5 7V4.5h14V7" />
+        <path d="M12 4.5v15" />
+        <path d="M8.5 19.5h7" />
+      </>
+    ),
+    borracha: (
+      <>
+        <path d="M13.2 4.8 4.6 13.4a2 2 0 0 0 0 2.9l3.1 3.1h4.6l8.1-8.1a2 2 0 0 0 0-2.9l-3.2-3.2a2 2 0 0 0-3 0z" />
+        <path d="M9 9l6.2 6.2" />
+        <path d="M12.3 19.4H21" />
+      </>
+    ),
+    selecao: (
+      <>
+        <rect x="3.4" y="3.4" width="17.2" height="17.2" rx="2.2" strokeDasharray="4 3.2" />
+        <path d="M10 10l5.5 2.2-2.3 1 1.5 2.6" />
+      </>
+    ),
+    desfazer: (
+      <>
+        <path d="M9.5 14.5 4.5 9.5l5-5" />
+        <path d="M4.5 9.5h9a6 6 0 0 1 0 12h-2.5" />
+      </>
+    ),
+    refazer: (
+      <>
+        <path d="M14.5 14.5l5-5-5-5" />
+        <path d="M19.5 9.5h-9a6 6 0 0 0 0 12H13" />
+      </>
+    ),
+    telaCheia: (
+      <>
+        <path d="M4 9.5V4h5.5" />
+        <path d="M20 9.5V4h-5.5" />
+        <path d="M4 14.5V20h5.5" />
+        <path d="M20 14.5V20h-5.5" />
+      </>
+    ),
+    sairDaTelaCheia: (
+      <>
+        <path d="M9.5 4v5.5H4" />
+        <path d="M14.5 4v5.5H20" />
+        <path d="M9.5 20v-5.5H4" />
+        <path d="M14.5 20v-5.5H20" />
+      </>
+    ),
+  };
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      className={className}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      {traços[nome]}
+    </svg>
+  );
+}
+
+const FERRAMENTAS: { valor: Ferramenta; rotulo: string; icone: string }[] = [
+  { valor: "mao", rotulo: "Mão", icone: "mao" },
+  { valor: "caneta", rotulo: "Caneta", icone: "caneta" },
+  { valor: "marcatexto", rotulo: "Marca-texto", icone: "marcatexto" },
+  { valor: "texto", rotulo: "Texto", icone: "texto" },
+  { valor: "borracha", rotulo: "Borracha", icone: "borracha" },
+  { valor: "selecao", rotulo: "Seleção", icone: "selecao" },
 ];
 
 type Tamanhos = { rotulo: string; valores: number[]; valor: number; aoTrocar: (v: number) => void };
@@ -991,12 +1125,16 @@ function Barra({
             type="button"
             role="radio"
             aria-checked={ferramenta === f.valor}
+            // O nome sai da tela mas não do botão: é o que o leitor de tela lê
+            // e o que aparece ao parar o mouse em cima.
+            aria-label={f.rotulo}
+            title={f.rotulo}
             onClick={() => aoTrocarFerramenta(f.valor)}
-            className={`rounded-full px-3 py-1.5 text-sm font-semibold transition-colors ${
+            className={`flex size-10 items-center justify-center rounded-full transition-colors ${
               ferramenta === f.valor ? "bg-acento text-white" : "text-suave hover:bg-canvas hover:text-tinta"
             }`}
           >
-            {f.rotulo}
+            <Icone nome={f.icone} />
           </button>
         ))}
       </div>
@@ -1040,11 +1178,13 @@ function Barra({
       )}
 
       <div className="flex gap-1">
-        <button type="button" onClick={aoDesfazer} className="rounded-full px-3 py-1.5 text-sm font-semibold text-suave hover:bg-canvas hover:text-tinta">
-          Desfazer
+        <button type="button" onClick={aoDesfazer} aria-label="Desfazer" title="Desfazer"
+          className="flex size-10 items-center justify-center rounded-full text-suave hover:bg-canvas hover:text-tinta">
+          <Icone nome="desfazer" />
         </button>
-        <button type="button" onClick={aoRefazer} className="rounded-full px-3 py-1.5 text-sm font-semibold text-suave hover:bg-canvas hover:text-tinta">
-          Refazer
+        <button type="button" onClick={aoRefazer} aria-label="Refazer" title="Refazer"
+          className="flex size-10 items-center justify-center rounded-full text-suave hover:bg-canvas hover:text-tinta">
+          <Icone nome="refazer" />
         </button>
       </div>
 
@@ -1061,10 +1201,12 @@ function Barra({
       <button
         type="button"
         aria-pressed={cheia}
+        aria-label={cheia ? "Sair da tela cheia" : "Tela cheia"}
+        title={cheia ? "Sair da tela cheia" : "Tela cheia"}
         onClick={aoTelaCheia}
-        className="rounded-full px-3 py-1.5 text-sm font-semibold text-suave hover:bg-canvas hover:text-tinta"
+        className="flex size-10 items-center justify-center rounded-full text-suave hover:bg-canvas hover:text-tinta"
       >
-        {cheia ? "Sair da tela cheia" : "Tela cheia"}
+        <Icone nome={cheia ? "sairDaTelaCheia" : "telaCheia"} />
       </button>
 
       <p className="ml-auto flex items-center gap-3 text-[13px] text-suave">
