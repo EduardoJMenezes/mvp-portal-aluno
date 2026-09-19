@@ -49,3 +49,16 @@ def test_papel_padrao_continua_servindo_os_dois():
     assert "/mcp" in _caminhos(app)
     # O portal entra como último recurso, num mount em "/".
     assert TestClient(app).get("/api/naoexiste").status_code == 404
+
+
+def test_o_log_de_tempo_nao_carrega_o_token_do_link_de_envio():
+    """O link de envio chega pelo chat; o token dele não pode virar linha de log."""
+    from app.main import _rota_do_log
+
+    assert _rota_do_log({"path": "/enviar/abc123segredo"}) == "/enviar/{token}"
+    assert _rota_do_log({"path": "/api/aluno/materiais"}) == "/api/aluno/materiais"
+
+    class _Rota:
+        path = "/api/aluno/materiais/{material_id}/arquivo"
+
+    assert _rota_do_log({"route": _Rota(), "path": "/api/aluno/materiais/7/arquivo"}) == _Rota.path

@@ -116,6 +116,21 @@ class PortalEstatico(StaticFiles):
         return resposta
 
 
+def _rota_do_log(scope) -> str:
+    """O molde da rota quando ele sobrevive ao mount; o caminho, quando não.
+
+    `/enviar/<token>` vira `/enviar/{token}` na marra: o token chega pelo chat
+    e não pode aparecer em log nenhum.
+    """
+    molde = getattr(scope.get("route"), "path", None)
+    if molde:
+        return molde
+    caminho = scope.get("path", "") or "/"
+    if caminho.startswith("/enviar/"):
+        return "/enviar/{token}"
+    return caminho
+
+
 class TempoDaResposta:
     """Uma linha por pedido: método, rota, status e milissegundos.
 
@@ -147,7 +162,7 @@ class TempoDaResposta:
             await self.app(scope, receive, enviar)
         finally:
             ms = (time.perf_counter() - comeco) * 1000
-            rota = getattr(scope.get("route"), "path", None) or "(sem rota)"
+            rota = _rota_do_log(scope)
             registrar = logger.warning if ms >= self.LENTO_MS else logger.info
             registrar("%s %s %s %.0fms", scope.get("method"), rota, visto["status"], ms)
 
