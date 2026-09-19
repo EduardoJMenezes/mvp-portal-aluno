@@ -16,13 +16,10 @@ As regras de segurança moram aqui, e não na tela:
 from __future__ import annotations
 
 import secrets
-import threading
-import time
-from collections import defaultdict, deque
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from functools import cache
 
-from sqlalchemy import or_, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.errors import (
@@ -33,67 +30,52 @@ from app.errors import (
     RegraDeNegocio,
 )
 from app.identidade import Identidade
-from app.models import Matricula, Papel, TokenMCP, Turma, Usuario
+from app.models import Matricula, Papel, TentativaDeLogin, TokenMCP, Turma, Usuario
 from app.security import confere_senha, hash_senha, hash_token, novo_token_mcp
 from app.services.analytics import resolver_aluno
 from app.services.catalogo import resolver_turma
 
 # --- limite de tentativas ----------------------------------------------------
+#
+# O contador mora no Postgres, não na memória do processo: o portal roda com
+# vários processos (WEB_CONCURRENCY), e um contador por processo multiplicaria
+# o limite pelo número deles — ver docs/CARGA.md.
 
 JANELA_SEGUNDOS = 15 * 60
+JANELA = timedelta(seconds=JANELA_SEGUNDOS)
 FALHAS_POR_CONTA = 5
 FALHAS_POR_IP = 20
 
 
-class _Falhas:
-    """Falhas recentes por chave, numa janela deslizante.
-
-    ponytail: memória do processo. Com mais de uma instância cada uma conta
-    sozinha — aí o contador vai para o Postgres ou para um Redis.
-    """
-
-    def __init__(self, limite: int) -> None:
-        self.limite = limite
-        self._falhas: dict[str, deque[float]] = defaultdict(deque)
-        self._trava = threading.Lock()
-
-    def _recentes(self, chave: str, agora: float) -> deque[float]:
-        fila = self._falhas[chave]
-        while fila and agora - fila[0] >= JANELA_SEGUNDOS:
-            fila.popleft()
-        return fila
-
-    def espera(self, chave: str, agora: float) -> int:
-        """Segundos até poder tentar de novo; 0 quando está livre."""
-        with self._trava:
-            fila = self._recentes(chave, agora)
-            if len(fila) < self.limite:
-                if not fila:
-                    del self._falhas[chave]  # chave velha não fica ocupando memória
-                return 0
-            return max(1, int(JANELA_SEGUNDOS - (agora - fila[0])))
-
-    def registrar(self, chave: str, agora: float) -> None:
-        with self._trava:
-            self._recentes(chave, agora).append(agora)
-
-    def zerar(self, chave: str) -> None:
-        with self._trava:
-            self._falhas.pop(chave, None)
-
-    def esquecer_tudo(self) -> None:
-        with self._trava:
-            self._falhas.clear()
+def _espera(db: Session, chave: str, limite: int, agora: datetime) -> int:
+    """Segundos até a chave poder tentar de novo; 0 quando está livre."""
+    quantas, mais_antiga = db.execute(
+        select(func.count(TentativaDeLogin.id), func.min(TentativaDeLogin.criado_em)).where(
+            TentativaDeLogin.chave == chave, TentativaDeLogin.criado_em >= agora - JANELA
+        )
+    ).one()
+    if quantas < limite or mais_antiga is None:
+        return 0
+    return max(1, int((mais_antiga + JANELA - agora).total_seconds()))
 
 
-_por_conta = _Falhas(FALHAS_POR_CONTA)
-_por_ip = _Falhas(FALHAS_POR_IP)
+def _registrar_falha(db: Session, chaves: list[str], agora: datetime) -> None:
+    # A limpeza vai junto: a tabela nunca passa das falhas da última janela.
+    db.query(TentativaDeLogin).filter(TentativaDeLogin.criado_em < agora - JANELA).delete()
+    for chave in chaves:
+        db.add(TentativaDeLogin(chave=chave, criado_em=agora))
+    db.commit()
 
 
-def esquecer_tentativas() -> None:
+def _zerar(db: Session, chave: str) -> None:
+    db.query(TentativaDeLogin).filter(TentativaDeLogin.chave == chave).delete()
+    db.commit()
+
+
+def esquecer_tentativas(db: Session) -> None:
     """Zera os contadores. Existe para os testes não herdarem trava um do outro."""
-    _por_conta.esquecer_tudo()
-    _por_ip.esquecer_tudo()
+    db.query(TentativaDeLogin).delete()
+    db.commit()
 
 
 @cache
@@ -105,23 +87,24 @@ def _hash_de_ninguem() -> str:
 # --- entrar ------------------------------------------------------------------
 
 
-def entrar(db: Session, email: str, senha: str, ip: str, agora: float | None = None) -> Usuario:
+def entrar(db: Session, email: str, senha: str, ip: str, agora: datetime | None = None) -> Usuario:
     """Confere e-mail e senha. Mesmo erro e mesmo custo, exista a conta ou não."""
-    agora = time.monotonic() if agora is None else agora
+    agora = agora or datetime.now(UTC)
     conta = (email or "").strip().lower()
 
-    espera = max(_por_conta.espera(conta, agora), _por_ip.espera(ip, agora))
+    espera = max(
+        _espera(db, conta, FALHAS_POR_CONTA, agora), _espera(db, ip, FALHAS_POR_IP, agora)
+    )
     if espera:
         raise MuitasTentativas(espera)
 
     usuario = db.scalar(select(Usuario).where(Usuario.email == conta))
     senha_confere = confere_senha(senha, usuario.senha_hash if usuario else _hash_de_ninguem())
     if usuario is None or not senha_confere:
-        _por_conta.registrar(conta, agora)
-        _por_ip.registrar(ip, agora)
+        _registrar_falha(db, [conta, ip], agora)
         raise CredenciaisInvalidas()
 
-    _por_conta.zerar(conta)
+    _zerar(db, conta)
     return usuario
 
 

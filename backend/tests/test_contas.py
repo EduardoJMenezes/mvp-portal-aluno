@@ -90,11 +90,14 @@ def test_falhas_seguidas_travam_a_conta_mesmo_com_a_senha_certa(db, mundo):
     assert travado.json()["detail"].startswith("Muitas tentativas de entrar.")
 
 
-def test_a_trava_passa_quando_a_janela_anda():
-    for i in range(contas.FALHAS_POR_CONTA):
-        contas._por_conta.registrar("ana@x.demo", 1000.0 + i)
-    assert contas._por_conta.espera("ana@x.demo", 1010.0) > 0
-    assert contas._por_conta.espera("ana@x.demo", 1010.0 + contas.JANELA_SEGUNDOS) == 0
+def test_a_trava_passa_quando_a_janela_anda(db):
+    """A contagem é do banco: vale para os quatro processos do portal, não só para este."""
+    agora = datetime.now(UTC)
+    contas._registrar_falha(db, ["ana@x.demo"] * contas.FALHAS_POR_CONTA, agora)
+
+    assert contas._espera(db, "ana@x.demo", contas.FALHAS_POR_CONTA, agora) > 0
+    depois = agora + contas.JANELA + timedelta(seconds=1)
+    assert contas._espera(db, "ana@x.demo", contas.FALHAS_POR_CONTA, depois) == 0
 
 
 def test_cookie_de_outra_origem_nao_escreve(db, mundo):
@@ -371,3 +374,24 @@ def test_aprovacao_no_portal_aponta_para_a_revisao_do_rascunho(monkeypatch):
     finally:
         monkeypatch.delenv("MCP_BASE_URL")
         get_settings.cache_clear()
+
+
+def test_conteudo_devolve_304_quando_nada_mudou(db, mundo):
+    """A rota mais chamada do portal: quem volta recebe "não mudou", não 49 KB.
+
+    É o que segura o pico de entrada da aula (docs/CARGA.md).
+    """
+    api = TestClient(main.app)
+    cabecalho = {"authorization": f"Bearer {cria_jwt(mundo['joao'].usuario_id, mundo['joao'].papel)}"}
+
+    primeira = api.get("/api/aluno/conteudo", headers=cabecalho)
+    assert primeira.status_code == 200
+    etiqueta = primeira.headers["etag"]
+    assert "no-cache" in primeira.headers["cache-control"]
+
+    repetida = api.get("/api/aluno/conteudo", headers={**cabecalho, "if-none-match": etiqueta})
+    assert repetida.status_code == 304
+    assert repetida.content == b""
+
+    velha = api.get("/api/aluno/conteudo", headers={**cabecalho, "if-none-match": '"outra-coisa"'})
+    assert velha.status_code == 200

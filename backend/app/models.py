@@ -863,3 +863,18 @@ class AulaPresenca(Base):
     saiu_em: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     __table_args__ = (UniqueConstraint("aula_id", "usuario_id", name="uq_aula_presenca"),)
+
+
+class TentativaDeLogin(Base):
+    """Falha de login recente, para a trava valer entre processos.
+
+    Antes isto era um dicionário na memória do processo: com quatro processos
+    servindo o portal, cada um contava sozinho e o limite de cinco viraria
+    vinte (ver docs/CARGA.md). A chave é o e-mail tentado ou o IP.
+    """
+
+    __tablename__ = "login_attempts"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    chave: Mapped[str] = mapped_column(String(180), nullable=False, index=True)
+    criado_em: Mapped[datetime] = _agora()

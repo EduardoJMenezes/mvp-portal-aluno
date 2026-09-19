@@ -11,6 +11,7 @@ atalho para o banco (seção 19).
 from __future__ import annotations
 
 import logging
+import time
 from pathlib import Path
 
 from fastapi import FastAPI, Request
@@ -22,7 +23,7 @@ from starlette.datastructures import MutableHeaders
 from starlette.exceptions import HTTPException
 from starlette.middleware import Middleware
 from starlette.middleware.cors import CORSMiddleware
-from starlette.routing import Mount
+from starlette.routing import Mount, Route
 
 from app.api import admin_routes, aluno_routes, auth_routes, envio_routes
 from app.config import Settings, get_settings
@@ -113,6 +114,42 @@ class PortalEstatico(StaticFiles):
             # senão o deploy novo demora a aparecer.
             resposta.headers.setdefault("Cache-Control", "no-cache")
         return resposta
+
+
+class TempoDaResposta:
+    """Uma linha por pedido: método, rota, status e milissegundos.
+
+    É o que responde "está lento?" com dado de dia normal, em vez de uma
+    madrugada de teste de carga (docs/CARGA.md). O caminho registrado é o molde
+    da rota (`/enviar/{token}`), nunca o endereço cheio: o token do link de
+    envio não pode cair no log.
+    """
+
+    LENTO_MS = 1000
+
+    def __init__(self, app) -> None:
+        self.app = app
+
+    async def __call__(self, scope, receive, send) -> None:
+        if scope["type"] != "http" or scope.get("path") == "/api/saude":
+            await self.app(scope, receive, send)
+            return
+
+        comeco = time.perf_counter()
+        visto = {"status": 0}
+
+        async def enviar(mensagem) -> None:
+            if mensagem["type"] == "http.response.start":
+                visto["status"] = mensagem["status"]
+            await send(mensagem)
+
+        try:
+            await self.app(scope, receive, enviar)
+        finally:
+            ms = (time.perf_counter() - comeco) * 1000
+            rota = getattr(scope.get("route"), "path", None) or "(sem rota)"
+            registrar = logger.warning if ms >= self.LENTO_MS else logger.info
+            registrar("%s %s %s %.0fms", scope.get("method"), rota, visto["status"], ms)
 
 
 class CabecalhosDeSeguranca:
@@ -277,21 +314,65 @@ if _portal.is_dir():
 #
 # Então o app do MCP fica por fora (rotas de OAuth + /mcp) e o FastAPI entra
 # como último recurso, cobrindo /api/... e o portal.
-app = mcp.http_app(
-    path=CAMINHO_MCP,
-    middleware=[
-        Middleware(
-            CORSMiddleware,
-            allow_origins=settings.lista_cors,
-            allow_credentials=True,
-            allow_methods=["*"],
-            allow_headers=["*"],
-        ),
-        Middleware(BarraFinalDoMcp),
-        Middleware(CabecalhosDeSeguranca),
-    ],
-)
-app.router.routes.append(Mount("/", app=api))
+#
+# PAPEL decide o que este processo serve:
+#
+#   tudo   (padrão) — MCP + portal no mesmo processo, como sempre foi;
+#   portal          — só o portal e a API, **sem** /mcp: é o que pode rodar em
+#                     vários processos (WEB_CONCURRENCY), porque a sessão do
+#                     conector é que não se duplica;
+#   mcp             — só o MCP e o OAuth, em um processo só.
+#
+# Ver docs/CARGA.md: é essa separação que libera usar os oito núcleos.
+
+
+def _protegido(app_asgi):
+    """Os middlewares que valem para qualquer papel."""
+    return CORSMiddleware(
+        CabecalhosDeSeguranca(TempoDaResposta(app_asgi)),
+        allow_origins=settings.lista_cors,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
+
+def montar(papel: str):
+    """O app ASGI deste processo, conforme o papel. É uma função para o teste
+    poder montar os três sem reimportar o módulo."""
+    if papel == "portal":
+        logger.info("papel: portal (sem /mcp) — pode rodar com vários processos")
+        return _protegido(api)
+
+    app_mcp = mcp.http_app(
+        path=CAMINHO_MCP,
+        middleware=[
+            Middleware(
+                CORSMiddleware,
+                allow_origins=settings.lista_cors,
+                allow_credentials=True,
+                allow_methods=["*"],
+                allow_headers=["*"],
+            ),
+            Middleware(BarraFinalDoMcp),
+            Middleware(CabecalhosDeSeguranca),
+            Middleware(TempoDaResposta),
+        ],
+    )
+    if papel == "mcp":
+        logger.info("papel: mcp (sem portal) — um processo só, a sessão do conector é de memória")
+        # O Railway precisa de um caminho para aprovar o deploy, e aqui não
+        # existe /api/saude: o portal não mora neste processo.
+        app_mcp.router.routes.append(
+            Route("/saude", lambda _: JSONResponse({"status": "ok", "papel": "mcp"}))
+        )
+        return app_mcp
+
+    app_mcp.router.routes.append(Mount("/", app=api))
+    return app_mcp
+
+
+app = montar(settings.papel)
 
 
 def main() -> None:

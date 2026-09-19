@@ -6,6 +6,9 @@ services deixam a identidade ver (seção 11).
 
 from __future__ import annotations
 
+import hashlib
+import json
+
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel, Field
@@ -20,9 +23,27 @@ from app.services import aulas, catalogo, materiais, questoes, simulados
 router = APIRouter(prefix="/api/aluno", tags=["aluno"])
 
 
+def _com_etag(request: Request, dados) -> Response:
+    """Devolve 304 quando o navegador já tem esta versão.
+
+    É a rota mais chamada do portal e a segunda mais cara (48,7 KB, 29,5 ms):
+    toda aba aberta pede a árvore inteira do curso. Com o ETag, quem volta
+    recebe um "não mudou" de 200 bytes (docs/CARGA.md).
+    """
+    corpo = json.dumps(dados, ensure_ascii=False, default=str).encode()
+    etiqueta = f'"{hashlib.sha256(corpo).hexdigest()[:32]}"'
+    # `no-cache` aqui não é "não guarde": é "guarde e pergunte antes de usar".
+    cabecalhos = {"etag": etiqueta, "cache-control": "private, no-cache"}
+    if request.headers.get("if-none-match") == etiqueta:
+        return Response(status_code=304, headers=cabecalhos)
+    return Response(corpo, media_type="application/json", headers=cabecalhos)
+
+
 @router.get("/conteudo")
-def conteudo(ident: Identidade = Depends(usuario_atual), db: Session = Depends(get_db)) -> list[dict]:
-    return catalogo.conteudo_do_aluno(db, ident)
+def conteudo(
+    request: Request, ident: Identidade = Depends(usuario_atual), db: Session = Depends(get_db)
+) -> Response:
+    return _com_etag(request, catalogo.conteudo_do_aluno(db, ident))
 
 
 @router.get("/simulados")

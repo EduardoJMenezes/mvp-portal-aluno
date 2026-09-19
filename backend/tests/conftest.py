@@ -54,13 +54,6 @@ if not (engine.url.database or "").endswith("_test"):
     )
 
 
-@pytest.fixture(autouse=True)
-def _login_sem_trava_herdada():
-    from app.services import contas
-
-    contas.esquecer_tentativas()
-
-
 # Sem autouse de propósito: quem precisa de banco pede `db`, que depende desta
 # fixture. Assim a metade da suíte que não toca o Postgres — Vimeo, leitura de
 # nomes, config, montagem do servidor — roda em máquina sem banco.

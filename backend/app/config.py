@@ -58,6 +58,10 @@ class Settings(BaseSettings):
     # ADMIN ou GERENCIADOR. Login do GitHub é case-insensitive.
     mcp_oauth_operadores: str = ""
 
+    # O que este processo serve: "tudo" (padrão), "portal" (sem /mcp, aceita
+    # vários processos) ou "mcp" (só o conector, um processo). Ver docs/CARGA.md.
+    papel: str = "tudo"
+
     app_host: str = "127.0.0.1"
     app_port: int = 8000
     cors_origins: str = "http://localhost:3000,http://127.0.0.1:3000"
