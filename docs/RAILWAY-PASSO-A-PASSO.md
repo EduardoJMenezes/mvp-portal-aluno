@@ -106,7 +106,14 @@ SPRING_DATASOURCE_URL=jdbc:postgresql://${{Postgres.PGHOST}}:${{Postgres.PGPORT}
 SPRING_DATASOURCE_USERNAME=${{Postgres.PGUSER}}
 SPRING_DATASOURCE_PASSWORD=${{Postgres.PGPASSWORD}}
 SERVICO_TOKEN=<gere 32+ caracteres aleatórios e guarde>
+PORT=8080
 ```
+
+O `PORT` não é enfeite: o Railway roteia e sonda o healthcheck pela porta que
+essa variável diz, e o Spring **ignora** `PORT` — ele escuta em 8080 a menos que
+alguém diga `SERVER_PORT`. Sem a linha, o Railway sortearia uma porta, bateria
+nela e daria o deploy como morto. Com ela, os dois concordam em 8080, e é esse
+o número que vai no `API_BASE_URL` dos outros serviços.
 
 O `SERVICO_TOKEN` é o segredo que prova que o comando veio do adaptador. Sem
 ele — ou com menos de 32 caracteres — a aplicação **não sobe**, de propósito:
@@ -189,13 +196,18 @@ Ainda em **Settings** do serviço `mcp`:
      ```
 
    * **acrescente** o endereço da API do Passo 0 e o mesmo segredo que você
-     gerou lá — sem estes dois, toda tool responde "a API recusou esta
-     chamada":
+     gerou lá — sem estes dois, toda tool responde "a API da plataforma não
+     respondeu":
 
      ```bash
      API_BASE_URL=http://api.railway.internal:8080
      SERVICO_TOKEN=<o mesmo valor do serviço api>
      ```
+
+   **As duas linhas vão também no serviço `app`.** Ele serve a página de
+   envio (`/enviar/<token>`), e é ela que entrega o .docx e os prints à API.
+   O resto do portal não depende do Java — sem as variáveis, só o envio e o
+   MCP ficam sem resposta; aluno e professor continuam navegando.
 
 3. Confira que ficaram lá, vindas do `app`: `DATABASE_URL`, `JWT_SECRET`,
    `MCP_OAUTH_GITHUB_CLIENT_ID`, `MCP_OAUTH_GITHUB_CLIENT_SECRET`,
