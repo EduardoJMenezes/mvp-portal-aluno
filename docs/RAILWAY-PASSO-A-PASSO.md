@@ -91,8 +91,12 @@ entidades, o deploy da API falha alto em vez de divergir em silêncio.
 
 1. No projeto do Railway → **+ New** → **GitHub Repo** → o mesmo repositório.
 2. **Settings** → **Service Name**: `api`.
-3. **Settings** → seção **Build** → **Dockerfile Path**: `api/Dockerfile`.
-   **Root Directory**: `api`.
+3. **Settings** → seção **Source** → **Root Directory**: `/api`. É isso que
+   faz o Railway procurar o `Dockerfile` **dentro** de `api/` e usar essa
+   pasta como contexto do build. Não há campo "Dockerfile Path": ele detecta
+   sozinho, e o log do build diz `Using detected Dockerfile!`. Se em
+   **Build → Builder** ainda aparecer "Railpack", abra o menu e escolha
+   **Dockerfile**.
 4. **Settings** → **Healthcheck Path**: `/actuator/health`.
 5. **Settings** → **Pre-Deploy Command**: **vazio**. O Flyway roda na partida,
    com `baseline-version: 1` — banco que já tem o schema é marcado sem
