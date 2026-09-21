@@ -135,6 +135,31 @@ Se o Railway não oferecer rede privada no seu plano, gere o domínio público
 mesmo assim: o `X-Servico` continua sendo a tranca, e sem ele toda rota
 responde 401. Mas prefira a rede interna quando houver.
 
+### 0.4 — Watch Paths: cada serviço só reconstrói o que é dele
+
+Três serviços apontam para o mesmo repositório, e sem isto **todo push
+reconstrói os três** — inclusive um commit que só mexeu em doc. Pior que o
+desperdício é o raio de explosão: uma mudança só no Java reinicia o portal, e
+um Python quebrado derruba `app` e `mcp` juntos.
+
+Em cada serviço, **Settings → Build → Watch Paths**, um padrão por linha
+(estilo `.gitignore`, com a barra inicial ancorando na raiz do repositório):
+
+| Serviço | Watch Paths |
+|---|---|
+| `api` | `/api/**` |
+| `app` e `mcp` | `/mcp/**` `/frontend/**` `/scripts/**` `/pyproject.toml` `/Dockerfile` |
+
+O `Dockerfile` da raiz copia `mcp/`, `frontend/` e `scripts/`, e instala a
+partir do `pyproject.toml` — é exatamente essa a lista, nem mais nem menos.
+`docs/`, `.github/` e `api/` ficam de fora dos dois serviços Python; `mcp/` e
+`frontend/` ficam de fora do `api`.
+
+`app` e `mcp` continuam construindo a mesma imagem duas vezes quando algo do
+Python muda. Isso só se resolve construindo a imagem uma vez na CI e publicando
+num registro (GHCR), com os dois serviços deployando da imagem — mais
+maquinário, e só compensa quando minuto de build começar a pesar.
+
 ---
 
 ## Passo 1 — Criar o serviço do MCP
