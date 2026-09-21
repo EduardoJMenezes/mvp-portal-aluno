@@ -20,13 +20,13 @@ import argparse
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "backend"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "mcp"))
 
 from sqlalchemy import select  # noqa: E402
 
 from app.db import SessionLocal  # noqa: E402
 from app.models import Capitulo, Questao, TurmaQuestao, Video  # noqa: E402
-from app.services.nomes_vimeo import numero_do_titulo  # noqa: E402
+from app.integracoes.vimeo.nomes import numero_do_titulo  # noqa: E402
 
 
 def resolver_capitulo(db, referencia: str) -> Capitulo:

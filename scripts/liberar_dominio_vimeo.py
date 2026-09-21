@@ -29,7 +29,7 @@ import os
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "backend"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "mcp"))
 
 from app.integracoes.vimeo import ClienteVimeoLeitura, TransporteVimeo, VimeoErro  # noqa: E402
 

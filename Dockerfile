@@ -4,7 +4,7 @@ WORKDIR /app/frontend
 COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci
 COPY frontend/ ./
-# Portal em Next.js exportado como site estático (frontend/out), servido pelo backend.
+# Portal em Next.js exportado como site estático (frontend/out), servido pela API.
 ENV NEXT_TELEMETRY_DISABLED=1
 RUN npm run build
 
@@ -12,7 +12,7 @@ FROM python:3.11-slim-bookworm AS runtime
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    PYTHONPATH=/app/backend
+    PYTHONPATH=/app/mcp
 
 WORKDIR /app
 
@@ -24,7 +24,7 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 COPY pyproject.toml ./
-COPY backend/ ./backend/
+COPY mcp/ ./mcp/
 RUN python -m pip install --no-cache-dir .
 
 COPY --from=frontend-build /app/frontend/out ./frontend/out

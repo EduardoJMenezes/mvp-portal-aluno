@@ -13,6 +13,45 @@ Projeto **independente**: não tem relação com o `mcp-hub` / `natto-agents` ne
 com os outros MCPs da casa. Não puxe convenções deles (token de borda ES256,
 catálogo `ia_mcp_server`, portas) — aqui a stack e a autenticação são próprias.
 
+## Duas aplicações, um banco
+
+Desde a migração, `api/` é uma aplicação **Spring Boot** que atende **todas as
+tools do MCP**: um endpoint por tool, em `/comandos/<nome>`, e um comando é uma
+transação. `mcp/` continua em Python e faz três coisas: serve o **portal**
+(aluno, professor, materiais, aulas ao vivo, ainda em SQLAlchemy), hospeda o
+**servidor MCP**, e é o **adaptador** que traduz cada tool numa chamada HTTP à
+API (`mcp/app/mcp_server/api.py`).
+
+O que ficou de lógica no Python é o que precisa de biblioteca que só existe
+lá: o Vimeo (`app/integracoes/vimeo/`), o leitor de .docx (`app/leitor_docx.py`)
+e o recorte de figura com Pillow (`app/imagens.py`). Tudo que é **estado**
+atravessa a ponte.
+
+* **O adaptador não abre conexão com o banco.** Isso agora é garantido pela
+  arquitetura: não há `SessionLocal` em `mcp_server/`. O portal abre, porque o
+  portal ainda é o dono daquele código.
+* **Dois donos do schema, um validador.** O Python migra por
+  `app/migracoes.py`; o Java sobe com `ddl-auto: validate` e Flyway
+  `baseline-version: 1` (V1 é o `pg_dump` do schema do Python). Mudou
+  `models.py` sem acertar a entidade Java? O deploy da API falha na partida —
+  alto, que é o que se quer.
+* **Três credenciais, três portas.** `/comandos/**` exige `X-Servico` (token de
+  serviço) **e** `X-Operador` (id, com o papel relido no banco a cada chamada);
+  `/interno/**` exige só o `X-Servico`, e a credencial de verdade vai no corpo
+  (login do GitHub, token Bearer, token do link de envio); o resto é negado.
+* **O canal não vai em cabeçalho.** Quem chega pela porta de comandos é o MCP,
+  e o Java fixa `Canal.MCP`. Sem campo para mentir, nenhum agente se passa pelo
+  professor no navegador para escapar do `exigir_humano_no_portal`.
+* **Os testes da ponte sobem a API de verdade** (fixture `api_java` no
+  `mcp/tests/conftest.py`, via `API_JAR`). Testar as tools sem ela é testar o
+  `httpx`.
+
+O padrão do lado Java está em [docs/PADRAO-JAVA.md](docs/PADRAO-JAVA.md).
+
+```bash
+cd api && ./mvnw -B verify          # 116 testes, Postgres por Testcontainers
+```
+
 ## Regra que não se negocia
 
 > A IA propõe. O humano aprova. O backend publica.
@@ -21,7 +60,7 @@ Antes de mexer em `services/publicacao.py`, `services/rascunhos.py` ou na tool
 `publicar_rascunho`, entenda as quatro camadas descritas em
 [docs/ARQUITETURA.md](docs/ARQUITETURA.md#a-regra-que-sustenta-a-poc-6). Nenhuma
 mudança pode abrir um caminho em que conteúdo chegue ao aluno sem aprovação
-humana gravada em `drafts.aprovado_por_id`. `backend/tests/test_publicacao.py`
+humana gravada em `drafts.aprovado_por_id`. `mcp/tests/test_publicacao.py`
 existe para travar isso — se um teste de lá começar a falhar, o problema é a
 mudança, não o teste.
 
@@ -38,7 +77,7 @@ brew services start postgresql@17
 
 .venv/bin/python -m app.seed --reset      # recria o banco de demonstração
 .venv/bin/python -m uvicorn app.main:app --port 8000
-.venv/bin/python -m pytest backend/tests -q
+.venv/bin/python -m pytest mcp/tests -q
 
 cd frontend && npm run dev                # Next.js em 3000, /api reescrito para o 8000
 cd frontend && npm run build              # exporta estático em out/, que o backend serve em /
@@ -83,10 +122,21 @@ Ensaio geral dos quatro fluxos do §21, contra o servidor no ar:
 * **Nada é apagado; tudo é filtrado.** Remoção é `removido_em` preenchido
   (`models.Rastreavel`). A consequência morde em silêncio: consulta sem o
   filtro faz conteúdo removido reaparecer para o aluno. Use `selecionar()` e
-  `vivos()` de [services/consultas.py](backend/app/services/consultas.py) —
+  `vivos()` de [services/consultas.py](mcp/app/services/consultas.py) —
   `select()` cru num service de conteúdo é bug, não estilo. E como `unique`
   comum queimaria o nome de um módulo removido para sempre, a unicidade é
   índice parcial (`_vivo()` em `models.py`).
+* **`@SQLRestriction` no Java transforma "removido" em "não existe".** É o
+  equivalente do `selecionar()` do Python, e tem um preço que morde longe: um
+  `@ManyToOne` para entidade filtrada vira um proxy que **estoura**
+  (`ObjectNotFoundException`) quando o alvo foi removido — e derruba a listagem
+  inteira por causa de uma linha. Onde o domínio já aceita ausência (os campos
+  sem `optional = false`), a associação leva `@NotFound(IGNORE)`, e aí removido
+  chega como `null`. Duas consequências: o Hibernate passa a buscar **eager**
+  (não escreva `fetch = LAZY` junto, ou ele avisa a cada partida), e navegação
+  implícita em JPQL (`qa.subassunto.id`) passa a gerar **inner join**, que
+  apaga as linhas sem valor — nesses casos escreva `left join` explícito. Ver
+  `Rascunho.java` e `AnalyticsServico.etiquetaDaQuestao`.
 * **Conteúdo do curso é vídeo; `Questao` é só do simulado.** A questão da
   apostila mora na apostila — o que a plataforma guarda dela é o vídeo da
   resolução, como item de sub-módulo. Ver
@@ -95,7 +145,7 @@ Ensaio geral dos quatro fluxos do §21, contra o servidor no ar:
   carrega o "K01"; `Assunto` é global e **nunca** leva numeração de capítulo —
   K03 é Estequiometria em 2026 e Tabela Periódica em 2025.
 * **Editar e remover são diretos; publicar não.** As tools de
-  [tools_estrutura.py](backend/app/mcp_server/tools_estrutura.py) alteram na hora
+  [tools_estrutura.py](mcp/app/mcp_server/tools_estrutura.py) alteram na hora
   e gravam `alterado_por_id`; a confirmação é o preview no chat, escrito na
   descrição de cada uma. Não volte para formulário de confirmação (elicitation):
   o app do Claude responde a ele sozinho, sem mostrar a ninguém. Publicar continua exigindo aprovação humana em
@@ -116,12 +166,12 @@ Ensaio geral dos quatro fluxos do §21, contra o servidor no ar:
   [docs/VIMEO.md](docs/VIMEO.md). Sem token, o backend cai no acervo de
   demonstração embutido, e a POC roda inteira assim.
 * **Produção tem curso real: nunca `seed --reset` lá.** Mudança de schema é
-  migração leve em [app/migracoes.py](backend/app/migracoes.py) — `create_all`
+  migração leve em [app/migracoes.py](mcp/app/migracoes.py) — `create_all`
   para tabela nova, `ALTER ... IF NOT EXISTS` para o resto, idempotente —, e o
   Dockerfile roda `python -m app.migracoes` antes de subir o servidor a cada
   deploy. Mudou `models.py`? Acrescente a alteração ao fim de `ALTERACOES`.
 * **O importador de .docx não chama modelo nenhum.** O servidor lê o arquivo
-  por regras ([leitor_docx.py](backend/app/services/leitor_docx.py)) e cria o
+  por regras ([leitor_docx.py](mcp/app/leitor_docx.py)) e cria o
   rascunho; o julgamento — revisar, completar questão pelos blocos, sugerir
   assunto — fica com o Claude na conversa, dentro da assinatura. As figuras em
   formato antigo (EMF, WMF) são convertidas pelo LibreOffice que o Dockerfile
@@ -146,7 +196,7 @@ Ensaio geral dos quatro fluxos do §21, contra o servidor no ar:
   o `/mcp` do portal. Medições, gargalos e plano em
   [docs/CARGA.md](docs/CARGA.md).
 * **Simulado: o relógio entra como parâmetro.** Os services de
-  [simulados.py](backend/app/services/simulados.py) recebem `agora`; não há job
+  [simulados.py](mcp/app/services/simulados.py) recebem `agora`; não há job
   de entrega automática — a tentativa vencida é consolidada na próxima consulta.
   O resultado só sai depois do fechamento, e quem recusa é o backend. Ver
   [docs/MODELO-SIMULADO.md](docs/MODELO-SIMULADO.md).

@@ -73,6 +73,63 @@ mensagem dizendo por quê. A configuração perigosa não chega a subir.
 
 ---
 
+## Passo 0 — O serviço da API em Java
+
+Este passo é novo: desde a migração, quem grava e lê no banco pelas tools do
+MCP é uma aplicação Spring Boot, em `api/`. O adaptador Python não abre mais
+conexão com o Postgres — ele fala HTTP com este serviço, e é isso que faz a
+invariante "o MCP não toca o banco" ser garantida pela arquitetura, e não pela
+disciplina de quem escreve o código.
+
+O portal do aluno continua no processo Python, com SQLAlchemy, contra o
+**mesmo** Postgres. Os dois convivem de propósito: a API já tem todo o
+caminho do MCP, e portar o portal é outra empreitada. O Hibernate sobe com
+`ddl-auto: validate`, então se alguém mexer no `models.py` sem acertar as
+entidades, o deploy da API falha alto em vez de divergir em silêncio.
+
+### 0.1 — Criar o serviço
+
+1. No projeto do Railway → **+ New** → **GitHub Repo** → o mesmo repositório.
+2. **Settings** → **Service Name**: `api`.
+3. **Settings** → seção **Build** → **Dockerfile Path**: `api/Dockerfile`.
+   **Root Directory**: `api`.
+4. **Settings** → **Healthcheck Path**: `/actuator/health`.
+5. **Settings** → **Pre-Deploy Command**: **vazio**. O Flyway roda na partida,
+   com `baseline-version: 1` — banco que já tem o schema é marcado sem
+   executar nada; banco vazio recebe a V1. Migração que falha derruba a
+   partida, e o Railway mantém a versão anterior no ar.
+
+### 0.2 — Variáveis do serviço `api`
+
+```bash
+SPRING_DATASOURCE_URL=jdbc:postgresql://${{Postgres.PGHOST}}:${{Postgres.PGPORT}}/${{Postgres.PGDATABASE}}
+SPRING_DATASOURCE_USERNAME=${{Postgres.PGUSER}}
+SPRING_DATASOURCE_PASSWORD=${{Postgres.PGPASSWORD}}
+SERVICO_TOKEN=<gere 32+ caracteres aleatórios e guarde>
+```
+
+O `SERVICO_TOKEN` é o segredo que prova que o comando veio do adaptador. Sem
+ele — ou com menos de 32 caracteres — a aplicação **não sobe**, de propósito:
+é melhor um deploy que falha do que uma porta de comando aberta. Gere com:
+
+```bash
+python -c "import secrets; print(secrets.token_urlsafe(32))"
+```
+
+### 0.3 — Rede interna, não pública
+
+1. Serviço `api` → **Settings** → **Networking**. **Não** gere domínio
+   público: o único cliente desta API é o serviço `mcp`, que a alcança pela
+   rede privada do projeto.
+2. Anote o endereço interno que o Railway mostra — algo como
+   `api.railway.internal:8080`. É ele que vai no `API_BASE_URL` do `mcp`.
+
+Se o Railway não oferecer rede privada no seu plano, gere o domínio público
+mesmo assim: o `X-Servico` continua sendo a tranca, e sem ele toda rota
+responde 401. Mas prefira a rede interna quando houver.
+
+---
+
 ## Passo 1 — Criar o serviço do MCP
 
 O objetivo é tirar o `/mcp` do serviço do portal, porque é a única peça que
@@ -129,6 +186,15 @@ Ainda em **Settings** do serviço `mcp`:
 
      ```bash
      MCP_BASE_URL=https://trocar-depois
+     ```
+
+   * **acrescente** o endereço da API do Passo 0 e o mesmo segredo que você
+     gerou lá — sem estes dois, toda tool responde "a API recusou esta
+     chamada":
+
+     ```bash
+     API_BASE_URL=http://api.railway.internal:8080
+     SERVICO_TOKEN=<o mesmo valor do serviço api>
      ```
 
 3. Confira que ficaram lá, vindas do `app`: `DATABASE_URL`, `JWT_SECRET`,

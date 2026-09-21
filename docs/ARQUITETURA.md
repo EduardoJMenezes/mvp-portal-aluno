@@ -3,7 +3,28 @@
 Referência: [MVP-ESPECIFICACAO.md](MVP-ESPECIFICACAO.md). As seções citadas
 (§3, §6, §19…) são dela.
 
-## Backend único
+## Duas aplicações, um banco (desde 2026-09-20)
+
+```
+Claude ─► FastMCP (mcp/)  ─► HTTP /comandos/* ─► Spring Boot (api/) ─┐
+                                                                      ├─► PostgreSQL
+Navegador ─► Next estático ─► FastAPI (mcp/, portal) ─► services ─────┘
+```
+
+A migração para Java começou pelo que o §19 mais protege: **as tools do
+MCP**. Elas não têm mais caminho até o banco — nem por disciplina, nem por
+`selecionar()`: o adaptador Python não abre `SessionLocal`. Cada tool vira um
+comando HTTP, e um comando é uma transação do lado Java. O padrão daquele lado
+está em [PADRAO-JAVA.md](PADRAO-JAVA.md); o que ficou no Python é o que precisa
+de biblioteca que só existe lá (Vimeo, leitor de .docx, Pillow) e o **portal**,
+que ainda é o desenho da seção abaixo.
+
+Enquanto as duas convivem, o schema tem um dono por lado e um só validador: o
+Python migra por `app/migracoes.py`, o Java confere na partida
+(`ddl-auto: validate`) contra a V1 do Flyway, que é o `pg_dump` daquele schema.
+Divergiu, a API não sobe — e é assim que se quer.
+
+## Backend único (o portal, ainda em Python)
 
 ```
 REST (portal)  ─┐
