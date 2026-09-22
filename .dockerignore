@@ -1,18 +1,13 @@
 .git
 .env
 .env.*
-**/.env
-**/.env.*
 **/.venv
 **/node_modules
 frontend/.next
 frontend/out
 frontend/next-env.d.ts
 frontend/*.tsbuildinfo
-**/__pycache__
-**/*.py[cod]
-**/*.egg-info
-**/.pytest_cache
 **/.DS_Store
 # o jar e as classes do build do Java
 **/target
+docs

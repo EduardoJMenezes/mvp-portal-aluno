@@ -3,12 +3,18 @@
 .env.*
 !.env.example
 
-# Python
-.venv/
-__pycache__/
-*.py[cod]
-*.egg-info/
-.pytest_cache/
+# Java / Maven
+target/
+.mvn/wrapper/maven-wrapper.jar
+HELP.md
+
+# IDEs
+.idea/
+*.iml
+.classpath
+.project
+.settings/
+.vscode/
 
 # Node / build
 frontend/node_modules/

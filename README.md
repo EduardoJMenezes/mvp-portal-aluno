@@ -10,23 +10,29 @@ O MCP é o carro-chefe. O frontend existe para tornar visível que as ações do
 agente mudaram o sistema de verdade, e que o conteúdo está segregado por turma.
 
 ```
-        PROFESSOR                                   ALUNO
-            │                                         │
-    ┌───────┴────────┐                                │
-    ▼                ▼                                ▼
-Portal Admin    Claude / ChatGPT                Portal do Aluno
-    │                │  MCP (HTTP, Bearer)            │
-    │                ▼                                │
-    │        ┌───────────────┐                        │
-    └───────►│    Backend    │◄───────────────────────┘
-             │  (FastAPI)    │
-             └───┬───────┬───┘
-                 ▼       ▼
-           PostgreSQL   Vimeo API
+        PROFESSOR                                        ALUNO
+            │                                              │
+    ┌───────┴────────┐                                     │
+    ▼                ▼                                     ▼
+Portal Admin    Claude (claude.ai / Claude Code)    Portal do Aluno
+    │                │  MCP                                │
+    │                ▼                                     │
+    │      ┌──────────────────┐  HTTP /comandos/*          │
+    │      │ mvp-portal-mcp   │───────────┐                │
+    │      │ (FastMCP, Python)│           ▼                │
+    │      └──────────────────┘   ┌───────────────┐        │
+    └────────────────────────────►│  API em Java  │◄───────┘
+                                  │ (este repo)   │
+                                  └───┬───────┬───┘
+                                      ▼       ▼
+                                PostgreSQL   Vimeo / Zoom
 ```
 
-REST e MCP entram no **mesmo processo** e chamam os **mesmos application
-services**. O MCP não tem atalho para o banco.
+Este repositório é a **API em Spring Boot** — dona das regras, do schema
+(Flyway) e do portal exportado pelo Next, que ela serve na raiz. O adaptador
+MCP mora em [mvp-portal-mcp](https://github.com/EduardoJMenezes/mvp-portal-mcp)
+e **não tem banco**: cada tool é um comando HTTP aqui, e um comando é uma
+transação. O Python antigo está congelado em `mvp-portal-legado`.
 
 ## Documentação
 
@@ -34,35 +40,32 @@ services**. O MCP não tem atalho para o banco.
 |---|---|
 | [docs/MVP-ESPECIFICACAO.md](docs/MVP-ESPECIFICACAO.md) | **o norte** — a especificação original, íntegra |
 | [docs/ARQUITETURA.md](docs/ARQUITETURA.md) | como está construído, e por quê |
+| [docs/PADRAO-JAVA.md](docs/PADRAO-JAVA.md) | o padrão do lado Java |
+| [docs/RAILWAY-PASSO-A-PASSO.md](docs/RAILWAY-PASSO-A-PASSO.md) | os dois serviços em produção |
 | [docs/DEMO.md](docs/DEMO.md) | roteiro da apresentação, passo a passo |
-| [docs/VIMEO.md](docs/VIMEO.md) | token, escopos, embed unlisted, filtro de rede |
 | [CLAUDE.md](CLAUDE.md) | contexto para trabalhar neste repositório |
 
 ## Rodando
 
-Pré-requisitos: Python 3.11+, Node 22+, PostgreSQL 17.
+Pré-requisitos: Java 25, Node 22+, PostgreSQL 17+ (ou Docker, para os testes).
 
 ```bash
-brew services start postgresql@17
 createdb plataforma_mvp
+export DATABASE_URL=postgresql://usuario:senha@localhost:5432/plataforma_mvp
+export SERVICO_TOKEN=$(python -c "import secrets; print(secrets.token_urlsafe(32))")
 
-python3 -m venv .venv
-.venv/bin/pip install -e ".[dev]"
-cp .env.example .env
-
-.venv/bin/python -m app.seed --reset     # dados da demo + tokens do MCP
 cd frontend && npm install && npm run build && cd ..
-
-.venv/bin/python -m uvicorn app.main:app --port 8000
+./mvnw spring-boot:run          # http://127.0.0.1:8080 — o Flyway cria o schema num banco vazio
 ```
 
-Tudo em `http://127.0.0.1:8000`: portal na raiz, MCP em `/mcp`, API em `/api`,
-documentação da API em `/docs`.
+Tudo em `http://127.0.0.1:8080`: portal na raiz, API em `/api`, comandos do
+MCP em `/comandos`. Para mexer no frontend com recarregamento automático:
+`npm run dev` em `frontend/` (Next.js na porta 3000, com `/api` reescrito
+para o 8080). O portal é Next.js + Tailwind, exportado como site estático em
+`frontend/out` — mesma origem para o cookie da sessão.
 
-Para mexer no frontend com recarregamento automático: `npm run dev` em
-`frontend/` (Next.js na porta 3000, com `/api` reescrito para o backend). O
-portal é Next.js + Tailwind, exportado como site estático em `frontend/out` e
-servido pelo próprio backend — mesma origem para o cookie da sessão.
+O conector do Claude é o outro repositório: suba-o com `API_BASE_URL` apontando
+para cá e o mesmo `SERVICO_TOKEN`.
 
 ### Sessão e senhas
 
@@ -72,151 +75,44 @@ responde a mesma frase para conta inexistente; 5 falhas numa conta ou 20 num IP
 travam o login por 15 minutos. Aluno cadastrado pelo professor recebe senha
 temporária e só navega depois de trocá-la; trocar a senha derruba as outras
 sessões. Contas e tokens do MCP se administram no portal (Turmas › Alunos e
-Conectar ao Claude).
+Conectar ao Claude). `MODO_DEMO=true` lista as contas `@escola.demo` e
+`@aluno.demo` na tela de entrada e entra nelas sem senha — nunca em ambiente
+com gente de verdade.
 
-### Deploy no Railway
+### Vimeo e Zoom
 
-Crie **um serviço de aplicação** conectado a este repositório e um serviço
-PostgreSQL. Mantenha a raiz do repositório como Root Directory: o Railway
-[detecta o Dockerfile da raiz](https://docs.railway.com/builds/dockerfiles).
-O build usa Node 22 e a execução usa Python 3.11; o mesmo Uvicorn serve o
-frontend, `/api` e `/mcp`, em `0.0.0.0:$PORT`. Deixe o Start Command sem override
-para usar o comando do Dockerfile.
-
-Nas variáveis do serviço de aplicação, configure (ajuste `Postgres` se o
-serviço de banco tiver outro nome):
-
-```text
-DATABASE_URL=${{Postgres.DATABASE_URL}}
-JWT_SECRET=<segredo aleatório próprio do ambiente>
-CORS_ORIGINS=https://<domínio público da aplicação>
-```
-
-`SESSAO_COOKIE_SEGURO` fica no padrão (`true`) e `MODO_DEMO` desligado: com
-ele ligado, a tela de entrada lista as contas de demonstração e entra nelas sem
-senha.
-
-`DATABASE_URL` é uma [referência ao serviço PostgreSQL](https://docs.railway.com/databases/postgresql).
-O Railway a entrega como `postgresql://…`, sem driver; a aplicação troca o
-esquema por `postgresql+psycopg://`, que é o driver instalado — as duas formas
-funcionam. Sem essa variável o backend tenta o Postgres local do container e o
-login falha. `VIMEO_ACCESS_TOKEN` é opcional: sem ele, permanece o acervo de
-demonstração. A porta é fornecida pelo Railway.
-
-O servidor não cria o schema ao iniciar. Configure `python -m app.seed` como
-**Pre-Deploy Command** do serviço: na primeira execução ele cria as tabelas e
-os dados de demonstração (e imprime os tokens MCP no log do pre-deploy); nas
-seguintes, encontra dados e não faz nada. Nunca use `--reset` no deploy: ele
-apaga o banco.
-
-Gere um domínio público para a aplicação e configure `/api/saude` como caminho
-do healthcheck. O endpoint executa `SELECT 1` no banco e responde 503 quando
-ele está inacessível — um `DATABASE_URL` errado reprova o deploy em vez de
-aparecer como erro na tela de login. Portal e MCP ficam no mesmo domínio, com
-o MCP em `/mcp`.
-
-### Contas da demonstração
-
-No banco local, a senha dessas contas é a que o `seed` imprime ao criar os
-dados. Num ambiente publicado elas usam senha própria, trocada em Minha conta.
-
-| conta | papel | turma |
-|---|---|---|
-| `professor@escola.demo` | ADMIN | — |
-| `gerenciador@escola.demo` | GERENCIADOR | — |
-| `joao@aluno.demo` | ALUNO | Extensivo 2027 |
-| `maria@aluno.demo` | ALUNO | Extensivo 2027 |
-| `pedro@aluno.demo` | ALUNO | Extensivo 2026 |
-
-### Conectando o Claude
-
-O seed imprime os tokens de MCP do professor e do gerenciador. Para emitir
-outro: `.venv/bin/python scripts/token_mcp.py professor@escola.demo`
-
-```json
-{
-  "mcpServers": {
-    "plataforma-educacional": {
-      "type": "http",
-      "url": "http://127.0.0.1:8000/mcp",
-      "headers": { "Authorization": "Bearer pvm_SEU_TOKEN_AQUI" }
-    }
-  }
-}
-```
-
-### Vimeo
-
-Sem `VIMEO_ACCESS_TOKEN` no `.env`, o backend usa um acervo de demonstração
-embutido e a POC roda inteira sem credencial. Para a integração real, ver
-[docs/VIMEO.md](docs/VIMEO.md) — inclusive o filtro de DNS corporativo que
-bloqueia `api.vimeo.com` e precisa ser resolvido antes da apresentação.
+Sem `VIMEO_ACCESS_TOKEN`, o acervo de demonstração embutido; sem as quatro
+variáveis `ZOOM_*`, um Zoom de mentira. A POC roda inteira sem credencial
+nenhuma. Ver [docs/VIMEO.md](docs/VIMEO.md) e
+[docs/AULAS-AO-VIVO.md](docs/AULAS-AO-VIVO.md).
 
 ## A regra que sustenta tudo
 
 > A IA propõe. O humano aprova. O backend publica.
 
-E isso **não depende do modelo se comportar bem**: nenhuma tool de escrita
-aceita status (todas gravam rascunho), e `publicar_rascunho` recusa qualquer
-rascunho sem aprovação humana gravada no banco. Detalhe das quatro camadas em
+E isso **não depende do modelo se comportar bem**: nenhum comando de escrita
+aceita status (todos gravam rascunho), e publicar recusa qualquer rascunho sem
+aprovação humana gravada no banco. Detalhe das quatro camadas em
 [docs/ARQUITETURA.md](docs/ARQUITETURA.md#a-regra-que-sustenta-a-poc-6).
-
-## Tools do MCP
-
-| tool | o que faz |
-|---|---|
-| `listar_turmas`, `listar_modulos`, `listar_assuntos` | turmas, a árvore do curso e a taxonomia |
-| `listar_pastas_vimeo`, `listar_videos_vimeo` | o acervo no Vimeo, só leitura |
-| `simular_importacao_vimeo` | o que a importação de uma pasta faria, sem gravar |
-| `importar_pasta_vimeo_como_rascunho`, `importar_videos_como_itens` | vídeos entrando no curso **em rascunho** |
-| `criar_modulo`, `criar_submodulo`, `editar_modulo`, `editar_item`, `remover_do_curso` | CRUD do curso, direto, com preview no chat |
-| `cadastrar_assunto`, `classificar_videos` | taxonomia e etiqueta dos vídeos |
-| `buscar_questoes`, `detalhar_questao` | o acervo de questões de simulado |
-| `criar_questao_rascunho` | uma questão avulsa **em rascunho** |
-| `criar_simulado_rascunho` | simulado, agenda e questões novas **num rascunho só**, com a resolução casada da pasta do Vimeo |
-| `importar_simulado_docx`, `revisar_importacao`, `completar_questao_importada` | o simulado que já está num .docx: link de envio, leitura pelo servidor e revisão no chat, com as figuras |
-| `importar_prints`, `ver_prints`, `recortar_figura` | questões em print (prova, PDF, site): link de envio, o Claude transcreve e a figura sai recortada do print original |
-| `editar_questao`, `remover_questao`, `editar_simulado`, `remover_simulado` | ajuste direto, com preview no chat e a trava de prova aberta |
-| `listar_simulados`, `detalhar_simulado` | simulados com turmas, agenda e situação |
-| `buscar_ranking_simulado` | o ranking completo, só do professor |
-| `buscar_desempenho_aluno`, `buscar_estatisticas_simulado` | desempenho do aluno e de quem fez a prova |
-| `listar_rascunhos`, `detalhar_rascunho` | propostas pendentes, para revisão |
-| `publicar_rascunho` | publica, após confirmação humana |
-
-As tools aceitam nomes ("Extensivo 2027", "Estequiometria", "João") e resolvem
-os ids sozinhas. Quando a referência é ambígua ou inexistente, o erro lista o
-que existe — o modelo se corrige em vez de inventar.
 
 ## Testes
 
 ```bash
-.venv/bin/python -m pytest backend/tests -q     # 47 testes, contra Postgres real
-
-# ensaio geral: fala com o MCP como o Claude e com o portal como o aluno
-.venv/bin/python -m app.seed --reset
-.venv/bin/python scripts/verificar_fluxos.py <token-do-professor>
+./mvnw -B verify      # Postgres por Testcontainers; sem Docker, aponte SPRING_DATASOURCE_URL para um banco *de teste*
 ```
 
 ## Estrutura
 
 ```
-backend/app/
-  main.py            FastAPI + MCP no mesmo processo
-  models.py          15 tabelas
-  identidade.py      quem está pedindo, sem dizer por qual porta entrou
-  services/          as regras — usadas por REST e MCP
-  api/               controllers REST
-  mcp_server/        instância, autenticação e tools do MCP
-  vimeo/client.py    API REST do Vimeo + acervo de demonstração
-frontend/            Next.js + Tailwind: portal do professor e do aluno
-backend/tests/       47 testes
-scripts/             emissão de tokens e ensaio dos quatro fluxos
-docs/                especificação, arquitetura, roteiro, Vimeo
+src/main/java/br/com/plataforma/
+  comum/       Identidade, erros de domínio, Rastreavel, Referencias
+  contas/ catalogo/ estrutura/ acervo/ taxonomia/ questoes/ rascunhos/
+  simulados/ analytics/ materiais/ aulas/ vimeo/ importacoes/   as regras, por feature
+  comandos/    a borda do MCP: /comandos/<tool> e /interno/*
+  portal/      a borda do navegador: /api/*, sessão, portal estático
+  seguranca/   as quatro portas
+src/main/resources/db/migration/   o schema (Flyway)
+src/test/java/                     comandos e portal, contra Postgres real
+frontend/                          Next.js + Tailwind: portal do professor e do aluno
+docs/                              especificação, arquitetura, roteiro, produção
 ```
-
-## Estado
-
-Os quatro critérios de sucesso (§21) funcionam de ponta a ponta e estão
-cobertos por `scripts/verificar_fluxos.py`. A única parte sem verificação real
-é a chamada à API do Vimeo, bloqueada pela rede de desenvolvimento — ver
-[docs/VIMEO.md](docs/VIMEO.md#estado-da-integração).

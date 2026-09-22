@@ -3,60 +3,47 @@
 Referência: [MVP-ESPECIFICACAO.md](MVP-ESPECIFICACAO.md). As seções citadas
 (§3, §6, §19…) são dela.
 
-## Duas aplicações, um banco (desde 2026-09-20)
+## Três repositórios, um banco (desde 2026-09-21)
 
 ```
-Claude ─► FastMCP (mcp/)  ─► HTTP /comandos/* ─► Spring Boot (api/) ─┐
-                                                                      ├─► PostgreSQL
-Navegador ─► Next estático ─► FastAPI (mcp/, portal) ─► services ─────┘
+Claude ─► FastMCP (mvp-portal-mcp) ─► HTTP /comandos/* ─► Spring Boot (este) ─┐
+                                                                               ├─► PostgreSQL
+Navegador ─► Next estático ─────────► HTTP /api/* ────────► Spring Boot (este) ─┘
 ```
 
-A migração para Java começou pelo que o §19 mais protege: **as tools do
-MCP**. Elas não têm mais caminho até o banco — nem por disciplina, nem por
-`selecionar()`: o adaptador Python não abre `SessionLocal`. Cada tool vira um
-comando HTTP, e um comando é uma transação do lado Java. O padrão daquele lado
-está em [PADRAO-JAVA.md](PADRAO-JAVA.md); o que ficou no Python é o que precisa
-de biblioteca que só existe lá (Vimeo, leitor de .docx, Pillow) e o **portal**,
-que ainda é o desenho da seção abaixo.
+A migração para Java terminou: a API é dona de **todas** as regras — as tools
+do MCP (`comandos/`), o portal do aluno e do professor (`portal/`), a sessão,
+os materiais, as aulas ao vivo e o schema (Flyway). O adaptador Python só
+sobrou com o que precisa de biblioteca de lá — Vimeo, leitor de `.docx`,
+LibreOffice, Pillow — e mora em repositório próprio, **sem banco**: cada tool
+vira um comando HTTP, e um comando é uma transação do lado Java. O padrão está
+em [PADRAO-JAVA.md](PADRAO-JAVA.md); o Python antigo ficou congelado em
+`mvp-portal-legado`.
 
-Enquanto as duas convivem, o schema tem um dono por lado e um só validador: o
-Python migra por `app/migracoes.py`, o Java confere na partida
-(`ddl-auto: validate`) contra a V1 do Flyway, que é o `pg_dump` daquele schema.
-Divergiu, a API não sobe — e é assim que se quer.
-
-## Backend único (o portal, ainda em Python)
-
-```
-REST (portal)  ─┐
-                ├─► Application Services ─► PostgreSQL / Vimeo
-MCP (agente)   ─┘
-```
-
-FastAPI e FastMCP sobem **no mesmo processo** ([main.py](../backend/app/main.py)),
-e as duas bordas chamam os mesmos services. O MCP não tem caminho próprio até o
-banco — é o §19 levado a sério, não uma figura de retórica.
-
-Quem torna isso possível é [identidade.py](../backend/app/identidade.py): os
-services recebem sempre uma `Identidade` (usuário, papel, canal) e não sabem se
-ela nasceu de um login no navegador ou de um token de MCP. Autorização escrita
-uma vez, valendo para os dois.
+Quem torna isso possível é `comum/Identidade.java`: os serviços recebem sempre
+uma `Identidade` (usuário, papel, canal) e não sabem se ela nasceu de um login
+no navegador ou de um token de MCP. Autorização escrita uma vez, valendo para
+as duas bordas.
 
 ```
-backend/app/
-  main.py            FastAPI + MCP no mesmo processo
-  models.py          15 tabelas (§18)
-  identidade.py      quem está pedindo, sem dizer por qual porta entrou
-  errors.py          erros de domínio; cada borda traduz para o seu formato
-  security.py        senha (bcrypt), sessão do portal (JWT), token do MCP (SHA-256)
-  services/
-    catalogo.py        consulta e segregação por turma
-    rascunhos.py       criação — sempre em rascunho
-    publicacao.py      aprovação e publicação
-    simulados.py       aluno respondendo
-    analytics.py       estatísticas
-  api/               controllers REST (portal do professor e do aluno)
-  mcp_server/        instância, autenticação e as 13 tools
-  vimeo/client.py    API REST do Vimeo + acervo de demonstração
+src/main/java/br/com/plataforma/
+  comum/        Identidade, erros de domínio (sealed), Rastreavel, Referencias
+  contas/       Usuario, Matricula, TokenDeAcesso, login e senha (ContasServico)
+  catalogo/     Turma, a árvore do aluno, segregação
+  estrutura/    Modulo › SubModulo › Item
+  acervo/       Video e quem pode assistir (AcessoServico)
+  taxonomia/    Assunto, SubAssunto, etiquetas
+  questoes/     Questao, Alternativa, Figura
+  rascunhos/    Rascunho, criação e publicação (aprovação humana)
+  simulados/    Simulado, Tentativa, a prova do aluno (ProvaDoAluno)
+  analytics/    desempenho e estatísticas
+  materiais/    PDF em faixas de bytes e anotações
+  aulas/        aula ao vivo, Zoom real e de mentira
+  vimeo/        cliente real e demo, plano de importação
+  importacoes/  o .docx e os prints registrados pelo mcp
+  comandos/     a borda do MCP: /comandos/<tool>, /interno/*
+  portal/       a borda do navegador: /api/*, sessão, portal estático
+  seguranca/    as quatro portas
 ```
 
 ## A regra que sustenta a POC (§6)
@@ -124,7 +111,7 @@ mostrar ao professor um resumo coerente do que ele está aprovando.
 
 | §  | pedido | onde |
 |----|--------|------|
-| 3  | backend único para REST e MCP | `main.py`, `services/` |
+| 3  | backend único para REST e MCP | `portal/` e `comandos/` sobre os mesmos serviços |
 | 4  | ADMIN / GERENCIADOR / ALUNO; aluno fora do MCP | `models.Papel`, `mcp_server/auth.py` |
 | 5  | autenticação do MCP, sem execução anônima | `mcp_server/auth.py` (simplificação documentada) |
 | 6  | IA não publica direto | `services/publicacao.py` + `tools.publicar_rascunho` |

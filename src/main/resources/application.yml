@@ -1,0 +1,68 @@
+server:
+  # O Railway roteia e faz o healthcheck na porta que ele põe em PORT.
+  port: ${PORT:8080}
+  # Atrás do proxy do Railway: o esquema (https) e o IP do cliente vêm dos X-Forwarded-*. O
+  # container só é alcançado pelo proxy, então todo remetente é proxy de confiança.
+  forward-headers-strategy: native
+  tomcat:
+    remoteip:
+      internal-proxies: .*
+
+spring:
+  application:
+    name: api
+  # O banco vem de DATABASE_URL (postgresql://usuario:senha@host/banco, como o
+  # Railway entrega — ver UrlDoBanco) ou das SPRING_DATASOURCE_*. Sem nenhuma
+  # das duas, a aplicação não sobe: não há banco padrão a adivinhar.
+  jpa:
+    # O schema é do Flyway. O Hibernate só confere se as entidades batem com ele.
+    # Nunca `update`: ele não conhece o índice parcial nem o storage EXTERNAL do PDF.
+    hibernate:
+      ddl-auto: validate
+    # Sem sessão aberta até a view: carregamento preguiçoso fora da transação
+    # tem que falhar alto, não consultar escondido.
+    open-in-view: false
+  flyway:
+    # Produção já tem o schema: marca como V1 sem executar. Banco vazio roda a V1.
+    # Tem que ser 1 — com 0, a V1 rodaria em produção e bateria nas tabelas existentes.
+    baseline-on-migrate: true
+    baseline-version: 1
+  jackson:
+    # O frontend e o adaptador MCP falam snake_case.
+    property-naming-strategy: SNAKE_CASE
+  servlet:
+    multipart:
+      # O material em PDF vai até 60 MB; a figura de questão, 2 MB.
+      max-file-size: 61MB
+      max-request-size: 62MB
+  threads:
+    virtual:
+      enabled: true
+
+plataforma:
+  token-de-servico: ${SERVICO_TOKEN:}
+
+portal:
+  jwt-secret: ${JWT_SECRET:dev-only-trocar-antes-de-qualquer-coisa-real}
+  jwt-expira-horas: ${JWT_EXPIRA_HORAS:12}
+  cookie-seguro: ${SESSAO_COOKIE_SEGURO:true}
+  modo-demo: ${MODO_DEMO:false}
+  cors-origins: ${CORS_ORIGINS:http://localhost:3000,http://127.0.0.1:3000}
+  mcp-base-url: ${MCP_BASE_URL:}
+  frontend-dir: ${FRONTEND_DIR:../frontend/out}
+
+vimeo:
+  access-token: ${VIMEO_ACCESS_TOKEN:}
+  api-base: ${VIMEO_API_BASE:https://api.vimeo.com}
+
+zoom:
+  account-id: ${ZOOM_ACCOUNT_ID:}
+  client-id: ${ZOOM_CLIENT_ID:}
+  client-secret: ${ZOOM_CLIENT_SECRET:}
+  host: ${ZOOM_HOST:}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health

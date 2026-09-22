@@ -1,3 +1,8 @@
+# A plataforma: a API em Java servindo o portal exportado pelo Next.
+#
+# Um serviço só no Railway (`app`). O adaptador MCP mora em outro repositório
+# (mvp-portal-mcp) e fala com este por HTTP, na rede privada.
+
 FROM node:22-bookworm-slim AS frontend-build
 
 WORKDIR /app/frontend
@@ -8,35 +13,27 @@ COPY frontend/ ./
 ENV NEXT_TELEMETRY_DISABLED=1
 RUN npm run build
 
-FROM python:3.11-slim-bookworm AS runtime
+FROM maven:3.9-eclipse-temurin-25 AS build
 
-ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1 \
-    PYTHONPATH=/app/mcp
+WORKDIR /build
+# As dependências primeiro, na própria camada: mexer em src/ não refaz o
+# download de meio Maven Central a cada deploy.
+COPY pom.xml ./
+RUN mvn -B -q dependency:go-offline
+COPY src/ ./src/
+# Os testes são da CI, que sobe Postgres pelo Testcontainers — dentro do build
+# do Railway não há Docker para isso.
+RUN mvn -B -q package -DskipTests
+
+FROM eclipse-temurin:25-jre AS runtime
 
 WORKDIR /app
-
-# LibreOffice sem interface: o importador de simulado converte com ele as
-# figuras em formato antigo do Word (EMF, WMF, prévia de "Equação 3.0") para
-# PNG. Pesa algumas centenas de MB — ver docs/IMPORTADOR-SIMULADO.md.
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends libreoffice-draw-nogui fonts-liberation \
-    && rm -rf /var/lib/apt/lists/*
-
-COPY pyproject.toml ./
-COPY mcp/ ./mcp/
-RUN python -m pip install --no-cache-dir .
-
+COPY --from=build /build/target/api-*.jar ./api.jar
 COPY --from=frontend-build /app/frontend/out ./frontend/out
-COPY scripts/ ./scripts/
+ENV FRONTEND_DIR=/app/frontend/out
 
-# A migração vem antes do servidor: se ela falhar, o container não sobe e o
-# Railway mantém a versão anterior no ar (ver app/migracoes.py).
-# --forwarded-allow-ips: o container só é alcançado pelo proxy do Railway, e é
-# do X-Forwarded-For que sai o IP do limite de tentativas de login.
-# Sem argumento, `app.servir` lê PAPEL e WEB_CONCURRENCY do ambiente e cai no
-# padrão de sempre: os dois papéis num processo só. Cada serviço da Railway
-# sobrescreve isto com o seu comando — `python -m app.servir portal --workers 4`
-# ou `python -m app.servir mcp` —, que é onde o papel fica visível no painel.
-# Ver docs/RAILWAY-PASSO-A-PASSO.md.
-CMD ["python", "-m", "app.servir"]
+# O Flyway roda na partida com baseline-version 1: banco que já tem o schema é
+# marcado sem executar nada, banco vazio recebe a V1. Se a migração falhar, a
+# aplicação não sobe e o Railway mantém a versão anterior no ar.
+EXPOSE 8080
+CMD ["java", "-jar", "api.jar"]
