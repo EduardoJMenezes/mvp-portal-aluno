@@ -41,7 +41,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class ImportacoesServico {
 
     /** O link vale um dia. Passou, o professor pede outro — é mais barato que um link eterno. */
-    private static final Duration VALIDADE_DO_LINK = Duration.ofHours(24);
+    private static final Duration VALIDADE_DO_LINK = Duration.ofMinutes(30);
 
     private static final Pattern REFERENCIA_DE_FIGURA = Pattern.compile("figura:(\\d+)");
     private static final SecureRandom SORTEIO = new SecureRandom();

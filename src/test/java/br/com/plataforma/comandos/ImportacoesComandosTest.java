@@ -63,6 +63,10 @@ class ImportacoesComandosTest extends BaseDeComando {
                 .isNotEqualTo(token);
         assertThat(jdbc.queryForObject("SELECT status FROM imports", String.class))
                 .isEqualTo("AGUARDANDO");
+        // Link que vaza por engano fica aberto pouco tempo.
+        assertThat(jdbc.queryForObject(
+                "SELECT extract(epoch FROM expira_em - criado_em) / 60 FROM imports", Double.class))
+                .isBetween(29.0, 31.0);
     }
 
     @Test

@@ -481,7 +481,7 @@ public class AdminPortal {
     private LinkDeEnvio comLink(ImportacoesServico.LinkDeEnvio l, String oQue) {
         var base = config.mcpBaseUrl().isBlank() ? "" : config.mcpBaseUrl().replaceAll("/$", "");
         return new LinkDeEnvio(l.importacaoId(), base + "/enviar/" + l.token(), l.expiraEm(),
-                "Abra o link, envie %s e volte aqui para revisar. O link vale uma vez, por 24 horas.".formatted(oQue));
+                "Abra o link, envie %s e volte aqui para revisar. O link vale uma vez, por 30 minutos.".formatted(oQue));
     }
 
     /** O link de uso único pelo qual o .docx chega — a página é do adaptador MCP. */
