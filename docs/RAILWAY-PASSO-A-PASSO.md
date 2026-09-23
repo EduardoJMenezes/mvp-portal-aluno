@@ -77,6 +77,7 @@ o domínio do link que o professor recebe no chat.
 API_BASE_URL=http://app.railway.internal:8080
 SERVICO_TOKEN=<o mesmo do app>
 MCP_BASE_URL=https://mcp-production-041f.up.railway.app
+PORTAL_URL=https://app-production-e5b7.up.railway.app   # para onde vai o "aprove no portal"
 VIMEO_ACCESS_TOKEN=...
 MCP_OAUTH_GITHUB_CLIENT_ID=... MCP_OAUTH_GITHUB_CLIENT_SECRET=... MCP_OAUTH_OPERADORES=...
 DATABASE_URL=${{Postgres.DATABASE_URL}}   # só o registro OAuth
