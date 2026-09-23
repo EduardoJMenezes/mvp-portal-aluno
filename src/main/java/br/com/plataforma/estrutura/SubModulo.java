@@ -6,13 +6,14 @@ import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
-import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
+import org.hibernate.annotations.NotFound;
+import org.hibernate.annotations.NotFoundAction;
 import org.hibernate.annotations.SQLRestriction;
 
 /** A seção dentro do módulo: "Aulas", "Questões da apostila". */
@@ -25,8 +26,10 @@ public class SubModulo extends Rastreavel implements Nomeavel {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Integer id;
 
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "modulo_id", nullable = false)
+    // Remover o módulo não leva os sub-módulos junto: módulo removido chega aqui como null.
+    @ManyToOne
+    @NotFound(action = NotFoundAction.IGNORE)
+    @JoinColumn(name = "modulo_id") // NOT NULL no banco; "nullable" aqui faria o join descartar o sub-módulo
     private Modulo modulo;
 
     @Column(nullable = false)

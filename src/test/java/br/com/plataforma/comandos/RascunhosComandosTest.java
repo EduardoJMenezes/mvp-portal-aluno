@@ -260,6 +260,33 @@ class RascunhosComandosTest extends BaseDeComando {
                 .andExpect(jsonPath("$[0].submodulo").doesNotExist());
     }
 
+    /**
+     * Remover o módulo não leva os sub-módulos junto: o rascunho aponta para um sub-módulo vivo
+     * cujo módulo sumiu. Achado testando as tools em produção.
+     */
+    @Test
+    void rascunhoDeModuloRemovidoAindaAparecaNaLista() throws Exception {
+        comando("criar_modulo", """
+                {"turma": "Extensivo 2027", "nome": "K01"}""").andExpect(status().isOk());
+        comando("importar_videos_como_itens", """
+                {"turma": "Extensivo 2027", "modulo": "K01", "submodulo": "Aulas",
+                 "videos": [{"vimeo_id": "997", "titulo": "Aula solta"}]}""")
+                .andExpect(status().isOk());
+
+        comando("remover_do_curso", """
+                {"turma": "Extensivo 2027", "modulo": "K01"}""")
+                .andExpect(status().isOk());
+
+        comando("listar_rascunhos", "{}")
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$[0].modulo").doesNotExist())
+                .andExpect(jsonPath("$[0].submodulo").value("Aulas"));
+        comando("detalhar_rascunho", """
+                {"rascunho": 1}""")
+                .andExpect(status().isOk());
+    }
+
     /** E o mesmo vale para a turma: removê-la não pode derrubar a lista. */
     @Test
     void rascunhoDeTurmaRemovidaAindaAparecaNaLista() throws Exception {

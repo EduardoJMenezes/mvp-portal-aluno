@@ -238,7 +238,7 @@ public class RascunhosServico {
         var sub = r.getSubmodulo();
         return new ResumoDoRascunho(r.getId(), r.getTipo(), r.getStatus(), r.getResumo(),
                 r.getTurma() == null ? null : r.getTurma().getNome(),
-                sub == null ? null : sub.getModulo().getNome(),
+                sub == null || sub.getModulo() == null ? null : sub.getModulo().getNome(),
                 sub == null ? null : sub.getNome(),
                 r.getCriadoPor().getNome(), r.getOrigem().name(),
                 r.getCriadoEm() == null ? null : r.getCriadoEm().toString(),
