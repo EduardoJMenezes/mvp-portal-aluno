@@ -369,6 +369,10 @@ export type Aula = {
   turmas: string[];
   alunos: { id: number; nome: string; email: string }[];
   gravacao_item_id: number | null;
+  /** Só para o professor: para onde a gravação vai, em que pé ela está e quem esteve lá. */
+  submodulo_id: number | null;
+  gravacao: string | null;
+  presentes: { nome: string; entrou_em: string; saiu_em: string | null }[];
 };
 
 export type Material = {
@@ -605,6 +609,7 @@ export const api = {
     gravar?: boolean;
     turmas?: string[];
     alunos?: string[];
+    submodulo_id?: number | null;
   }) => pedir<Aula>("/admin/aulas", { method: "POST", json: dados }),
   editarAula: (
     id: number,

@@ -24,4 +24,15 @@ public interface Zoom {
 
     /** Inscreve o aluno e devolve o link <b>dele</b>. Quem chama guarda e não pede de novo. */
     String inscrever(String meetingId, String nome, String sobrenome, String email);
+
+    /**
+     * O endereço que baixa o arquivo da gravação — é ele que vai ao Vimeo. O aviso do Zoom traz um
+     * token de 24 h; sem ele, vale o token do nosso app.
+     */
+    String linkDeDownload(String downloadUrl, String downloadToken);
+
+    static String comToken(String url, String token) {
+        return url + (url.contains("?") ? "&" : "?") + "access_token="
+                + java.net.URLEncoder.encode(token, java.nio.charset.StandardCharsets.UTF_8);
+    }
 }

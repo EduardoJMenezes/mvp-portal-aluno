@@ -45,6 +45,11 @@ public class ZoomDeMentira implements Zoom {
         return "https://zoom.example/j/" + meetingId + "?tk=" + Senhas.sha256(email).substring(0, 12);
     }
 
+    @Override
+    public String linkDeDownload(String downloadUrl, String downloadToken) {
+        return Zoom.comToken(downloadUrl, downloadToken == null || downloadToken.isBlank() ? "de-mentira" : downloadToken);
+    }
+
     private void exigir(String meetingId) {
         if (!aulas.containsKey(meetingId)) {
             throw new br.com.plataforma.comum.ServicoExterno(

@@ -172,6 +172,12 @@ public class ZoomReal implements Zoom {
     }
 
     @Override
+    public String linkDeDownload(String downloadUrl, String downloadToken) {
+        return Zoom.comToken(downloadUrl,
+                downloadToken == null || downloadToken.isBlank() ? autorizacao() : downloadToken);
+    }
+
+    @Override
     public String inscrever(String meetingId, String nome, String sobrenome, String email) {
         var d = chamar("POST", "/meetings/" + meetingId + "/registrants", Map.of(
                 "email", email, "first_name", ate(nome, 64),

@@ -10,5 +10,7 @@ public enum Canal {
     PORTAL,
     MCP,
     /** O .docx que chegou pelo link de envio, pedido por alguém no MCP. */
-    DOCX
+    DOCX,
+    /** A gravação que o Zoom avisou que ficou pronta, de uma aula agendada pelo professor. */
+    ZOOM
 }

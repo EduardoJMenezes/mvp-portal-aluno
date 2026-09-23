@@ -1,5 +1,6 @@
 package br.com.plataforma.aulas;
 
+import java.time.Instant;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
@@ -28,6 +29,12 @@ class AulaPresenca {
     @Column(name = "join_url", nullable = false)
     private String joinUrl;
 
+    @Column(name = "entrou_em")
+    private Instant entrouEm;
+
+    @Column(name = "saiu_em")
+    private Instant saiuEm;
+
     protected AulaPresenca() {}
 
     AulaPresenca(Integer aulaId, Integer usuarioId, String joinUrl) {
@@ -38,5 +45,30 @@ class AulaPresenca {
 
     String getJoinUrl() {
         return joinUrl;
+    }
+
+    Integer getUsuarioId() {
+        return usuarioId;
+    }
+
+    Instant getEntrouEm() {
+        return entrouEm;
+    }
+
+    Instant getSaiuEm() {
+        return saiuEm;
+    }
+
+    /** A primeira entrada fica; a saída é a mais recente — quem cai e volta conta uma vez só. */
+    void entrou(Instant quando) {
+        if (entrouEm == null || quando.isBefore(entrouEm)) {
+            entrouEm = quando;
+        }
+    }
+
+    void saiu(Instant quando) {
+        if (saiuEm == null || quando.isAfter(saiuEm)) {
+            saiuEm = quando;
+        }
     }
 }

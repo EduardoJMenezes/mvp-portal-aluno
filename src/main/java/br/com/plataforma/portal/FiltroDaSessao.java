@@ -37,7 +37,9 @@ public class FiltroDaSessao extends OncePerRequestFilter {
 
     public static final String COOKIE = "sessao";
     static final Set<String> PUBLICAS = Set.of(
-            "/api/login", "/api/logout", "/api/sessao/config", "/api/demo/entrar", "/api/saude");
+            "/api/login", "/api/logout", "/api/sessao/config", "/api/demo/entrar", "/api/saude",
+            // o Zoom não tem sessão: quem prova a origem é a assinatura, conferida no WebhookDoZoom
+            "/api/zoom/webhook");
     /** Com senha temporária, a sessão só alcança o que leva a trocá-la. */
     static final Set<String> LIVRES_COM_SENHA_TEMPORARIA = Set.of("/api/eu", "/api/conta/senha", "/api/logout");
     private static final Set<String> METODOS_SEGUROS = Set.of("GET", "HEAD", "OPTIONS");

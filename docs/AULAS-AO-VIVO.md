@@ -10,46 +10,43 @@ assiste ao vivo; a maioria vê depois.
 
 Fontes oficiais consultadas em 17/09/2026, listadas no fim.
 
-## Onde está agora (18/09/2026)
+## Onde está agora (23/09/2026)
 
-**A fase 1 está no ar, e nenhuma reunião foi criada na conta do Zoom ainda.**
-Quem voltar a este trabalho começa por aqui.
-
-Pronto e em produção:
+Tudo em Java, no pacote `br.com.plataforma.aulas`.
 
 | | onde |
 |---|---|
-| Cliente do Zoom (token, criar, editar, cancelar, link de início, inscrever, gravação) e o Zoom de mentira | [integracoes/zoom.py](../backend/app/integracoes/zoom.py), commit `1e30bd9` |
-| Modelo: `live_classes`, `live_class_classes`, `live_class_students`, `live_class_attendance` | [models.py](../backend/app/models.py) — as quatro tabelas já existem no banco de produção, vazias |
-| Regras: quem alcança, janela de entrada, inscrição no clique, publicar/tirar do ar | [services/aulas.py](../backend/app/services/aulas.py), commit `8abf203` |
-| Rotas do professor e do aluno | `admin_routes.py` e `aluno_routes.py` |
-| Telas | `/admin/aulas` e `/aulas`, commit `f994c2c` |
-| Testes | 13 em [test_aulas.py](../backend/tests/test_aulas.py) + 13 em [test_zoom.py](../backend/tests/test_zoom.py); a suíte fecha em 227, sem pulados |
+| Agendar, publicar (a sala nasce), entrar com link pessoal, iniciar | `AulasServico`, `ZoomReal` (allowlist de rotas), `ZoomDeMentira` |
+| Avisos do Zoom: assinatura, desafio de validação | `WebhookDoZoom` — `POST /api/zoom/webhook` |
+| Gravação → Vimeo (pull) → item em **rascunho** no sub-módulo escolhido | `EventosDoZoom`, `EnvioAoVimeo` |
+| Presença (entrou, saiu) de quem veio pelo link do portal | `EventosDoZoom`, `live_class_attendance` |
+| Pelo chat: `agendar_aula` (rascunho, sem sala) e `listar_aulas` | `comandos/AulasComandos` + `mvp-portal-mcp/app/mcp_server/tools_aulas.py` |
+| Telas | `/admin/aulas` (destino da gravação, presença, estado da gravação) e `/aulas` |
+| Testes | `AulasTest`, `WebhookDoZoomTest`, `AulasComandosTest`; `tests/test_aulas.py` no mcp |
 
-Conferido contra a conta real, sem tocar em reunião nenhuma: o token sai, os
-**sete escopos** concedidos são os sete pedidos, e a tentativa de listar as
-reuniões da conta volta `400 — does not contain scopes:[meeting:read:list_meetings]`.
-Ou seja, a proteção das aulas da outra plataforma está no Zoom, não na boa
-vontade do código.
+Decisões que o código já toma:
 
-Falta, em ordem:
+* **A gravação chega em rascunho**, sempre, no nome de quem agendou (origem
+  `ZOOM`). O professor aprova em Admin › Rascunhos. Publicar sozinha abriria um
+  caminho de conteúdo até o aluno sem aprovação gravada — a regra da casa não
+  deixa. A coluna `publicar_gravacao` ficou sem uso.
+* **Sem destino, a gravação só sobe ao Vimeo** e fica no acervo.
+* **O aviso repetido não sobe duas vezes**: `gravacao_vimeo_id` é a trava (V2).
+* **O desafio de validação também exige assinatura**: sem isso, o endpoint
+  devolveria o HMAC de qualquer texto, e com ele dá para forjar aviso.
+* **Timestamp do aviso em segundos** (o código antigo lia como milissegundos e
+  recusaria todo aviso verdadeiro).
+* **Publicar aula (abrir a sala) só no portal.** Pelo chat, só rascunho.
 
-1. **O teste com o Zoom de verdade.** Uma aula `[TESTE PORTAL]` num domingo de
-   manhã — nunca terça nem quarta —, publicar, conferir que a sala nasce e que
-   o link sai diferente para dois alunos, e apagar pelo id. **Depende de um
-   "pode" do professor**, porque a partir do `Publicar` a sala é real.
-2. **Fase 2, o cano da gravação.** Endpoint do webhook (validação do desafio +
-   assinatura já existem prontas em `zoom.py`), `recording.completed`, upload
-   por *pull* para o Vimeo e o item no sub-módulo. **Depende de o professor
-   cadastrar a URL do webhook** no app do Zoom — e ela só pode ser cadastrada
-   depois que o endpoint estiver no ar, porque a Zoom faz um desafio na hora.
-3. **Presença** (quem entrou, quanto tempo), que sai quase de graça depois do
-   webhook.
-4. **Tool MCP `agendar_aula`**, com rascunho e aprovação.
+Falta, e depende do professor:
 
-Decisões ainda abertas, todas do professor: se a gravação publica sozinha ou
-espera revisão; se 15 minutos antes é a janela certa; e conferir o espaço do
-plano do Vimeo antes da primeira aula de 2 h subir (~2 GB).
+1. **Cadastrar o webhook no app do Zoom** (marketplace.zoom.us → o app →
+   Feature → Event Subscriptions): URL
+   `https://app-production-e5b7.up.railway.app/api/zoom/webhook`, eventos
+   `recording.completed`, `meeting.participant_joined`,
+   `meeting.participant_left`. O *Secret Token* de lá é o `ZOOM_WEBHOOK_SECRET`
+   do Railway — se forem diferentes, a validação falha.
+2. **O teste de ponta a ponta com uma aula de verdade**, com gravação.
 
 ## O bloqueio que existia sumiu
 

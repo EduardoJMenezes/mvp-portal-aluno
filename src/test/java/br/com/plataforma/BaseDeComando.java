@@ -22,12 +22,15 @@ import org.springframework.test.web.servlet.ResultActions;
         "plataforma.token-de-servico=" + BaseDeComando.TOKEN,
         "portal.cookie-seguro=false",
         "portal.modo-demo=true",
-        "portal.mcp-base-url=https://mcp.teste"})
+        "portal.mcp-base-url=https://mcp.teste",
+        "zoom.webhook-secret=" + BaseDeComando.SEGREDO_DO_ZOOM,
+        "zoom.webhook-sincrono=true"})
 @AutoConfigureMockMvc
 @Import(TestcontainersConfiguration.class)
 public abstract class BaseDeComando {
 
     public static final String TOKEN = "token-de-servico-so-para-teste-com-32+";
+    public static final String SEGREDO_DO_ZOOM = "segredo-do-webhook-de-teste";
     protected static final int ADMIN = 1;
     protected static final int ALUNO = 2;
 

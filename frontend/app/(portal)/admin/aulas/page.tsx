@@ -147,6 +147,7 @@ type Novo = {
   descricao: string;
   gravar: boolean;
   turmas: string[];
+  submodulo_id: number | null;
 };
 
 function Agendar({ turmas, aoAgendar }: { turmas: string[]; aoAgendar: (d: Novo) => Promise<boolean> }) {
@@ -156,6 +157,7 @@ function Agendar({ turmas, aoAgendar }: { turmas: string[]; aoAgendar: (d: Novo)
   const [descricao, setDescricao] = useState("");
   const [gravar, setGravar] = useState(true);
   const [escolhidas, setEscolhidas] = useState<string[]>([]);
+  const [destino, setDestino] = useState<number | null>(null);
   const [salvando, setSalvando] = useState(false);
 
   async function enviar(e: FormEvent) {
@@ -170,6 +172,7 @@ function Agendar({ turmas, aoAgendar }: { turmas: string[]; aoAgendar: (d: Novo)
       descricao: descricao.trim(),
       gravar,
       turmas: escolhidas,
+      submodulo_id: gravar ? destino : null,
     });
     setSalvando(false);
     if (ok) {
@@ -177,6 +180,7 @@ function Agendar({ turmas, aoAgendar }: { turmas: string[]; aoAgendar: (d: Novo)
       setQuando("");
       setDescricao("");
       setEscolhidas([]);
+      setDestino(null);
     }
   }
 
@@ -240,6 +244,7 @@ function Agendar({ turmas, aoAgendar }: { turmas: string[]; aoAgendar: (d: Novo)
           <input type="checkbox" checked={gravar} onChange={(e) => setGravar(e.target.checked)} />
           Gravar na nuvem, para virar aula gravada depois
         </label>
+        {gravar && <DestinoDaGravacao turmas={escolhidas} valor={destino} aoMudar={setDestino} />}
         <Botao type="submit" variante="primario" disabled={salvando} className="w-fit">
           {salvando ? "Agendando…" : "Agendar em rascunho"}
         </Botao>
@@ -248,6 +253,50 @@ function Agendar({ turmas, aoAgendar }: { turmas: string[]; aoAgendar: (d: Novo)
         </p>
       </form>
     </Cartao>
+  );
+}
+
+// --- para onde vai a gravação -------------------------------------------------
+
+function DestinoDaGravacao({
+  turmas,
+  valor,
+  aoMudar,
+}: {
+  turmas: string[];
+  valor: number | null;
+  aoMudar: (id: number | null) => void;
+}) {
+  const chave = [...turmas].sort().join("|");
+  const opcoes = useDados(
+    async () =>
+      (await Promise.all(turmas.map((t) => api.modulos(t)))).flatMap((modulos, i) =>
+        modulos.flatMap((m) => m.submodulos.map((s) => ({ id: s.id, nome: `${turmas[i]} › ${m.nome} › ${s.nome}` }))),
+      ),
+    [chave],
+  );
+  return (
+    <Campo
+      rotulo="Onde a gravação entra"
+      dica="Ela chega em rascunho — você aprova em Rascunhos, como qualquer vídeo. Sem destino, fica só no Vimeo."
+    >
+      {(id) => (
+        <select
+          id={id}
+          className="campo"
+          value={valor ?? ""}
+          onChange={(e) => aoMudar(e.target.value ? Number(e.target.value) : null)}
+          disabled={turmas.length === 0}
+        >
+          <option value="">{turmas.length === 0 ? "Escolha uma turma antes" : "Só no Vimeo, sem entrar no curso"}</option>
+          {opcoes.dados?.map((o) => (
+            <option key={o.id} value={o.id}>
+              {o.nome}
+            </option>
+          ))}
+        </select>
+      )}
+    </Campo>
   );
 }
 
@@ -340,8 +389,29 @@ function QuemAlcanca({
           {salvando ? "Salvando…" : "Salvar quem entra"}
         </Botao>
       )}
-      {aula.gravacao_item_id && (
-        <p className="text-[13px] text-suave">Gravação publicada no curso.</p>
+      {aula.gravacao === "enviando" && (
+        <p className="text-[13px] text-suave">A gravação está indo do Zoom para o Vimeo.</p>
+      )}
+      {aula.gravacao && aula.gravacao !== "enviando" && (
+        <p className="text-[13px] text-suave">
+          Gravação no Vimeo
+          {aula.gravacao_item_id ? " e no curso, em rascunho — aprove em Rascunhos para os alunos verem." : "."}
+        </p>
+      )}
+      {aula.presentes.length > 0 && (
+        <details className="text-[13px] text-suave">
+          <summary className="cursor-pointer">
+            {aula.presentes.length} {aula.presentes.length === 1 ? "aluno esteve" : "alunos estiveram"} na aula
+          </summary>
+          <ul className="mt-1 flex flex-col gap-0.5">
+            {aula.presentes.map((p) => (
+              <li key={p.nome + p.entrou_em}>
+                {p.nome} — entrou {emBrasilia(p.entrou_em)}
+                {p.saiu_em && `, saiu ${emBrasilia(p.saiu_em)}`}
+              </li>
+            ))}
+          </ul>
+        </details>
       )}
       {!aula.tem_sala && aula.status === "PUBLICADO" && (
         <p className="text-[13px] text-apagado">Sem sala no Zoom — publique de novo para abrir.</p>

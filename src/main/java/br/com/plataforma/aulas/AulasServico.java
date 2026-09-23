@@ -87,16 +87,30 @@ public class AulasServico {
         return Estado.AGENDADA;
     }
 
+    /** Quem entrou pelo link do portal, segundo os avisos do Zoom. Só o professor vê. */
+    public record Presente(String nome, String entrouEm, String saiuEm) {}
+
+    /**
+     * {@code gravacao}: vazio enquanto não chega; "enviando" enquanto o Vimeo busca no Zoom; depois,
+     * o id do vídeo. Presença e gravação vão só para operador.
+     */
     public record Resumo(
             Integer aulaId, String titulo, String descricao, String inicioEm, Integer minutos, Status status,
             Estado estado, String abreEm, boolean grava, boolean temSala, List<String> turmas,
-            List<Pessoa> alunos, Integer gravacaoItemId) {}
+            List<Pessoa> alunos, Integer gravacaoItemId, Integer submoduloId, String gravacao,
+            List<Presente> presentes) {}
 
-    private static Resumo resumo(Aula a, Instant agora) {
+    private Resumo resumo(Aula a, Instant agora, boolean operador) {
+        var presentes = !operador ? List.<Presente>of() : presencas.findByAulaId(a.getId()).stream()
+                .filter(p -> p.getEntrouEm() != null)
+                .map(p -> new Presente(contas.buscar(p.getUsuarioId()).map(Usuario::getNome).orElse("?"),
+                        p.getEntrouEm().toString(), p.getSaiuEm() == null ? null : p.getSaiuEm().toString()))
+                .toList();
         return new Resumo(a.getId(), a.getTitulo(), a.getDescricao(), a.getInicioEm().toString(), a.getMinutos(),
                 a.getStatus(), estado(a, agora), a.getInicioEm().minus(ABRE_ANTES).toString(), a.isGravar(),
                 a.getZoomMeetingId() != null, a.getTurmas().stream().map(Turma::getNome).toList(),
-                a.getAlunos().stream().map(Pessoa::de).toList(), a.getGravacaoItemId());
+                a.getAlunos().stream().map(Pessoa::de).toList(), a.getGravacaoItemId(),
+                operador ? a.getSubmoduloId() : null, operador ? a.getGravacaoVimeoId() : null, presentes);
     }
 
     // --- leitura -------------------------------------------------------------
@@ -106,7 +120,7 @@ public class AulasServico {
     public List<Resumo> listar(Identidade ident, Instant agora) {
         return aulas.findAllByOrderByInicioEmDesc().stream()
                 .filter(a -> ident.eOperador() || alcanca(ident, a))
-                .map(a -> resumo(a, agora)).toList();
+                .map(a -> resumo(a, agora, ident.eOperador())).toList();
     }
 
     // --- o aluno entrando ----------------------------------------------------
@@ -178,7 +192,7 @@ public class AulasServico {
                 d.gravar() == null || d.gravar(), d.submoduloId(),
                 d.publicarGravacao() == null || d.publicarGravacao(), ident.usuarioId()));
         enderecar(a, d.turmas(), d.alunos());
-        return resumo(a, agora);
+        return resumo(a, agora, true);
     }
 
     /** Título, horário, quem alcança, e abrir ou fechar a sala. */
@@ -205,7 +219,7 @@ public class AulasServico {
             zoom.editarAula(a.getZoomMeetingId(), a.getTitulo(), a.getInicioEm(), a.getMinutos());
         }
         a.tocar(ident);
-        return resumo(a, agora);
+        return resumo(a, agora, true);
     }
 
     public record Removida(Integer aulaId, String titulo, boolean reversivel) {}

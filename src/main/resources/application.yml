@@ -60,6 +60,8 @@ zoom:
   client-id: ${ZOOM_CLIENT_ID:}
   client-secret: ${ZOOM_CLIENT_SECRET:}
   host: ${ZOOM_HOST:}
+  # Confere a assinatura dos avisos do Zoom (Event Subscriptions > Secret Token).
+  webhook-secret: ${ZOOM_WEBHOOK_SECRET:}
 
 management:
   endpoints:

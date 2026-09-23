@@ -71,6 +71,9 @@ public class Aula extends Rastreavel {
     @Column(name = "gravacao_item_id")
     private Integer gravacaoItemId;
 
+    @Column(name = "gravacao_vimeo_id")
+    private String gravacaoVimeoId;
+
     @Column(name = "criado_por_id", nullable = false)
     private Integer criadoPorId;
 
@@ -145,6 +148,18 @@ public class Aula extends Rastreavel {
         return gravacaoItemId;
     }
 
+    public String getGravacaoVimeoId() {
+        return gravacaoVimeoId;
+    }
+
+    public Integer getSubmoduloId() {
+        return submoduloId;
+    }
+
+    public Integer getCriadoPorId() {
+        return criadoPorId;
+    }
+
     public List<Turma> getTurmas() {
         return turmas;
     }
@@ -188,6 +203,11 @@ public class Aula extends Rastreavel {
     void fecharSala() {
         this.zoomMeetingId = null;
         this.zoomJoinUrl = null;
+    }
+
+    void gravacaoChegou(String vimeoId, Integer itemId) {
+        this.gravacaoVimeoId = vimeoId;
+        this.gravacaoItemId = itemId;
     }
 
     void mudarStatus(Status status) {
