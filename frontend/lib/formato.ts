@@ -65,6 +65,10 @@ export function tamanhoDoArquivo(bytes: number): string {
   return mb >= 1 ? `${mb.toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`;
 }
 
+export function reais(centavos: number): string {
+  return (centavos / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+}
+
 export function porcento(valor: number): string {
   return `${valor.toLocaleString("pt-BR", { maximumFractionDigits: 1 })}%`;
 }

@@ -39,7 +39,9 @@ public class FiltroDaSessao extends OncePerRequestFilter {
     static final Set<String> PUBLICAS = Set.of(
             "/api/login", "/api/logout", "/api/sessao/config", "/api/demo/entrar", "/api/saude",
             // o Zoom não tem sessão: quem prova a origem é a assinatura, conferida no WebhookDoZoom
-            "/api/zoom/webhook");
+            "/api/zoom/webhook",
+            // o Asaas prova a origem pelo token do webhook, conferido no WebhookDoAsaas
+            "/api/asaas/webhook");
     /** Com senha temporária, a sessão só alcança o que leva a trocá-la. */
     static final Set<String> LIVRES_COM_SENHA_TEMPORARIA = Set.of("/api/eu", "/api/conta/senha", "/api/logout");
     private static final Set<String> METODOS_SEGUROS = Set.of("GET", "HEAD", "OPTIONS");
@@ -59,6 +61,7 @@ public class FiltroDaSessao extends OncePerRequestFilter {
         var caminho = pedido.getRequestURI();
         // O link de envio é a própria credencial: a página abre sem sessão (EnvioProxy).
         return !caminho.startsWith("/api/") || PUBLICAS.contains(caminho) || caminho.startsWith("/api/importacoes/")
+                || caminho.startsWith("/api/vendas/")
                 || "OPTIONS".equalsIgnoreCase(pedido.getMethod());
     }
 

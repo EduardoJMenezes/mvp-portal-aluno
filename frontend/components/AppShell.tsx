@@ -23,6 +23,7 @@ const DO_OPERADOR: Destino[] = [
   { href: "/admin/questoes/", rotulo: "Questões" },
   { href: "/admin/simulados/", rotulo: "Simulados" },
   { href: "/admin/aulas/", rotulo: "Aulas" },
+  { href: "/admin/vendas/", rotulo: "Vendas" },
   { href: "/admin/materiais/", rotulo: "Materiais" },
   { href: "/admin/importar/", rotulo: "Importar" },
   { href: "/admin/assuntos/", rotulo: "Assuntos" },

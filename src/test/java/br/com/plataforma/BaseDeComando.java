@@ -24,13 +24,15 @@ import org.springframework.test.web.servlet.ResultActions;
         "portal.modo-demo=true",
         "portal.mcp-base-url=https://mcp.teste",
         "zoom.webhook-secret=" + BaseDeComando.SEGREDO_DO_ZOOM,
-        "zoom.webhook-sincrono=true"})
+        "zoom.webhook-sincrono=true",
+        "asaas.webhook-token=" + BaseDeComando.TOKEN_DO_ASAAS})
 @AutoConfigureMockMvc
 @Import(TestcontainersConfiguration.class)
 public abstract class BaseDeComando {
 
     public static final String TOKEN = "token-de-servico-so-para-teste-com-32+";
     public static final String SEGREDO_DO_ZOOM = "segredo-do-webhook-de-teste";
+    public static final String TOKEN_DO_ASAAS = "token-do-webhook-do-asaas-de-teste";
     protected static final int ADMIN = 1;
     protected static final int ALUNO = 2;
 
@@ -39,7 +41,7 @@ public abstract class BaseDeComando {
 
     @BeforeEach
     void cenario() {
-        jdbc.execute("TRUNCATE users, classes, videos, subjects, questions, exams, drafts, imports, images, login_attempts RESTART IDENTITY CASCADE");
+        jdbc.execute("TRUNCATE users, classes, videos, subjects, questions, exams, drafts, imports, images, login_attempts, planos, pedidos RESTART IDENTITY CASCADE");
         jdbc.update("""
                 INSERT INTO users (id, nome, email, senha_hash, papel) VALUES
                   (1, 'Professora Ana', 'ana@teste.invalid', 'x', 'ADMIN'),

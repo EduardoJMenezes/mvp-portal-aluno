@@ -455,7 +455,82 @@ const seg = encodeURIComponent;
 
 // --- chamadas ----------------------------------------------------------------
 
+// --- vendas ---------------------------------------------------------------------
+
+export type TipoDePlano = "MENSAL" | "UNICO";
+
+export type PlanoDeVenda = {
+  plano_id: number;
+  nome: string;
+  link: string;
+  tipo: TipoDePlano;
+  preco_centavos: number;
+  parcelas_max: number;
+  acesso_ate: string | null;
+  ativo: boolean;
+  turmas: string[];
+  alunos_com_acesso: number;
+};
+
+export type DadosDoPlano = Partial<{
+  nome: string;
+  link: string;
+  tipo: TipoDePlano;
+  preco_centavos: number;
+  parcelas_max: number;
+  acesso_ate: string | null;
+  turmas: string[];
+  ativo: boolean;
+}>;
+
+export type StatusDoPedido = "AGUARDANDO" | "PAGO" | "ATRASADO" | "CANCELADO" | "REEMBOLSADO" | "EXPIRADO";
+
+export type PedidoDeVenda = {
+  pedido_id: number;
+  criado_em: string;
+  nome: string;
+  email: string;
+  plano: string;
+  valor_centavos: number;
+  status: StatusDoPedido;
+  pago_em: string | null;
+  acesso_ate: string | null;
+  acesso_liberado: boolean;
+};
+
+export type PlanoPublico = {
+  nome: string;
+  link: string;
+  tipo: TipoDePlano;
+  preco_centavos: number;
+  parcelas_max: number;
+  acesso_ate: string | null;
+  turmas: { nome: string; modulos: number; aulas: number }[];
+};
+
+export type SituacaoDoPedido = {
+  status: StatusDoPedido;
+  plano: string;
+  email: string;
+  pode_criar_senha: boolean;
+  ja_tinha_conta: boolean;
+};
+
 export const api = {
+  // vendas: professor
+  planosDeVenda: () => pedir<PlanoDeVenda[]>("/admin/vendas/planos"),
+  criarPlano: (dados: DadosDoPlano) => pedir<PlanoDeVenda>("/admin/vendas/planos", { method: "POST", json: dados }),
+  editarPlano: (id: number, dados: DadosDoPlano) =>
+    pedir<PlanoDeVenda>(`/admin/vendas/planos/${id}`, { method: "PATCH", json: dados }),
+  pedidosDeVenda: () => pedir<PedidoDeVenda[]>("/admin/vendas/pedidos"),
+  // vendas: público
+  planoPublico: (link: string) => pedir<PlanoPublico>(`/vendas/planos/${encodeURIComponent(link)}`),
+  comprar: (link: string, dados: { nome: string; email: string; cpf: string; celular?: string; cep: string; numero: string }) =>
+    pedir<{ checkout: string }>(`/vendas/planos/${encodeURIComponent(link)}/comprar`, { method: "POST", json: dados }),
+  situacaoDoPedido: (token: string) => pedir<SituacaoDoPedido>(`/vendas/pedidos/${encodeURIComponent(token)}`),
+  criarSenhaDoPedido: (token: string, senha: string) =>
+    pedir<{ entrou: boolean }>(`/vendas/pedidos/${encodeURIComponent(token)}/senha`, { method: "POST", json: { senha } }),
+
   saude: () => pedir<{ ok: boolean; banco: string; vimeo: string; mcp: string; mcp_oauth: "github" | "token-bearer"; modo_demo: boolean }>("/saude"),
 
   // sessão

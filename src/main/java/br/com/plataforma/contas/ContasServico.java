@@ -332,6 +332,66 @@ public class ContasServico {
         return new SenhaRedefinida(aluno(usuario), senha);
     }
 
+    // --- venda ---------------------------------------------------------------
+
+    public record Comprador(Usuario usuario, boolean contaNova) {}
+
+    /**
+     * A conta de quem comprou: a que já existe com aquele e-mail, ou uma nova de aluno, com senha
+     * temporária aleatória que ninguém vê — a senha de verdade ele cria na página de volta do
+     * pagamento. E-mail de conta da equipe não compra: seria professor matriculado como aluno.
+     */
+    @Transactional
+    public Comprador contaDoComprador(String nome, String email) {
+        var conta = email.strip().toLowerCase(Locale.ROOT);
+        var usuario = usuarios.findFirstByEmailIgnoreCase(conta).orElse(null);
+        if (usuario == null) {
+            return new Comprador(usuarios.save(new Usuario(nome.strip(), conta,
+                    Senhas.hash(Senhas.temporaria()), Papel.ALUNO, true)), true);
+        }
+        if (usuario.getPapel() != Papel.ALUNO) {
+            throw new RegraDeNegocio("Este e-mail é de uma conta da equipe. Use outro e-mail para comprar.");
+        }
+        return new Comprador(usuario, false);
+    }
+
+    /** Matricula pela compra. Quem já está na turma (à mão ou por outro pedido) fica como está. */
+    @Transactional
+    public void matricularPeloPedido(Integer usuarioId, Turma turma, Integer pedidoId) {
+        if (matriculas.findByUsuarioIdAndTurma(usuarioId, turma).isEmpty()) {
+            matriculas.save(new Matricula(usuarioId, turma, pedidoId));
+        }
+    }
+
+    /** Tira só as matrículas que este pedido deu. */
+    @Transactional
+    public int desmatricularDoPedido(Integer pedidoId) {
+        return matriculas.apagarDoPedido(pedidoId);
+    }
+
+    /** A primeira senha de uma conta nascida na compra. Quem chama confere que ela é mesmo nova. */
+    @Transactional
+    public Usuario definirPrimeiraSenha(Integer usuarioId, String senha, Instant agora) {
+        var usuario = usuarios.findById(usuarioId)
+                .orElseThrow(() -> new NaoEncontrado("Esta conta não existe mais."));
+        validarNovaSenha(senha, usuario);
+        usuario.definirSenha(Senhas.hash(senha), false, agora);
+        return usuario;
+    }
+
+    /**
+     * Trava de abuso para formulário público: mais de {@code limite} usos da chave na janela de 15
+     * minutos, e o pedido espera. Usa a mesma tabela das falhas de login.
+     */
+    @Transactional(noRollbackFor = MuitasTentativas.class)
+    public void limitar(String chave, int limite, Instant agora) {
+        var espera = espera(chave, limite, agora);
+        if (espera > 0) {
+            throw new MuitasTentativas(espera);
+        }
+        registrarFalha(List.of(chave), agora);
+    }
+
     // --- tokens do MCP -------------------------------------------------------
 
     public record TokenNaLista(

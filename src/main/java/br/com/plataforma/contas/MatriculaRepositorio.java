@@ -4,6 +4,7 @@ import br.com.plataforma.catalogo.Turma;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 
 interface MatriculaRepositorio extends JpaRepository<Matricula, Integer> {
@@ -17,6 +18,10 @@ interface MatriculaRepositorio extends JpaRepository<Matricula, Integer> {
     List<String> nomesDasTurmasDe(Integer usuarioId);
 
     Optional<Matricula> findByUsuarioIdAndTurma(Integer usuarioId, Turma turma);
+
+    @Modifying
+    @Query("delete from Matricula m where m.pedidoId = :pedidoId")
+    int apagarDoPedido(Integer pedidoId);
 
     @Query("select u from Usuario u, Matricula m"
             + " where m.usuarioId = u.id and m.turma = :turma order by u.nome")

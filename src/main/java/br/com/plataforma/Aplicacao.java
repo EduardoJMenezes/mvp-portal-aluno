@@ -11,6 +11,7 @@ import org.springframework.boot.security.autoconfigure.UserDetailsServiceAutoCon
  */
 @SpringBootApplication(exclude = UserDetailsServiceAutoConfiguration.class)
 @ConfigurationPropertiesScan
+@org.springframework.scheduling.annotation.EnableScheduling
 public class Aplicacao {
 
     public static void main(String[] args) {

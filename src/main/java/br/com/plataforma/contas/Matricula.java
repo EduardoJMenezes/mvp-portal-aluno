@@ -27,11 +27,20 @@ public class Matricula {
     @JoinColumn(name = "turma_id", nullable = false)
     private Turma turma;
 
+    /** O pedido que deu esta matrícula; vazio na feita à mão, que venda nenhuma remove. */
+    @Column(name = "pedido_id")
+    private Integer pedidoId;
+
     protected Matricula() {}
 
     Matricula(Integer usuarioId, Turma turma) {
+        this(usuarioId, turma, null);
+    }
+
+    Matricula(Integer usuarioId, Turma turma, Integer pedidoId) {
         this.usuarioId = usuarioId;
         this.turma = turma;
+        this.pedidoId = pedidoId;
     }
 
     public Integer getId() {

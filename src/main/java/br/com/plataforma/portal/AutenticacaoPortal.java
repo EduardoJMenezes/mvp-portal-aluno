@@ -63,7 +63,7 @@ public class AutenticacaoPortal {
 
     public record DemoIn(@NotBlank @Size(max = 180) String email) {}
 
-    private void abrirSessao(HttpServletResponse resposta, Usuario usuario) {
+    void abrirSessao(HttpServletResponse resposta, Usuario usuario) {
         resposta.addHeader(HttpHeaders.SET_COOKIE, cookie(sessoes.criar(usuario, Instant.now()),
                 sessoes.validade().toSeconds()).toString());
     }
@@ -75,7 +75,7 @@ public class AutenticacaoPortal {
     }
 
     /** Atrás do proxy do Railway, o Tomcat lê o X-Forwarded-For: este é o IP de quem pediu. */
-    private static String ip(HttpServletRequest pedido) {
+    static String ip(HttpServletRequest pedido) {
         var ip = pedido.getRemoteAddr();
         return ip == null || ip.isBlank() ? "desconhecido" : ip;
     }

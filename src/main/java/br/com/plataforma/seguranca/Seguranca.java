@@ -70,7 +70,8 @@ class Seguranca {
                 .addFilterBefore(new FiltroDaSessao(sessoes, contas, config), AuthorizationFilter.class)
                 .authorizeHttpRequests(a -> a
                         .requestMatchers("/api/login", "/api/logout", "/api/sessao/config", "/api/demo/entrar",
-                                "/api/saude", "/api/importacoes/**", "/api/zoom/webhook").permitAll()
+                                "/api/saude", "/api/importacoes/**", "/api/zoom/webhook", "/api/asaas/webhook",
+                                "/api/vendas/**").permitAll()
                         .requestMatchers(org.springframework.http.HttpMethod.OPTIONS, "/api/**").permitAll()
                         .anyRequest().authenticated())
                 .exceptionHandling(e -> e.authenticationEntryPoint((pedido, resposta, erro) -> {

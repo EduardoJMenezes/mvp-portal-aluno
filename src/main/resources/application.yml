@@ -51,6 +51,12 @@ portal:
   mcp-base-url: ${MCP_BASE_URL:}
   frontend-dir: ${FRONTEND_DIR:../frontend/out}
 
+asaas:
+  # Sem chave, a venda usa um Asaas de mentira. O prefixo diz o ambiente: $aact_hmlg_ é sandbox.
+  api-key: ${ASAAS_API_KEY:}
+  # O mesmo valor cadastrado no webhook do Asaas (authToken); ele volta no cabeçalho asaas-access-token.
+  webhook-token: ${ASAAS_WEBHOOK_TOKEN:}
+
 vimeo:
   access-token: ${VIMEO_ACCESS_TOKEN:}
   api-base: ${VIMEO_API_BASE:https://api.vimeo.com}
