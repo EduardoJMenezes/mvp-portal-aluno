@@ -362,7 +362,8 @@ export type Aula = {
   inicio_em: string;
   minutos: number;
   status: StatusConteudo;
-  estado: "RASCUNHO" | "AGENDADA" | "ABERTA" | "ENCERRADA";
+  /** AGUARDANDO: a porta abriu e o professor ainda não iniciou. ABERTA: a sala está no ar. */
+  estado: "RASCUNHO" | "AGENDADA" | "AGUARDANDO" | "ABERTA" | "ENCERRADA";
   abre_em: string;
   grava: boolean;
   tem_sala: boolean;
@@ -373,6 +374,8 @@ export type Aula = {
   submodulo_id: number | null;
   gravacao: string | null;
   presentes: { nome: string; entrou_em: string; saiu_em: string | null }[];
+  /** A gravação no curso, depois de aprovada. */
+  assistir: { modulo_id: number; item_id: number } | null;
 };
 
 export type Material = {

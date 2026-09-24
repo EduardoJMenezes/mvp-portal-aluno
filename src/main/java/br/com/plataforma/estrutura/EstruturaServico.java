@@ -51,6 +51,12 @@ public class EstruturaServico {
     }
 
     /** O que as bordas pedem: o mais fundo que vier, resolvido de cima para baixo. */
+    /** Item pelo id; removido é vazio. */
+    @Transactional(readOnly = true)
+    public java.util.Optional<Item> item(Integer id) {
+        return id == null ? java.util.Optional.empty() : itens.findById(id);
+    }
+
     /** Sub-módulo pelo id; removido é vazio. */
     @Transactional(readOnly = true)
     public java.util.Optional<SubModulo> submodulo(Integer id) {

@@ -70,6 +70,8 @@ public class EventosDoZoom {
             case "recording.completed" -> gravacaoPronta(aula.get(), objeto, texto(evento.get("download_token")));
             case "meeting.participant_joined" -> presenca(aula.get(), mapa(objeto.get("participant")), true);
             case "meeting.participant_left" -> presenca(aula.get(), mapa(objeto.get("participant")), false);
+            case "meeting.started" -> sala(aula.get().getId(), instante(objeto.get("start_time")), true);
+            case "meeting.ended" -> sala(aula.get().getId(), instante(objeto.get("end_time")), false);
             default -> log.info("aviso {} da aula {}: nada a fazer", tipo, aula.get().getId());
         }
     }
@@ -134,6 +136,24 @@ public class EventosDoZoom {
                 List.of(new RascunhosServico.VideoParaImportar(enviado.vimeoId(), aula.getTitulo(), aula.getTitulo(),
                         enviado.url(), enviado.embedUrl(), null, null, null, null, null)));
         return estrutura.itensDoRascunho(importados.rascunho().getId(), false).getFirst().getId();
+    }
+
+    // --- a sala abrindo e fechando ---------------------------------------------
+
+    private void sala(Integer aulaId, Instant quando, boolean abriu) {
+        tx.executeWithoutResult(s -> {
+            var aula = aulas.findById(aulaId).orElseThrow();
+            if (abriu) {
+                aula.salaComecou(quando);
+            } else {
+                aula.salaTerminou(quando);
+            }
+        });
+    }
+
+    private static Instant instante(Object v) {
+        var texto = texto(v);
+        return texto.isEmpty() ? Instant.now() : Instant.parse(texto);
     }
 
     // --- presença ------------------------------------------------------------

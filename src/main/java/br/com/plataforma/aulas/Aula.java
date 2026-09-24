@@ -74,6 +74,12 @@ public class Aula extends Rastreavel {
     @Column(name = "gravacao_vimeo_id")
     private String gravacaoVimeoId;
 
+    @Column(name = "iniciada_em")
+    private Instant iniciadaEm;
+
+    @Column(name = "encerrada_em")
+    private Instant encerradaEm;
+
     @Column(name = "criado_por_id", nullable = false)
     private Integer criadoPorId;
 
@@ -158,6 +164,24 @@ public class Aula extends Rastreavel {
 
     public Integer getCriadoPorId() {
         return criadoPorId;
+    }
+
+    public Instant getIniciadaEm() {
+        return iniciadaEm;
+    }
+
+    public Instant getEncerradaEm() {
+        return encerradaEm;
+    }
+
+    /** O professor abriu a sala — ou reabriu, depois de cair: reabrir desfaz o "encerrada". */
+    void salaComecou(Instant quando) {
+        this.iniciadaEm = quando;
+        this.encerradaEm = null;
+    }
+
+    void salaTerminou(Instant quando) {
+        this.encerradaEm = quando;
     }
 
     public List<Turma> getTurmas() {

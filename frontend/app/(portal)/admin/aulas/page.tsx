@@ -90,6 +90,8 @@ export default function AulasDoProfessor() {
                           <Etiqueta tom="atencao">Rascunho</Etiqueta>
                         )}
                         {aula.estado === "ABERTA" && <Etiqueta tom="info">Ao vivo agora</Etiqueta>}
+                        {aula.estado === "AGUARDANDO" && <Etiqueta tom="info">Aguardando você iniciar</Etiqueta>}
+                        {aula.estado === "ENCERRADA" && <Etiqueta>Encerrada</Etiqueta>}
                         {aula.grava && <Etiqueta>Grava</Etiqueta>}
                       </div>
                       <p className="text-lg font-semibold text-tinta">{aula.titulo}</p>

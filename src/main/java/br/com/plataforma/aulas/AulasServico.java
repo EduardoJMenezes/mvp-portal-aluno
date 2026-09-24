@@ -9,6 +9,7 @@ import br.com.plataforma.comum.Status;
 import br.com.plataforma.contas.ContasServico;
 import br.com.plataforma.contas.Pessoa;
 import br.com.plataforma.contas.Usuario;
+import br.com.plataforma.estrutura.EstruturaServico;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.LinkedHashMap;
@@ -29,19 +30,22 @@ public class AulasServico {
     public static final Duration FECHA_DEPOIS = Duration.ofMinutes(30);
     public static final int DURACAO_MAXIMA = 8 * 60;
 
-    public enum Estado { RASCUNHO, AGENDADA, ABERTA, ENCERRADA }
+    /** AGUARDANDO: a porta abriu, o professor ainda não. ABERTA: a sala do Zoom está no ar. */
+    public enum Estado { RASCUNHO, AGENDADA, AGUARDANDO, ABERTA, ENCERRADA }
 
     private final AulaRepositorio aulas;
     private final AulaPresencaRepositorio presencas;
     private final ContasServico contas;
     private final Zoom zoom;
+    private final EstruturaServico estrutura;
 
     public AulasServico(AulaRepositorio aulas, AulaPresencaRepositorio presencas, ContasServico contas,
-            Zoom zoom) {
+            Zoom zoom, EstruturaServico estrutura) {
         this.aulas = aulas;
         this.presencas = presencas;
         this.contas = contas;
         this.zoom = zoom;
+        this.estrutura = estrutura;
     }
 
     @Transactional(readOnly = true)
@@ -74,17 +78,26 @@ public class AulasServico {
         return a.getInicioEm().plus(Duration.ofMinutes(a.getMinutos()));
     }
 
+    /**
+     * O relógio da agenda manda; os avisos do Zoom só antecipam. A porta abre 15 min antes e fecha
+     * 30 min depois do fim; dentro dela, "ao vivo" é só com a sala aberta de fato, e o professor
+     * encerrando fecha na hora. Encerramento de antes da janela (um ensaio na véspera) não conta.
+     */
     public static Estado estado(Aula a, Instant agora) {
         if (a.getStatus() != Status.PUBLICADO) {
             return Estado.RASCUNHO;
         }
+        var abre = a.getInicioEm().minus(ABRE_ANTES);
         if (agora.isAfter(fim(a).plus(FECHA_DEPOIS))) {
             return Estado.ENCERRADA;
         }
-        if (!agora.isBefore(a.getInicioEm().minus(ABRE_ANTES))) {
+        if (a.getEncerradaEm() != null && !a.getEncerradaEm().isBefore(abre)) {
+            return Estado.ENCERRADA;
+        }
+        if (a.getIniciadaEm() != null && a.getEncerradaEm() == null) {
             return Estado.ABERTA;
         }
-        return Estado.AGENDADA;
+        return agora.isBefore(abre) ? Estado.AGENDADA : Estado.AGUARDANDO;
     }
 
     /** Quem entrou pelo link do portal, segundo os avisos do Zoom. Só o professor vê. */
@@ -94,11 +107,21 @@ public class AulasServico {
      * {@code gravacao}: vazio enquanto não chega; "enviando" enquanto o Vimeo busca no Zoom; depois,
      * o id do vídeo. Presença e gravação vão só para operador.
      */
+    /** Onde assistir a gravação no curso — só quando ela já foi aprovada e publicada. */
+    public record Assistir(Integer moduloId, Integer itemId) {}
+
     public record Resumo(
             Integer aulaId, String titulo, String descricao, String inicioEm, Integer minutos, Status status,
             Estado estado, String abreEm, boolean grava, boolean temSala, List<String> turmas,
             List<Pessoa> alunos, Integer gravacaoItemId, Integer submoduloId, String gravacao,
-            List<Presente> presentes) {}
+            List<Presente> presentes, Assistir assistir) {}
+
+    private Assistir assistir(Aula a) {
+        return estrutura.item(a.getGravacaoItemId())
+                .filter(i -> i.getStatus() == Status.PUBLICADO && i.getSubmodulo().getModulo() != null)
+                .map(i -> new Assistir(i.getSubmodulo().getModulo().getId(), i.getId()))
+                .orElse(null);
+    }
 
     private Resumo resumo(Aula a, Instant agora, boolean operador) {
         var presentes = !operador ? List.<Presente>of() : presencas.findByAulaId(a.getId()).stream()
@@ -110,7 +133,8 @@ public class AulasServico {
                 a.getStatus(), estado(a, agora), a.getInicioEm().minus(ABRE_ANTES).toString(), a.isGravar(),
                 a.getZoomMeetingId() != null, a.getTurmas().stream().map(Turma::getNome).toList(),
                 a.getAlunos().stream().map(Pessoa::de).toList(), a.getGravacaoItemId(),
-                operador ? a.getSubmoduloId() : null, operador ? a.getGravacaoVimeoId() : null, presentes);
+                operador ? a.getSubmoduloId() : null, operador ? a.getGravacaoVimeoId() : null, presentes,
+                assistir(a));
     }
 
     // --- leitura -------------------------------------------------------------
@@ -144,7 +168,8 @@ public class AulasServico {
                     .formatted(a.getInicioEm().minus(ABRE_ANTES).toString()));
         }
         if (estado == Estado.ENCERRADA) {
-            throw new RegraDeNegocio("'%s' já terminou.".formatted(a.getTitulo()));
+            throw new RegraDeNegocio((a.getEncerradaEm() != null && agora.isBefore(fim(a).plus(FECHA_DEPOIS))
+                    ? "'%s' foi encerrada pelo professor." : "'%s' já terminou.").formatted(a.getTitulo()));
         }
         var presenca = presencas.findByAulaIdAndUsuarioId(a.getId(), ident.usuarioId()).orElseGet(() -> {
             var nomeInteiro = ident.nome() == null || ident.nome().isBlank() ? "Aluno" : ident.nome().strip();

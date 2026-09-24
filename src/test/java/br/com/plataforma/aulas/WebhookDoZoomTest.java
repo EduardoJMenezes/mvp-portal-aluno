@@ -169,4 +169,65 @@ class WebhookDoZoomTest extends BaseDoPortal {
         // O aluno não vê a lista de presença de ninguém.
         get("/api/aluno/aulas", ALUNO).andExpect(jsonPath("$[0].presentes.length()").value(0));
     }
+
+    // --- a sala abrindo e fechando ---------------------------------------------
+
+    private static String sala(String evento, String reuniao, String campo, String quando) {
+        return """
+                {"event":"%s","payload":{"object":{"id":"%s","%s":"%s"}}}"""
+                .formatted(evento, reuniao, campo, quando);
+    }
+
+    @Test
+    void aoVivoSoComASalaAbertaEEncerradaAssimQueOProfessorFecha() throws Exception {
+        var aula = aulaPublicadaComDestino();
+        var r = reuniao(aula);
+        get("/api/aluno/aulas", ALUNO).andExpect(jsonPath("$[0].estado").value("AGUARDANDO"));
+
+        avisar(sala("meeting.started", r, "start_time", Instant.now().toString()));
+        get("/api/aluno/aulas", ALUNO).andExpect(jsonPath("$[0].estado").value("ABERTA"));
+
+        avisar(sala("meeting.ended", r, "end_time", Instant.now().toString()));
+        get("/api/aluno/aulas", ALUNO).andExpect(jsonPath("$[0].estado").value("ENCERRADA"));
+        post("/api/aluno/aulas/" + aula + "/entrar", "", ALUNO)
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.detail").value("'Revisão ao vivo' foi encerrada pelo professor."));
+
+        // A conexão caiu e o professor reabriu: volta a estar no ar.
+        avisar(sala("meeting.started", r, "start_time", Instant.now().toString()));
+        get("/api/aluno/aulas", ALUNO).andExpect(jsonPath("$[0].estado").value("ABERTA"));
+        post("/api/aluno/aulas/" + aula + "/entrar", "", ALUNO).andExpect(status().isOk());
+    }
+
+    /** Um ensaio na véspera não pode deixar a aula "encerrada" antes de ela acontecer. */
+    @Test
+    void encerramentoDeAntesDaJanelaNaoConta() throws Exception {
+        var aula = aulaPublicadaComDestino();
+        var r = reuniao(aula);
+        var ontem = Instant.now().minus(1, ChronoUnit.DAYS).toString();
+        avisar(sala("meeting.started", r, "start_time", ontem));
+        avisar(sala("meeting.ended", r, "end_time", ontem));
+        get("/api/aluno/aulas", ALUNO).andExpect(jsonPath("$[0].estado").value("AGUARDANDO"));
+    }
+
+    /** O botão de assistir só aparece depois que o professor aprova a gravação. */
+    @Test
+    void assistirAGravacaoSoDepoisDeAprovada() throws Exception {
+        var aula = aulaPublicadaComDestino();
+        avisar(gravacao(reuniao(aula), "tk")).andExpect(status().isOk());
+        get("/api/aluno/aulas", ALUNO).andExpect(jsonPath("$[0].assistir").doesNotExist());
+
+        var rascunho = jdbc.queryForObject("SELECT id FROM drafts WHERE origem = 'ZOOM'", Integer.class);
+        comando("publicar_rascunho", """
+                {"rascunho": %d, "confirmado_pelo_professor": true}""".formatted(rascunho))
+                .andExpect(status().isOk());
+
+        var item = jdbc.queryForObject("SELECT gravacao_item_id FROM live_classes WHERE id = ?", Integer.class, aula);
+        var modulo = jdbc.queryForObject(
+                "SELECT s.modulo_id FROM items i JOIN submodules s ON s.id = i.submodulo_id WHERE i.id = ?",
+                Integer.class, item);
+        get("/api/aluno/aulas", ALUNO)
+                .andExpect(jsonPath("$[0].assistir.item_id").value(item))
+                .andExpect(jsonPath("$[0].assistir.modulo_id").value(modulo));
+    }
 }

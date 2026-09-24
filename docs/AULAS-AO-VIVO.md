@@ -20,6 +20,8 @@ Tudo em Java, no pacote `br.com.plataforma.aulas`.
 | Avisos do Zoom: assinatura, desafio de validação | `WebhookDoZoom` — `POST /api/zoom/webhook` |
 | Gravação → Vimeo (pull) → item em **rascunho** no sub-módulo escolhido | `EventosDoZoom`, `EnvioAoVimeo` |
 | Presença (entrou, saiu) de quem veio pelo link do portal | `EventosDoZoom`, `live_class_attendance` |
+| Sala no ar de verdade: `meeting.started`/`meeting.ended` (V3) — "Aguardando o professor", "Ao vivo agora", "Encerrada" | `AulasServico.estado`, `EventosDoZoom` |
+| "Assistir à gravação" para o aluno, depois de aprovada | `AulasServico.assistir` |
 | Pelo chat: `agendar_aula` (rascunho, sem sala) e `listar_aulas` | `comandos/AulasComandos` + `mvp-portal-mcp/app/mcp_server/tools_aulas.py` |
 | Telas | `/admin/aulas` (destino da gravação, presença, estado da gravação) e `/aulas` |
 | Testes | `AulasTest`, `WebhookDoZoomTest`, `AulasComandosTest`; `tests/test_aulas.py` no mcp |
@@ -44,7 +46,10 @@ Falta, e depende do professor:
    Feature → Event Subscriptions): URL
    `https://app-production-e5b7.up.railway.app/api/zoom/webhook`, eventos
    `recording.completed`, `meeting.participant_joined`,
-   `meeting.participant_left`. O *Secret Token* de lá é o `ZOOM_WEBHOOK_SECRET`
+   `meeting.participant_left`, `meeting.started`, `meeting.ended` (na tela:
+   "All Recordings have completed", "Participant/Host joined meeting",
+   "Participant/Host left meeting", "Start Meeting", "End Meeting"). Feito em
+   23/09/2026. O *Secret Token* de lá é o `ZOOM_WEBHOOK_SECRET`
    do Railway — se forem diferentes, a validação falha.
 2. **O teste de ponta a ponta com uma aula de verdade**, com gravação.
 

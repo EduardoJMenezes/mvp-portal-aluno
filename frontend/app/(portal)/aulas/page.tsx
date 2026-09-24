@@ -1,12 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import { Aviso, Botao, Cartao, Estado, Etiqueta, Pagina, Vazio } from "@/components/ui";
+import { Aviso, Botao, BotaoLink, Cartao, Estado, Etiqueta, Pagina, Vazio } from "@/components/ui";
 import { api, useDados, type Aula } from "@/lib/api";
 import { emBrasilia } from "@/lib/formato";
 
 const TOM: Record<Aula["estado"], { rotulo: string; tom: "info" | "sucesso" | "neutro" }> = {
   ABERTA: { rotulo: "Ao vivo agora", tom: "sucesso" },
+  AGUARDANDO: { rotulo: "Aguardando o professor", tom: "info" },
   AGENDADA: { rotulo: "Agendada", tom: "info" },
   ENCERRADA: { rotulo: "Encerrada", tom: "neutro" },
   RASCUNHO: { rotulo: "Rascunho", tom: "neutro" },
@@ -55,7 +56,7 @@ export default function AulasDoAluno() {
                     <div className="min-w-0">
                       <span className="flex flex-wrap items-center gap-2">
                         <Etiqueta tom={TOM[aula.estado].tom}>{TOM[aula.estado].rotulo}</Etiqueta>
-                        {aula.grava && aula.estado !== "ENCERRADA" && <Etiqueta>Será gravada</Etiqueta>}
+                        {aula.grava && aula.estado !== "ENCERRADA" && !aula.assistir && <Etiqueta>Será gravada</Etiqueta>}
                       </span>
                       <h2 className="mt-2 text-lg font-semibold text-tinta">{aula.titulo}</h2>
                       <p className="text-[13px] text-suave">
@@ -63,7 +64,14 @@ export default function AulasDoAluno() {
                       </p>
                       {aula.descricao && <p className="mt-1 text-sm text-suave">{aula.descricao}</p>}
                     </div>
-                    {aula.estado === "ABERTA" ? (
+                    {aula.assistir ? (
+                      <BotaoLink
+                        variante="primario"
+                        href={`/curso/aula/?modulo=${aula.assistir.modulo_id}&item=${aula.assistir.item_id}`}
+                      >
+                        Assistir à gravação
+                      </BotaoLink>
+                    ) : aula.estado === "ABERTA" || aula.estado === "AGUARDANDO" ? (
                       <Botao
                         variante="primario"
                         onClick={() => void entrar(aula)}

@@ -35,7 +35,8 @@ class AulasTest extends BaseDoPortal {
         patch("/api/admin/aulas/" + aula, "{\"status\": \"PUBLICADO\"}", ADMIN)
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.tem_sala").value(true))
-                .andExpect(jsonPath("$.estado").value("ABERTA"));
+                // A porta abriu, a sala ainda não: o aluno já pode entrar e esperar o professor.
+                .andExpect(jsonPath("$.estado").value("AGUARDANDO"));
 
         get("/api/aluno/aulas", ALUNO).andExpect(jsonPath("$[0].titulo").value("Revisão de estequiometria"));
         post("/api/aluno/aulas/" + aula + "/entrar", "", ALUNO).andExpect(status().isOk())
