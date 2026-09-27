@@ -630,6 +630,7 @@ export const api = {
   // professor: consulta
   turmas: () => pedir<Turma[]>("/admin/turmas"),
   biblioteca: () => pedir<ModuloDaBiblioteca[]>("/admin/biblioteca"),
+  bibliotecaArvore: () => pedir<Modulo[]>("/admin/biblioteca/arvore"),
   turmasDoModulo: (modulo: number, turmas: string[]) =>
     pedir<ModuloDaBiblioteca>(`/admin/modulos/${modulo}/turmas`, { method: "PUT", json: { turmas } }),
   turmasDoItem: (item: number, turmas: string[]) =>
@@ -659,23 +660,23 @@ export const api = {
   redefinirSenha: (aluno: number) => pedir<{ aluno: Aluno; senha_temporaria: string }>(`/admin/alunos/${aluno}/senha`, { method: "POST" }),
 
   // curso
-  criarModulo: (turma: number, nome: string, submodulos?: string[], categoria?: string) =>
+  criarModulo: (turma: number | string, nome: string, submodulos?: string[], categoria?: string) =>
     pedir<{ modulo_id: number }>(`/admin/turmas/${turma}/modulos`, { method: "POST", json: { nome, submodulos, categoria } }),
-  editarModulo: (turma: number, modulo: number, dados: { nome?: string; ordem?: number; categoria?: string }) =>
+  editarModulo: (turma: number | string, modulo: number, dados: { nome?: string; ordem?: number; categoria?: string }) =>
     pedir(`/admin/turmas/${turma}/modulos/${modulo}`, { method: "PATCH", json: dados }),
-  removerModulo: (turma: number, modulo: number) =>
+  removerModulo: (turma: number | string, modulo: number) =>
     pedir<{ itens_publicados_que_somem_da_tela: number }>(`/admin/turmas/${turma}/modulos/${modulo}`, { method: "DELETE" }),
-  criarSubmodulo: (turma: number, modulo: number, nome: string) =>
+  criarSubmodulo: (turma: number | string, modulo: number, nome: string) =>
     pedir(`/admin/turmas/${turma}/modulos/${modulo}/submodulos`, { method: "POST", json: { nome } }),
-  removerSubmodulo: (turma: number, modulo: number, submodulo: number) =>
+  removerSubmodulo: (turma: number | string, modulo: number, submodulo: number) =>
     pedir(`/admin/turmas/${turma}/modulos/${modulo}/submodulos/${submodulo}`, { method: "DELETE" }),
-  editarItem: (turma: number, modulo: number, submodulo: number, item: number, dados: { nome?: string; ordem?: number; mover_para_submodulo?: string }) =>
+  editarItem: (turma: number | string, modulo: number, submodulo: number, item: number, dados: { nome?: string; ordem?: number; mover_para_submodulo?: string }) =>
     pedir(`/admin/turmas/${turma}/modulos/${modulo}/submodulos/${submodulo}/itens/${item}`, { method: "PATCH", json: dados }),
-  removerItem: (turma: number, modulo: number, submodulo: number, item: number) =>
+  removerItem: (turma: number | string, modulo: number, submodulo: number, item: number) =>
     pedir(`/admin/turmas/${turma}/modulos/${modulo}/submodulos/${submodulo}/itens/${item}`, { method: "DELETE" }),
-  adicionarVideos: (turma: number, modulo: number, submodulo: number, videos: { vimeo_id: string; titulo?: string; embed_url?: string | null; nome?: string }[]) =>
+  adicionarVideos: (turma: number | string, modulo: number, submodulo: number, videos: { vimeo_id: string; titulo?: string; embed_url?: string | null; nome?: string }[]) =>
     pedir<Rascunho>(`/admin/turmas/${turma}/modulos/${modulo}/submodulos/${submodulo}/itens`, { method: "POST", json: { videos } }),
-  classificar: (turma: number, modulo: number, submodulo: number, dados: { assunto: string; subassunto?: string; itens?: string }) =>
+  classificar: (turma: number | string, modulo: number, submodulo: number, dados: { assunto: string; subassunto?: string; itens?: string }) =>
     pedir<{ videos_classificados: string[] }>(`/admin/turmas/${turma}/modulos/${modulo}/submodulos/${submodulo}/classificacao`, { method: "POST", json: dados }),
 
   // assuntos

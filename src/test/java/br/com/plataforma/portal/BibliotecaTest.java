@@ -144,4 +144,25 @@ class BibliotecaTest extends BaseDoPortal {
                 .andExpect(jsonPath("$[0].assistir").doesNotExist())
                 .andExpect(jsonPath("$[0].video.vimeo_id").value("333333333"));
     }
+
+    /** A tela "Aulas" mexe na biblioteca: a turma nas rotas é "biblioteca", e o módulo sem turma também se edita. */
+    @Test
+    void naBibliotecaOModuloSemTurmaTambemSeEdita() throws Exception {
+        comando("criar_modulo", """
+                {"nome": "Monitoria 1"}""").andExpect(status().isOk());
+        var monitoria = jdbc.queryForObject("SELECT id FROM modules WHERE nome = 'Monitoria 1'", Integer.class);
+
+        post("/api/admin/turmas/biblioteca/modulos/" + monitoria + "/submodulos", "{\"nome\": \"Plantões\"}", ADMIN)
+                .andExpect(status().isOk());
+        patch("/api/admin/turmas/biblioteca/modulos/" + monitoria, "{\"categoria\": \"Monitoria\"}", ADMIN)
+                .andExpect(status().isOk());
+
+        get("/api/admin/biblioteca/arvore", ADMIN)
+                .andExpect(jsonPath("$[1].nome").value("Monitoria 1"))
+                .andExpect(jsonPath("$[1].categoria").value("Monitoria"))
+                .andExpect(jsonPath("$[1].turmas").isEmpty())
+                .andExpect(jsonPath("$[1].submodulos[*].nome").value(Matchers.hasItem("Plantões")))
+                .andExpect(jsonPath("$[0].submodulos[0].itens.length()").value(2));
+        get("/api/admin/biblioteca/arvore", ALUNO).andExpect(status().isForbidden());
+    }
 }

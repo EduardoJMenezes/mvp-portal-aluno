@@ -262,7 +262,7 @@ function Agendar({ turmas, categorias, aoAgendar }: { turmas: string[]; categori
         </Botao>
         <p className="text-[13px] text-apagado">
           A sala do Zoom só é criada quando você publicar — rascunho não ocupa a agenda de ninguém. Toda aula é gravada.
-          Para agendar direto num capítulo, use o botão "Aula ao vivo" no curso da turma.
+          Para agendar direto num módulo, use o botão "Aula ao vivo" em Aulas.
         </p>
       </form>
     </Cartao>

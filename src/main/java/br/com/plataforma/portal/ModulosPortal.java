@@ -43,6 +43,13 @@ public class ModulosPortal {
         return estrutura.biblioteca();
     }
 
+    /** Todos os módulos com sub-módulos e itens: a tela "Aulas". Nas rotas de edição, a turma é "biblioteca". */
+    @GetMapping("/biblioteca/arvore")
+    public List<EstruturaServico.ModuloNaArvore> arvore(@AuthenticationPrincipal Identidade ident) {
+        ident.exigirOperador();
+        return estrutura.arvoreDaBiblioteca();
+    }
+
     /** As turmas que recebem o módulo, trocadas de uma vez. */
     @PutMapping("/modulos/{modulo}/turmas")
     @Transactional

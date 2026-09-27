@@ -216,7 +216,7 @@ public class RascunhosServico {
         if (criados == 0) {
             throw new RegraDeNegocio("Nenhum item pôde ser criado. " + String.join(" | ", erros));
         }
-        rascunho.mudarResumo("%d vídeo(s) para %s / %s › %s".formatted(criados, turma.getNome(),
+        rascunho.mudarResumo("%d vídeo(s) para %s / %s › %s".formatted(criados, turma == null ? "biblioteca" : turma.getNome(),
                 alvos.modulo().getNome(), alvos.submodulo().getNome()));
         return new ItensImportados(rascunho, erros);
     }

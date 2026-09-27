@@ -67,7 +67,7 @@ public class AcervoComandos {
     public ItensImportados importarVideosComoItens(
             @AuthenticationPrincipal Identidade ident,
             @Valid @RequestBody ImportarVideosComoItens pedido) {
-        var turma = catalogo.resolverTurma(pedido.turma());
+        var turma = catalogo.resolverTurmaOuBiblioteca(pedido.turma());
         var resultado = rascunhos.importarVideosComoItens(ident, turma, pedido.modulo(),
                 pedido.submodulo(), pedido.videos());
 

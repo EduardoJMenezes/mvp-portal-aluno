@@ -83,7 +83,7 @@ public class TaxonomiaComandos {
     @Transactional
     public VideosClassificados classificarVideos(
             @AuthenticationPrincipal Identidade ident, @Valid @RequestBody ClassificarVideos pedido) {
-        var turma = catalogo.resolverTurma(pedido.turma());
+        var turma = catalogo.resolverTurmaOuBiblioteca(pedido.turma());
         var alvos = estrutura.alvos(turma, pedido.modulo(), pedido.submodulo(), null);
 
         List<Item> escolhidos = estrutura.itensDo(alvos.submodulo());

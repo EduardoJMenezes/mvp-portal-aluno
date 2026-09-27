@@ -82,6 +82,16 @@ public class CatalogoServico {
         throw new NaoEncontrado("Turma '%s' não existe. Turmas: %s.".formatted(referencia, disponiveis));
     }
 
+    /**
+     * A turma pela qual se olha o curso — ou nenhuma: vazio ou "biblioteca" é a biblioteca inteira de
+     * módulos (decisão 0011), onde o módulo se acha sem precisar de turma.
+     */
+    @Transactional(readOnly = true)
+    public Turma resolverTurmaOuBiblioteca(String referencia) {
+        return referencia == null || referencia.isBlank() || referencia.strip().equalsIgnoreCase("biblioteca")
+                ? null : resolverTurma(referencia);
+    }
+
     /** Várias turmas de uma vez, sem repetir: "Extensivo, Extensivo" é uma turma só. */
     @Transactional(readOnly = true)
     public List<Turma> resolverTurmas(List<String> referencias) {

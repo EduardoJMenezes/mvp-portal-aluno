@@ -134,6 +134,23 @@ public class EstruturaServico {
         return arvore;
     }
 
+    /** A biblioteca inteira, com todos os itens: é a tela "Aulas" do professor. */
+    @Transactional(readOnly = true)
+    public List<ModuloNaArvore> arvoreDaBiblioteca() {
+        return modulos.findAllByOrderByOrdemAscIdAsc().stream()
+                .map(modulo -> new ModuloNaArvore(modulo.getId(), modulo.getNome(), modulo.getOrdem(),
+                        modulo.getCategoria(), null, nomes(modulo.getTurmas()),
+                        submodulos.findByModuloOrderByOrdemAsc(modulo).stream()
+                                .map(sub -> new SubModuloNaArvore(sub.getId(), sub.getNome(), sub.getTipo(),
+                                        sub.getOrdem(), itens.findBySubmoduloOrderByOrdemAsc(sub).stream()
+                                                .map(i -> new ItemNaArvore(i.getId(), i.getNome(), i.getOrdem(),
+                                                        i.getStatus(), i.getVideo().getId(), i.getVideo().getVimeoId(),
+                                                        nomes(i.getTurmas())))
+                                                .toList()))
+                                .toList()))
+                .toList();
+    }
+
     public record ModuloDaBiblioteca(Integer id, String nome, Integer ordem, String categoria, List<String> turmas) {}
 
     /** Todos os módulos, de todas as turmas e de nenhuma: é daqui que se atribui. */

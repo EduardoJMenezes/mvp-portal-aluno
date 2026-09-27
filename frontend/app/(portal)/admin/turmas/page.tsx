@@ -13,7 +13,7 @@ export default function Turmas() {
   return (
     <Pagina
       titulo="Turmas"
-      legenda="Cada turma tem o próprio curso, alunos e simulados. O que o Claude cria pelo MCP aparece aqui também."
+      legenda="O que se vende é a turma. Aqui ficam os alunos e o menu de cada uma; as aulas que ela recebe se escolhem em Aulas."
       acoes={!criando && <Botao variante="primario" onClick={() => setCriando(true)}>Nova turma</Botao>}
     >
       {criando && <NovaTurma aoCriar={() => { setCriando(false); void turmas.recarregar(); }} aoCancelar={() => setCriando(false)} />}
@@ -123,8 +123,7 @@ function LinhaDaTurma({ turma, aoMudar }: { turma: Turma; aoMudar: () => void })
             {(turma.itens_em_rascunho ?? 0) > 0 && <Etiqueta tom="atencao">{plural(turma.itens_em_rascunho ?? 0, "em rascunho", "em rascunho")}</Etiqueta>}
           </div>
           <div className="flex flex-wrap gap-2">
-            <Link href={`/admin/turmas/curso/?turma=${turma.id}`} className="inline-flex rounded-full border border-acento px-4 py-1.5 text-sm font-semibold text-acento hover:bg-lilas">Curso</Link>
-            <Link href={`/admin/turmas/alunos/?turma=${turma.id}`} className="inline-flex rounded-full border border-borda px-4 py-1.5 text-sm font-semibold text-tinta hover:border-suave">Alunos</Link>
+            <Link href={`/admin/turmas/alunos/?turma=${turma.id}`} className="inline-flex rounded-full border border-acento px-4 py-1.5 text-sm font-semibold text-acento hover:bg-lilas">Alunos</Link>
             <Link href={`/admin/turmas/menu/?turma=${turma.id}`} className="inline-flex rounded-full border border-borda px-4 py-1.5 text-sm font-semibold text-tinta hover:border-suave">Menu do aluno</Link>
           </div>
         </>

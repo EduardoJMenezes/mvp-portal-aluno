@@ -121,14 +121,14 @@ function Turmas({ turmas }: { turmas: Turma[] }) {
           {turmas.map((t) => (
             <Cartao key={t.id} como="li" className="p-4">
               <div className="flex items-start justify-between gap-2">
-                <Link href={`/admin/turmas/curso/?turma=${t.id}`} className="font-semibold text-tinta hover:text-acento">{t.nome}</Link>
+                <Link href={`/admin/turmas/alunos/?turma=${t.id}`} className="font-semibold text-tinta hover:text-acento">{t.nome}</Link>
                 {(t.itens_em_rascunho ?? 0) > 0 && <Etiqueta tom="atencao">{plural(t.itens_em_rascunho ?? 0, "em rascunho", "em rascunho")}</Etiqueta>}
               </div>
               <p className="mt-1 text-[13px] text-suave">
                 {plural(t.alunos, "aluno")} · {plural(t.modulos, "módulo")} · {plural(t.itens_publicados, "vídeo publicado", "vídeos publicados")}
               </p>
               <div className="mt-2 flex gap-3 text-sm font-semibold">
-                <Link href={`/admin/turmas/curso/?turma=${t.id}`} className="text-acento hover:underline">Curso</Link>
+                <Link href={`/admin/biblioteca/?turma=${t.id}`} className="text-acento hover:underline">Aulas</Link>
                 <Link href={`/admin/turmas/alunos/?turma=${t.id}`} className="text-acento hover:underline">Alunos</Link>
               </div>
             </Cartao>

@@ -3,33 +3,58 @@
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useState, type FormEvent, type ReactNode } from "react";
-import { Aviso, Botao, BotaoLink, Campo, Cartao, Estado, Etiqueta, Pagina, Vazio, useConfirmar } from "@/components/ui";
+import { Aviso, Botao, Campo, Cartao, Estado, Etiqueta, Pagina, TituloDeSecao, Vazio, useConfirmar } from "@/components/ui";
 import { CampoCategoria, EditarCategoria, categoriasDe } from "@/components/Categoria";
 import { ColocarVideo } from "@/components/ColocarVideo";
 import { EscolherTurmas } from "@/components/EscolherTurmas";
 import { abrirEmNovaAba, api, useDados, type Assunto, type Aula, type Modulo, type SubModulo, type Turma, type VideoVimeo } from "@/lib/api";
 import { duracao, emBrasilia, plural } from "@/lib/formato";
 
-export default function PaginaDoCurso() {
+export default function PaginaDasAulas() {
   return (
     <Suspense>
-      <CursoDaTurma />
+      <Biblioteca />
     </Suspense>
   );
 }
 
 type Executar = (acao: () => Promise<unknown>, mensagem?: ReactNode | (() => ReactNode)) => Promise<boolean>;
 
-function CursoDaTurma() {
-  const turmaId = Number(useSearchParams().get("turma"));
+/** Nas rotas de edição, a turma "biblioteca" acha o módulo sem turma nenhuma (decisão 0011). */
+const BIBLIOTECA = "biblioteca";
+
+/** O que a turma recebe: os módulos dela e as aulas visíveis — a mesma regra do backend. */
+function comoATurmaVe(modulos: Modulo[], turma: string): Modulo[] {
+  return modulos
+    .map((m) => {
+      const recebe = (m.turmas ?? []).includes(turma);
+      return {
+        ...m,
+        submodulos: m.submodulos.map((s) => ({
+          ...s,
+          itens: s.itens.filter((i) => (i.turmas?.length ? i.turmas.includes(turma) : recebe)),
+        })),
+        recebe,
+      };
+    })
+    .filter((m) => m.recebe || m.submodulos.some((s) => s.itens.length > 0));
+}
+
+/**
+ * A tela "Aulas": todos os módulos da biblioteca, agrupados pela categoria (a mesma do menu do
+ * aluno). Cada módulo diz que turmas o recebem; "Ver como a turma" mostra só o que ela vê.
+ */
+function Biblioteca() {
+  const parametro = useSearchParams().get("turma");
   const dados = useDados(async () => {
-    const [modulos, turmas, assuntos, aulas] = await Promise.all([api.modulos(turmaId), api.turmas(), api.assuntos(), api.aulasDoProfessor()]);
-    return { modulos, turma: turmas.find((t) => t.id === turmaId), turmas, assuntos, aulas };
-  }, [turmaId]);
+    const [modulos, turmas, assuntos, aulas] = await Promise.all([api.bibliotecaArvore(), api.turmas(), api.assuntos(), api.aulasDoProfessor()]);
+    return { modulos, turmas, assuntos, aulas };
+  });
+  const [filtro, setFiltro] = useState(parametro ?? "");
   const [erro, setErro] = useState("");
   const [aviso, setAviso] = useState<ReactNode>(null);
   const [novoModulo, setNovoModulo] = useState(false);
-  const [trazer, setTrazer] = useState(false);
+  const [copiar, setCopiar] = useState(false);
   const [dialogo, confirmar] = useConfirmar();
 
   const executar: Executar = async (acao, mensagem) => {
@@ -46,16 +71,16 @@ function CursoDaTurma() {
     }
   };
 
+  // O filtro aceita o id (vindo do link do painel) ou o nome da turma.
+  const turmaDoFiltro = dados.dados?.turmas.find((t) => String(t.id) === filtro || t.nome === filtro);
+
   return (
     <Pagina
-      titulo={dados.dados?.turma ? `Curso · ${dados.dados.turma.nome}` : "Curso da turma"}
-      legenda="Os módulos moram numa biblioteca e cada turma recebe os seus: o que muda num módulo vale para todas as turmas dele. Vídeo novo entra como rascunho; a gravação de aula ao vivo entra publicada."
-      voltar={{ href: "/admin/turmas/", rotulo: "Turmas" }}
+      titulo="Aulas"
+      legenda="Todos os módulos, agrupados pela categoria. Cada um diz que turmas o recebem: o que muda num módulo vale para todas elas. Vídeo novo entra como rascunho; a gravação de aula ao vivo entra publicada."
       acoes={
         <>
-          <BotaoLink href={`/admin/turmas/alunos/?turma=${turmaId}`}>Alunos</BotaoLink>
-          <BotaoLink href={`/admin/turmas/menu/?turma=${turmaId}`}>Menu do aluno</BotaoLink>
-          <Botao onClick={() => setTrazer(!trazer)} aria-expanded={trazer}>Trazer módulos</Botao>
+          <Botao onClick={() => setCopiar(!copiar)} aria-expanded={copiar}>Copiar entre turmas</Botao>
           <Botao variante="primario" onClick={() => setNovoModulo(true)}>Novo módulo</Botao>
         </>
       }
@@ -63,111 +88,119 @@ function CursoDaTurma() {
       {dialogo}
       {erro && <Aviso tom="erro">{erro}</Aviso>}
       {aviso && <Aviso tom="sucesso">{aviso}</Aviso>}
-      {trazer && dados.dados?.turma && (
-        <TrazerModulos turma={dados.dados.turma} turmas={dados.dados.turmas} executar={executar} aoFechar={() => setTrazer(false)} />
-      )}
+      {copiar && dados.dados && <CopiarEntreTurmas turmas={dados.dados.turmas} executar={executar} aoFechar={() => setCopiar(false)} />}
       {novoModulo && (
-        <NovoModulo turma={turmaId} categorias={categoriasDe(dados.dados?.modulos ?? [])} executar={executar} aoFechar={() => setNovoModulo(false)} />
+        <NovoModulo
+          turma={turmaDoFiltro?.id ?? BIBLIOTECA}
+          nomeDaTurma={turmaDoFiltro?.nome}
+          categorias={categoriasDe(dados.dados?.modulos ?? [])}
+          executar={executar}
+          aoFechar={() => setNovoModulo(false)}
+        />
       )}
+      <div className="flex flex-wrap items-center gap-2">
+        <label htmlFor="ver-como" className="text-sm font-semibold text-tinta-2">Ver como a turma</label>
+        <select id="ver-como" value={turmaDoFiltro?.nome ?? ""} onChange={(e) => setFiltro(e.target.value)} className="campo w-auto">
+          <option value="">Todas as aulas</option>
+          {dados.dados?.turmas.map((t) => (
+            <option key={t.id} value={t.nome}>{t.nome}</option>
+          ))}
+        </select>
+      </div>
       <Estado {...dados} linhas={4}>
-        {({ modulos, assuntos, aulas, turma, turmas }) =>
-          modulos.length === 0 ? (
-            <Vazio titulo="Esta turma ainda não tem módulos">Crie o primeiro, traga da biblioteca ou copie de outra turma.</Vazio>
-          ) : (
-            <ol className="flex flex-col gap-4">
-              {modulos.map((modulo, i) => (
-                <CartaoDoModulo
-                  key={modulo.id}
-                  turma={turmaId}
-                  modulo={modulo}
-                  vizinhos={{ acima: modulos[i - 1], abaixo: modulos[i + 1], posicao: i + 1 }}
-                  assuntos={assuntos}
-                  aulas={aulas}
-                  categorias={categoriasDe(modulos)}
-                  categoriasDeAula={categoriasDe(aulas)}
-                  nomeDaTurma={turma?.nome ?? ""}
-                  todasAsTurmas={turmas.map((t) => t.nome)}
-                  executar={executar}
-                  confirmar={confirmar}
-                />
-              ))}
-            </ol>
-          )
-        }
+        {({ modulos: todos, assuntos, aulas, turmas }) => {
+          const modulos = turmaDoFiltro ? comoATurmaVe(todos, turmaDoFiltro.nome) : todos;
+          if (modulos.length === 0) {
+            return (
+              <Vazio titulo={turmaDoFiltro ? `${turmaDoFiltro.nome} ainda não recebe nenhum módulo` : "A biblioteca ainda está vazia"}>
+                Crie um módulo, ou dê a esta turma os módulos de outra em &quot;Copiar entre turmas&quot;.
+              </Vazio>
+            );
+          }
+          // Grupos pela categoria, na ordem em que aparecem; sem categoria vai para o fim.
+          const grupos = new Map<string, Modulo[]>();
+          for (const m of modulos) {
+            const chave = m.categoria?.trim() || "";
+            grupos.set(chave, [...(grupos.get(chave) ?? []), m]);
+          }
+          const ordenados = [...grupos.entries()].sort(([a], [b]) => (a === "" ? 1 : b === "" ? -1 : 0));
+          return ordenados.map(([categoria, doGrupo]) => (
+            <section key={categoria || "sem-categoria"} className="flex flex-col gap-3" aria-label={categoria || "Sem categoria"}>
+              <TituloDeSecao>{categoria || "Sem categoria"}</TituloDeSecao>
+              <ol className="flex flex-col gap-4">
+                {doGrupo.map((modulo, i) => (
+                  <CartaoDoModulo
+                    key={modulo.id}
+                    turma={BIBLIOTECA}
+                    modulo={modulo}
+                    vizinhos={{ acima: doGrupo[i - 1], abaixo: doGrupo[i + 1], posicao: i + 1 }}
+                    assuntos={assuntos}
+                    aulas={aulas}
+                    categorias={categoriasDe(todos)}
+                    categoriasDeAula={categoriasDe(aulas)}
+                    nomeDaTurma={turmaDoFiltro?.nome ?? ""}
+                    todasAsTurmas={turmas.map((t) => t.nome)}
+                    executar={executar}
+                    confirmar={confirmar}
+                  />
+                ))}
+              </ol>
+            </section>
+          ));
+        }}
       </Estado>
     </Pagina>
   );
 }
 
-/** Traz para a turma um módulo que já existe, ou todos os de outra turma (decisão 0011). */
-function TrazerModulos({ turma, turmas, executar, aoFechar }: { turma: Turma; turmas: Turma[]; executar: Executar; aoFechar: () => void }) {
-  const biblioteca = useDados(() => api.biblioteca());
-  const [modulo, setModulo] = useState("");
+/** A turma "para" passa a receber os módulos e as aulas restritas da turma "de" (decisão 0011). */
+function CopiarEntreTurmas({ turmas, executar, aoFechar }: { turmas: Turma[]; executar: Executar; aoFechar: () => void }) {
   const [de, setDe] = useState("");
-  const fora = (biblioteca.dados ?? []).filter((m) => !m.turmas.includes(turma.nome));
-
-  async function trazerModulo() {
-    const m = fora.find((x) => String(x.id) === modulo);
-    if (m && (await executar(() => api.turmasDoModulo(m.id, [...m.turmas, turma.nome]), `"${m.nome}" agora é também de ${turma.nome}.`))) {
-      setModulo("");
-      await biblioteca.recarregar();
-    }
-  }
+  const [para, setPara] = useState("");
 
   async function copiar() {
     const origem = turmas.find((t) => String(t.id) === de);
-    if (!origem) return;
+    const destino = turmas.find((t) => String(t.id) === para);
+    if (!origem || !destino) return;
     let copia = { modulos: 0, itens: 0 };
     const ok = await executar(
       async () => {
-        copia = await api.copiarModulos(turma.id, origem.id);
+        copia = await api.copiarModulos(destino.id, origem.id);
       },
-      () => `${plural(copia.modulos, "módulo", "módulos")} e ${plural(copia.itens, "aula restrita", "aulas restritas")} de ${origem.nome} agora também são de ${turma.nome}.`,
+      () => `${plural(copia.modulos, "módulo", "módulos")} e ${plural(copia.itens, "aula restrita", "aulas restritas")} de ${origem.nome} agora também são de ${destino.nome}.`,
     );
     if (ok) aoFechar();
   }
 
   return (
-    <Cartao className="grid gap-4 p-5 md:grid-cols-2">
-      <div className="flex flex-col gap-2">
-        <h2 className="font-semibold text-tinta">Da biblioteca</h2>
-        <div className="flex flex-wrap items-end gap-2">
-          <Campo rotulo="Módulo" className="min-w-60 flex-1">
-            {(id) => (
-              <select id={id} value={modulo} onChange={(e) => setModulo(e.target.value)} className="campo">
-                <option value="">{biblioteca.carregando ? "Carregando…" : fora.length ? "Escolha…" : "Todos já são desta turma"}</option>
-                {fora.map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {m.nome} {m.turmas.length ? `(${m.turmas.join(", ")})` : "(nenhuma turma)"}
-                  </option>
-                ))}
-              </select>
-            )}
-          </Campo>
-          <Botao variante="primario" disabled={!modulo} onClick={() => void trazerModulo()}>Trazer</Botao>
-        </div>
-      </div>
-      <div className="flex flex-col gap-2">
-        <h2 className="font-semibold text-tinta">De outra turma</h2>
-        <div className="flex flex-wrap items-end gap-2">
-          <Campo rotulo="Turma" dica="Traz os módulos e as aulas restritas dela; o que esta turma já tem continua." className="min-w-60 flex-1">
-            {(id) => (
-              <select id={id} value={de} onChange={(e) => setDe(e.target.value)} className="campo">
-                <option value="">Escolha…</option>
-                {turmas.filter((t) => t.id !== turma.id).map((t) => (
-                  <option key={t.id} value={t.id}>{t.nome}</option>
-                ))}
-              </select>
-            )}
-          </Campo>
-          <Botao disabled={!de} onClick={() => void copiar()}>Copiar módulos</Botao>
-        </div>
-      </div>
+    <Cartao className="flex flex-wrap items-end gap-3 p-5">
+      <Campo rotulo="De" className="min-w-48">
+        {(id) => (
+          <select id={id} value={de} onChange={(e) => setDe(e.target.value)} className="campo">
+            <option value="">Escolha…</option>
+            {turmas.map((t) => (
+              <option key={t.id} value={t.id}>{t.nome}</option>
+            ))}
+          </select>
+        )}
+      </Campo>
+      <Campo rotulo="Para" dica="Recebe os módulos e as aulas restritas da outra; o que ela já tem continua." className="min-w-48">
+        {(id) => (
+          <select id={id} value={para} onChange={(e) => setPara(e.target.value)} className="campo">
+            <option value="">Escolha…</option>
+            {turmas.filter((t) => String(t.id) !== de).map((t) => (
+              <option key={t.id} value={t.id}>{t.nome}</option>
+            ))}
+          </select>
+        )}
+      </Campo>
+      <Botao variante="primario" disabled={!de || !para} onClick={() => void copiar()}>Copiar módulos</Botao>
+      <Botao onClick={aoFechar}>Fechar</Botao>
     </Cartao>
   );
 }
 
-function NovoModulo({ turma, categorias, executar, aoFechar }: { turma: number; categorias: string[]; executar: Executar; aoFechar: () => void }) {
+function NovoModulo({ turma, nomeDaTurma, categorias, executar, aoFechar }: { turma: number | string; nomeDaTurma?: string; categorias: string[]; executar: Executar; aoFechar: () => void }) {
   const [nome, setNome] = useState("");
   const [subs, setSubs] = useState("Aulas, Questões da apostila");
   const [categoria, setCategoria] = useState("");
@@ -182,6 +215,9 @@ function NovoModulo({ turma, categorias, executar, aoFechar }: { turma: number; 
     <Cartao className="p-5">
       <form onSubmit={criar} className="flex flex-col gap-4">
         <h2 className="text-lg font-semibold text-tinta">Novo módulo</h2>
+        <p className="-mt-2 text-[13px] text-suave">
+          {nomeDaTurma ? `Nasce já para ${nomeDaTurma}. Outras turmas se acrescentam em "Turmas".` : 'Nasce só na biblioteca: escolha as turmas depois, em "Turmas".'}
+        </p>
         <div className="grid gap-4 sm:grid-cols-2">
           <Campo rotulo="Nome" dica="Ex.: K01 - Introdução à química orgânica">
             {(id) => <input id={id} required maxLength={160} value={nome} onChange={(e) => setNome(e.target.value)} className="campo" />}
@@ -217,7 +253,7 @@ function CartaoDoModulo({
   executar,
   confirmar,
 }: {
-  turma: number;
+  turma: number | string;
   modulo: Modulo;
   vizinhos: { acima?: Modulo; abaixo?: Modulo; posicao: number };
   assuntos: Assunto[];
@@ -237,17 +273,18 @@ function CartaoDoModulo({
   const [nomeSub, setNomeSub] = useState("");
   const publicados = modulo.submodulos.reduce((n, s) => n + s.itens.filter((i) => i.status === "PUBLICADO").length, 0);
 
-  // Trocar de lugar é regravar a posição dos dois pela ordem da tela.
-  const mover = (outro: Modulo, destino: number) =>
+  // A ordem é da biblioteca inteira: trocar de lugar é trocar a ordem dos dois.
+  const mover = (outro: Modulo, paraBaixo: boolean) =>
     executar(async () => {
-      await api.editarModulo(turma, modulo.id, { ordem: destino });
-      await api.editarModulo(turma, outro.id, { ordem: vizinhos.posicao });
+      const outraOrdem = outro.ordem === modulo.ordem ? modulo.ordem + (paraBaixo ? 1 : -1) : outro.ordem;
+      await api.editarModulo(turma, modulo.id, { ordem: outraOrdem });
+      await api.editarModulo(turma, outro.id, { ordem: modulo.ordem });
     });
 
   async function remover() {
     const sim = await confirmar({
       titulo: `Remover "${modulo.nome}" de todas as turmas?`,
-      texto: `${turmasDoModulo.length > 1 ? `Sai de ${turmasDoModulo.join(", ")}. Para tirar só desta turma, use "Turmas". ` : ""}${
+      texto: `${turmasDoModulo.length > 1 ? `Sai de ${turmasDoModulo.join(", ")}. Para tirar só de uma turma, use "Turmas". ` : ""}${
         publicados
           ? `${plural(publicados, "vídeo publicado some", "vídeos publicados somem")} da tela dos alunos na hora.`
           : "O módulo não tem vídeo publicado; os alunos não notam."
@@ -293,8 +330,8 @@ function CartaoDoModulo({
         )}
         {!renomeando && (
           <div className="flex flex-wrap items-center gap-1">
-            <Botao tamanho="pequeno" disabled={!vizinhos.acima} onClick={() => vizinhos.acima && void mover(vizinhos.acima, vizinhos.posicao - 1)} aria-label="Subir módulo">↑</Botao>
-            <Botao tamanho="pequeno" disabled={!vizinhos.abaixo} onClick={() => vizinhos.abaixo && void mover(vizinhos.abaixo, vizinhos.posicao + 1)} aria-label="Descer módulo">↓</Botao>
+            <Botao tamanho="pequeno" disabled={!vizinhos.acima} onClick={() => vizinhos.acima && void mover(vizinhos.acima, false)} aria-label="Subir módulo">↑</Botao>
+            <Botao tamanho="pequeno" disabled={!vizinhos.abaixo} onClick={() => vizinhos.abaixo && void mover(vizinhos.abaixo, true)} aria-label="Descer módulo">↓</Botao>
             <Botao variante="texto" onClick={() => setRenomeando(true)}>Renomear</Botao>
             <Botao variante="texto" onClick={() => setNovoSub(!novoSub)}>Novo sub-módulo</Botao>
             <Botao variante="texto" className="text-erro" onClick={() => void remover()}>Remover</Botao>
@@ -320,7 +357,7 @@ function CartaoDoModulo({
         </form>
       )}
 
-      {!recebe && (
+      {nomeDaTurma && !recebe && (
         <p className="border-b border-borda bg-atencao-fundo px-5 py-2 text-[13px] text-atencao">
           {nomeDaTurma} não recebe este módulo: vê só as aulas marcadas para ela.
         </p>
@@ -362,7 +399,7 @@ function SecaoDoSubmodulo({
   executar,
   confirmar,
 }: {
-  turma: number;
+  turma: number | string;
   nomeDaTurma: string;
   todasAsTurmas: string[];
   modulo: Modulo;
@@ -459,7 +496,7 @@ function SecaoDoSubmodulo({
                       vazio="Todas as do módulo"
                       aoSalvar={(t) => executar(() => api.turmasDoItem(item.id, t), `Turmas de "${item.nome}" salvas.`)}
                     />
-                    {!((item.turmas?.length ? item.turmas : modulo.turmas ?? []).includes(nomeDaTurma)) && (
+                    {nomeDaTurma && !((item.turmas?.length ? item.turmas : modulo.turmas ?? []).includes(nomeDaTurma)) && (
                       <span className="block text-[13px] text-atencao">Não aparece para {nomeDaTurma}</span>
                     )}
                   </td>
@@ -634,7 +671,7 @@ function AulasDoSubmodulo({ aulas, executar }: { aulas: Aula[]; executar: Execut
   );
 }
 
-function AdicionarVideos({ turma, modulo, sub, executar, aoFechar }: { turma: number; modulo: Modulo; sub: SubModulo; executar: Executar; aoFechar: () => void }) {
+function AdicionarVideos({ turma, modulo, sub, executar, aoFechar }: { turma: number | string; modulo: Modulo; sub: SubModulo; executar: Executar; aoFechar: () => void }) {
   const [busca, setBusca] = useState("");
   const [resultados, setResultados] = useState<VideoVimeo[] | null>(null);
   const [escolhidos, setEscolhidos] = useState<Record<string, VideoVimeo>>({});
@@ -718,7 +755,7 @@ function AdicionarVideos({ turma, modulo, sub, executar, aoFechar }: { turma: nu
   );
 }
 
-function Classificar({ turma, modulo, sub, assuntos, executar, aoFechar }: { turma: number; modulo: Modulo; sub: SubModulo; assuntos: Assunto[]; executar: Executar; aoFechar: () => void }) {
+function Classificar({ turma, modulo, sub, assuntos, executar, aoFechar }: { turma: number | string; modulo: Modulo; sub: SubModulo; assuntos: Assunto[]; executar: Executar; aoFechar: () => void }) {
   const [assunto, setAssunto] = useState("");
   const [subassunto, setSubassunto] = useState("");
   const [faixa, setFaixa] = useState("");

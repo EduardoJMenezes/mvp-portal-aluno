@@ -48,7 +48,7 @@ public class EstruturaComandos {
     @Transactional
     public ModuloCriado criarModulo(
             @AuthenticationPrincipal Identidade ident, @Valid @RequestBody CriarModulo pedido) {
-        var turma = pedido.turma() == null || pedido.turma().isBlank() ? null : catalogo.resolverTurma(pedido.turma());
+        var turma = catalogo.resolverTurmaOuBiblioteca(pedido.turma());
         var modulo = estrutura.criarModulo(ident, turma, pedido.nome(), null);
         if (pedido.categoria() != null) {
             estrutura.editarModulo(ident, modulo, null, null, pedido.categoria());
@@ -80,10 +80,10 @@ public class EstruturaComandos {
     @Transactional
     public SubmoduloCriado criarSubmodulo(
             @AuthenticationPrincipal Identidade ident, @Valid @RequestBody CriarSubmodulo pedido) {
-        var turma = catalogo.resolverTurma(pedido.turma());
+        var turma = catalogo.resolverTurmaOuBiblioteca(pedido.turma());
         var alvos = estrutura.alvos(turma, pedido.modulo(), null, null);
         var sub = estrutura.criarSubmodulo(ident, alvos.modulo(), pedido.nome(), null);
-        return new SubmoduloCriado(sub.getId(), sub.getNome(), alvos.modulo().getNome(), turma.getNome());
+        return new SubmoduloCriado(sub.getId(), sub.getNome(), alvos.modulo().getNome(), turma == null ? null : turma.getNome());
     }
 
     // --- editar_modulo -------------------------------------------------------
@@ -104,11 +104,11 @@ public class EstruturaComandos {
         if (pedido.novoNome() == null && pedido.novaOrdem() == null && pedido.novaCategoria() == null) {
             throw new RegraDeNegocio("Diga o que mudar: nome, ordem ou categoria.");
         }
-        var turma = catalogo.resolverTurma(pedido.turma());
+        var turma = catalogo.resolverTurmaOuBiblioteca(pedido.turma());
         var alvos = estrutura.alvos(turma, pedido.modulo(), null, null);
         var modulo = estrutura.editarModulo(ident, alvos.modulo(), pedido.novoNome(), pedido.novaOrdem(),
                 pedido.novaCategoria());
-        return new ModuloEditado(modulo.getNome(), modulo.getOrdem(), modulo.getCategoria(), turma.getNome());
+        return new ModuloEditado(modulo.getNome(), modulo.getOrdem(), modulo.getCategoria(), turma == null ? null : turma.getNome());
     }
 
     // --- editar_item ---------------------------------------------------------
@@ -131,7 +131,7 @@ public class EstruturaComandos {
         if (pedido.novoNome() == null && pedido.novaOrdem() == null && pedido.moverParaSubmodulo() == null) {
             throw new RegraDeNegocio("Diga o que mudar: nome, ordem ou mover_para_submodulo.");
         }
-        var turma = catalogo.resolverTurma(pedido.turma());
+        var turma = catalogo.resolverTurmaOuBiblioteca(pedido.turma());
         var alvos = estrutura.alvos(turma, pedido.modulo(), pedido.submodulo(), pedido.item());
 
         var alvo = alvos.item();
@@ -165,7 +165,7 @@ public class EstruturaComandos {
             // Sem esta checagem, "remova a Q04" sem o sub-módulo removeria o módulo inteiro.
             throw new RegraDeNegocio("Para remover um item, diga também o sub-módulo dele.");
         }
-        var turma = catalogo.resolverTurma(pedido.turma());
+        var turma = catalogo.resolverTurmaOuBiblioteca(pedido.turma());
         var a = estrutura.alvos(turma, pedido.modulo(), pedido.submodulo(), pedido.item());
 
         if (a.item() != null) {
@@ -217,7 +217,7 @@ public class EstruturaComandos {
         if (pedido.item() != null && pedido.submodulo() == null) {
             throw new RegraDeNegocio("Para uma aula, diga também o sub-módulo dela.");
         }
-        var contexto = pedido.turma() == null || pedido.turma().isBlank() ? null : catalogo.resolverTurma(pedido.turma());
+        var contexto = catalogo.resolverTurmaOuBiblioteca(pedido.turma());
         var a = estrutura.alvos(contexto, pedido.modulo(), pedido.submodulo(), pedido.item());
         var turmas = catalogo.resolverTurmas(pedido.turmas());
         var nomes = turmas.stream().map(br.com.plataforma.catalogo.Turma::getNome).toList();
