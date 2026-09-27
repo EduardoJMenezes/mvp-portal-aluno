@@ -34,8 +34,9 @@ public class EstruturaComandos {
 
     // --- criar_modulo --------------------------------------------------------
 
+    /** Sem turma, o módulo nasce só na biblioteca (decisão 0011); atribua depois com atribuir_turmas. */
     public record CriarModulo(
-            @NotBlank(message = "é obrigatória: o nome ou o id da turma") String turma,
+            String turma,
             @NotBlank(message = "é obrigatório, ex.: 'K01 - Introdução à química orgânica'") String nome,
             List<String> submodulos,
             String categoria) {}
@@ -47,7 +48,7 @@ public class EstruturaComandos {
     @Transactional
     public ModuloCriado criarModulo(
             @AuthenticationPrincipal Identidade ident, @Valid @RequestBody CriarModulo pedido) {
-        var turma = catalogo.resolverTurma(pedido.turma());
+        var turma = pedido.turma() == null || pedido.turma().isBlank() ? null : catalogo.resolverTurma(pedido.turma());
         var modulo = estrutura.criarModulo(ident, turma, pedido.nome(), null);
         if (pedido.categoria() != null) {
             estrutura.editarModulo(ident, modulo, null, null, pedido.categoria());
@@ -61,8 +62,9 @@ public class EstruturaComandos {
             criados.add(estrutura.criarSubmodulo(ident, modulo, nomes.get(i), i + 1).getNome());
         }
 
-        return new ModuloCriado(modulo.getId(), modulo.getNome(), turma.getNome(), criados,
-                "Módulo criado, ainda sem nenhum vídeo.");
+        return new ModuloCriado(modulo.getId(), modulo.getNome(), turma == null ? null : turma.getNome(), criados,
+                turma == null ? "Módulo criado na biblioteca, sem turma: atribua com atribuir_turmas."
+                        : "Módulo criado, ainda sem nenhum vídeo.");
     }
 
     // --- criar_submodulo -----------------------------------------------------
@@ -184,5 +186,61 @@ public class EstruturaComandos {
     public List<EstruturaServico.ModuloNaArvore> listarModulos(
             @AuthenticationPrincipal Identidade ident, @RequestBody(required = false) ListarModulos pedido) {
         return catalogo.listarModulos(ident, pedido == null ? null : pedido.turma());
+    }
+
+    // --- biblioteca e atribuição às turmas (decisão 0011) ---------------------
+
+    @PostMapping("/listar_biblioteca")
+    @Transactional(readOnly = true)
+    public List<EstruturaServico.ModuloDaBiblioteca> listarBiblioteca(@AuthenticationPrincipal Identidade ident) {
+        ident.exigirOperador();
+        return estrutura.biblioteca();
+    }
+
+    public record AtribuirTurmas(
+            String turma,
+            @NotBlank(message = "é obrigatório: o módulo (nome ou id)") String modulo,
+            String submodulo,
+            String item,
+            @jakarta.validation.constraints.NotNull(message = "é obrigatória: a lista completa de turmas") List<String> turmas) {}
+
+    public record TurmasAtribuidas(String modulo, String item, List<String> turmas, String mensagem) {}
+
+    /**
+     * Sem item, troca as turmas que recebem o módulo. Com item, deixa a aula só para aquelas
+     * turmas — e lista vazia devolve a aula a toda turma do módulo.
+     */
+    @PostMapping("/atribuir_turmas")
+    @Transactional
+    public TurmasAtribuidas atribuirTurmas(@AuthenticationPrincipal Identidade ident,
+            @Valid @RequestBody AtribuirTurmas pedido) {
+        if (pedido.item() != null && pedido.submodulo() == null) {
+            throw new RegraDeNegocio("Para uma aula, diga também o sub-módulo dela.");
+        }
+        var contexto = pedido.turma() == null || pedido.turma().isBlank() ? null : catalogo.resolverTurma(pedido.turma());
+        var a = estrutura.alvos(contexto, pedido.modulo(), pedido.submodulo(), pedido.item());
+        var turmas = catalogo.resolverTurmas(pedido.turmas());
+        var nomes = turmas.stream().map(br.com.plataforma.catalogo.Turma::getNome).toList();
+        if (a.item() != null) {
+            estrutura.restringirItem(ident, a.item(), turmas);
+            return new TurmasAtribuidas(a.modulo().getNome(), a.item().getNome(), nomes, nomes.isEmpty()
+                    ? "A aula volta a aparecer para toda turma do módulo."
+                    : "A aula aparece só para " + String.join(", ", nomes) + ".");
+        }
+        estrutura.atribuirModulo(ident, a.modulo(), turmas);
+        return new TurmasAtribuidas(a.modulo().getNome(), null, nomes, nomes.isEmpty()
+                ? "O módulo ficou só na biblioteca: nenhuma turma o recebe."
+                : "O módulo aparece para " + String.join(", ", nomes) + ".");
+    }
+
+    public record CopiarModulos(
+            @NotBlank(message = "é obrigatória: a turma de onde os módulos vêm") String de,
+            @NotBlank(message = "é obrigatória: a turma que recebe os módulos") String para) {}
+
+    @PostMapping("/copiar_modulos")
+    @Transactional
+    public EstruturaServico.ModulosCopiados copiarModulos(@AuthenticationPrincipal Identidade ident,
+            @Valid @RequestBody CopiarModulos pedido) {
+        return estrutura.copiarModulos(ident, catalogo.resolverTurma(pedido.de()), catalogo.resolverTurma(pedido.para()));
     }
 }

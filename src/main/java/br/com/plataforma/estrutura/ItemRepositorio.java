@@ -28,6 +28,14 @@ interface ItemRepositorio extends JpaRepository<Item, Integer> {
     @Query("select count(i) from Item i where i.submodulo.modulo = :modulo and i.status = :status")
     int contarNoModulo(Modulo modulo, Status status);
 
-    @Query("select count(i) from Item i where i.submodulo.modulo.turma = :turma and i.status = :status")
+    /** Os itens que a turma vê: os dela, ou os sem restrição dos módulos que ela recebe. */
+    @Query("""
+            select count(i) from Item i
+             where i.status = :status
+               and (:turma member of i.turmas
+                    or (i.turmas is empty and :turma member of i.submodulo.modulo.turmas))""")
     int contarNaTurma(Turma turma, Status status);
+
+    @Query("select i from Item i where :turma member of i.turmas")
+    List<Item> restritosA(Turma turma);
 }

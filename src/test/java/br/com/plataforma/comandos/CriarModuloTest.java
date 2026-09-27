@@ -80,13 +80,19 @@ class CriarModuloTest extends BaseDeComando {
         assertThat(contar("submodules")).isZero();
     }
 
+    /** Sem turma, o módulo nasce só na biblioteca (decisão 0011) e nenhuma turma o vê. */
     @Test
-    void pedidoSemTurmaDizQualCampoFalta() throws Exception {
+    void semTurmaOModuloNasceNaBiblioteca() throws Exception {
         comando("criar_modulo", """
                 {"nome": "K01"}""")
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.detail")
-                        .value("Pedido incompleto: 'turma' é obrigatória: o nome ou o id da turma."));
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.turma").doesNotExist())
+                .andExpect(jsonPath("$.mensagem").value(org.hamcrest.Matchers.containsString("atribuir_turmas")));
+        comando("listar_biblioteca", "{}")
+                .andExpect(jsonPath("$[0].nome").value("K01"))
+                .andExpect(jsonPath("$[0].turmas").isEmpty());
+        comando("listar_modulos", """
+                {"turma": "Extensivo 2027"}""").andExpect(jsonPath("$").isEmpty());
     }
 
     // --- quem pode pedir -----------------------------------------------------

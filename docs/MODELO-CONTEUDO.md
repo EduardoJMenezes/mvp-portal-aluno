@@ -5,6 +5,15 @@ código, como a [especificação](MVP-ESPECIFICACAO.md) foi, e **implementada** 
 seguida: modelo, services, tools, REST e portal. O que sobrou de fora está na
 seção "Em aberto", no fim.
 
+> **Mudou em 27/09/2026 (decisão 0011 do cofre, migração V6):** o módulo não
+> pertence mais a uma turma. Ele mora numa **biblioteca**, e as turmas o
+> **recebem** (`module_classes`): Q1, Q2, Q4 e Q5 recebem o mesmo K01, e o que
+> muda nele vale para as quatro. Dentro do módulo, uma aula pode ser **só de
+> algumas turmas** (`item_classes`). A regra do que o aluno vê: aula sem
+> restrição aparece para toda turma que tem o módulo; aula restrita, só para
+> as turmas dela; o módulo aparece quando sobra aula visível. Onde este texto
+> diz "módulo da turma", leia "módulo que a turma recebe".
+
 ## O que está errado hoje
 
 A unidade de conteúdo da plataforma é a **questão**:

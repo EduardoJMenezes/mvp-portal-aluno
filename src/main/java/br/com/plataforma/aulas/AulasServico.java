@@ -49,9 +49,11 @@ public class AulasServico {
     private final EstruturaServico estrutura;
     private final AcervoServico acervo;
     private final ImportacaoVimeo vimeo;
+    private final AcessoServico acesso;
 
     public AulasServico(AulaRepositorio aulas, AulaPresencaRepositorio presencas, ContasServico contas,
-            Zoom zoom, EstruturaServico estrutura, AcervoServico acervo, ImportacaoVimeo vimeo) {
+            Zoom zoom, EstruturaServico estrutura, AcervoServico acervo, ImportacaoVimeo vimeo,
+            AcessoServico acesso) {
         this.aulas = aulas;
         this.presencas = presencas;
         this.contas = contas;
@@ -59,6 +61,7 @@ public class AulasServico {
         this.estrutura = estrutura;
         this.acervo = acervo;
         this.vimeo = vimeo;
+        this.acesso = acesso;
     }
 
     @Transactional(readOnly = true)
@@ -141,7 +144,18 @@ public class AulasServico {
     }
 
     private Resumo resumo(Aula a, Instant agora, boolean operador) {
-        var assistir = assistir(a);
+        return resumo(a, agora, operador, null);
+    }
+
+    /**
+     * Com {@code aluno}, o "assistir no curso" só vale se ele vê aquela aula no curso dele: a aula
+     * ao vivo pode alcançar uma turma que não recebe o módulo (decisão 0011). Aí a gravação toca na
+     * tela de Lives, como a da aula sem capítulo.
+     */
+    private Resumo resumo(Aula a, Instant agora, boolean operador, Identidade aluno) {
+        var assistir = aluno == null ? assistir(a) : estrutura.item(a.getGravacaoItemId())
+                .filter(i -> !acesso.videosLiberados(aluno, List.of(i.getVideo().getId()), agora).isEmpty())
+                .map(i -> assistir(a)).orElse(null);
         var presentes = !operador ? List.<Presente>of() : presencas.findByAulaId(a.getId()).stream()
                 .filter(p -> p.getEntrouEm() != null)
                 .map(p -> new Presente(contas.buscar(p.getUsuarioId()).map(Usuario::getNome).orElse("?"),
@@ -174,7 +188,7 @@ public class AulasServico {
     public List<Resumo> listar(Identidade ident, Instant agora) {
         return aulas.findAllByOrderByInicioEmDesc().stream()
                 .filter(a -> ident.eOperador() || alcanca(ident, a))
-                .map(a -> resumo(a, agora, ident.eOperador())).toList();
+                .map(a -> resumo(a, agora, ident.eOperador(), ident.eOperador() ? null : ident)).toList();
     }
 
     /** A aula no capítulo, enquanto a gravação não está lá: agendada, ao vivo ou processando. */

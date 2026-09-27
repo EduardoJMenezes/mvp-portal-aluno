@@ -1,6 +1,7 @@
 package br.com.plataforma.estrutura;
 
 import br.com.plataforma.acervo.Video;
+import br.com.plataforma.catalogo.Turma;
 import br.com.plataforma.comum.Nomeavel;
 import br.com.plataforma.comum.Rastreavel;
 import br.com.plataforma.comum.Status;
@@ -13,7 +14,12 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
+import jakarta.persistence.JoinTable;
+import jakarta.persistence.ManyToMany;
 import jakarta.persistence.ManyToOne;
+import jakarta.persistence.OrderBy;
+import java.util.ArrayList;
+import java.util.List;
 import jakarta.persistence.Table;
 import org.hibernate.annotations.SQLRestriction;
 
@@ -56,6 +62,14 @@ public class Item extends Rastreavel implements Nomeavel {
     @Column(name = "rascunho_id")
     private Integer rascunhoId;
 
+    /** Vazia: o item aparece para toda turma que tem o módulo. Com turmas: só para elas. */
+    @ManyToMany(fetch = FetchType.LAZY)
+    @JoinTable(name = "item_classes",
+            joinColumns = @JoinColumn(name = "item_id"),
+            inverseJoinColumns = @JoinColumn(name = "turma_id"))
+    @OrderBy("nome")
+    private List<Turma> turmas = new ArrayList<>();
+
     protected Item() {}
 
     Item(SubModulo submodulo, Video video, String nome, int ordem, Status status, Integer rascunhoId) {
@@ -95,6 +109,17 @@ public class Item extends Rastreavel implements Nomeavel {
 
     public Integer getRascunhoId() {
         return rascunhoId;
+    }
+
+    public List<Turma> getTurmas() {
+        return turmas;
+    }
+
+    /** Aula restrita aparece só para as turmas dela; sem restrição, para quem tem o módulo. */
+    public boolean visivelPara(Turma turma) {
+        return turmas.isEmpty()
+                ? submodulo.getModulo() != null && submodulo.getModulo().eDa(turma)
+                : turmas.stream().anyMatch(t -> t.getId().equals(turma.getId()));
     }
 
     void renomear(String nome) {

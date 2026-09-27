@@ -10,7 +10,12 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
+import jakarta.persistence.JoinTable;
+import jakarta.persistence.ManyToMany;
 import jakarta.persistence.ManyToOne;
+import jakarta.persistence.OrderBy;
+import java.util.ArrayList;
+import java.util.List;
 import jakarta.persistence.Table;
 import org.hibernate.annotations.SQLRestriction;
 
@@ -29,9 +34,13 @@ public class Modulo extends Rastreavel implements Nomeavel {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Integer id;
 
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "turma_id", nullable = false)
-    private Turma turma;
+    /** As turmas que recebem o módulo (decisão 0011): ele mora na biblioteca, não numa turma. */
+    @ManyToMany(fetch = FetchType.LAZY)
+    @JoinTable(name = "module_classes",
+            joinColumns = @JoinColumn(name = "modulo_id"),
+            inverseJoinColumns = @JoinColumn(name = "turma_id"))
+    @OrderBy("nome")
+    private List<Turma> turmas = new ArrayList<>();
 
     @Column(nullable = false)
     private String nome;
@@ -44,8 +53,7 @@ public class Modulo extends Rastreavel implements Nomeavel {
     protected Modulo() {}
 
     /** Package-private: módulo só nasce pelo {@link EstruturaServico}, que aplica as regras. */
-    Modulo(Turma turma, String nome, int ordem) {
-        this.turma = turma;
+    Modulo(String nome, int ordem) {
         this.nome = nome;
         this.ordem = ordem;
     }
@@ -55,8 +63,12 @@ public class Modulo extends Rastreavel implements Nomeavel {
         return id;
     }
 
-    public Turma getTurma() {
-        return turma;
+    public List<Turma> getTurmas() {
+        return turmas;
+    }
+
+    public boolean eDa(Turma turma) {
+        return turmas.stream().anyMatch(t -> t.getId().equals(turma.getId()));
     }
 
     @Override

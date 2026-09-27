@@ -121,7 +121,7 @@ public class CatalogoServico {
         }
 
         return alvos.stream()
-                .flatMap(t -> estrutura.arvoreDaTurma(t, ident.eAluno()).stream())
+                .flatMap(t -> estrutura.arvoreDaTurma(t, ident.eAluno(), false).stream())
                 .toList();
     }
 
@@ -157,13 +157,10 @@ public class CatalogoServico {
         var saida = new java.util.ArrayList<ConteudoDaTurma>();
         var aoVivo = aulas.noCurso(ident, agora);
         for (var turma : turmasVisiveis(ident)) {
-            var modulos = estrutura.arvoreDaTurma(turma, false).stream()
+            // O aluno vê o que a turma dele recebe (decisão 0011); o sub-módulo vazio fica se tiver aula ao vivo.
+            var modulos = estrutura.arvoreDaTurma(turma, ident.eAluno(), true).stream()
                     .map(m -> new EstruturaServico.ModuloNaArvore(m.id(), m.nome(), m.ordem(), m.categoria(), m.turma(),
-                            m.submodulos().stream()
-                                    .map(s -> new EstruturaServico.SubModuloNaArvore(s.id(), s.nome(), s.tipo(),
-                                            s.ordem(), s.itens().stream()
-                                                    .filter(i -> !ident.eAluno() || i.status() == Status.PUBLICADO)
-                                                    .toList()))
+                            m.turmas(), m.submodulos().stream()
                                     .filter(s -> !ident.eAluno() || !s.itens().isEmpty() || aoVivo.containsKey(s.id()))
                                     .toList()))
                     .filter(m -> !ident.eAluno() || !m.submodulos().isEmpty())

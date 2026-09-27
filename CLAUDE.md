@@ -141,9 +141,12 @@ Ensaio geral dos quatro fluxos do §21, contra o servidor no ar:
   apostila mora na apostila — o que a plataforma guarda dela é o vídeo da
   resolução, como item de sub-módulo. Ver
   [docs/MODELO-CONTEUDO.md](docs/MODELO-CONTEUDO.md).
-* **Módulo é endereço, assunto é etiqueta.** `Modulo` pertence à turma e
-  carrega o "K01"; `Assunto` é global e **nunca** leva numeração de capítulo —
-  K03 é Estequiometria em 2026 e Tabela Periódica em 2025.
+* **Módulo é endereço, assunto é etiqueta.** `Modulo` carrega o "K01" e mora
+  numa biblioteca: as turmas o **recebem** (`module_classes`), e uma aula pode
+  ser só de algumas turmas (`item_classes`) — decisão 0011 do cofre, ver
+  [docs/MODELO-CONTEUDO.md](docs/MODELO-CONTEUDO.md). `Assunto` é global e
+  **nunca** leva numeração de capítulo — K03 é Estequiometria em 2026 e Tabela
+  Periódica em 2025.
 * **Editar e remover são diretos; publicar não.** As tools de
   [tools_estrutura.py](mcp/app/mcp_server/tools_estrutura.py) alteram na hora
   e gravam `alterado_por_id`; a confirmação é o preview no chat, escrito na

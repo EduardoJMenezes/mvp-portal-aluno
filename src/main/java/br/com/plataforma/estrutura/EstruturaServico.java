@@ -30,10 +30,12 @@ public class EstruturaServico {
 
     // --- resolução por nome --------------------------------------------------
 
+    /** Entre os módulos da turma; sem turma, na biblioteca inteira. */
     @Transactional(readOnly = true)
     public Modulo resolverModulo(Turma turma, String referencia) {
-        return Referencias.porNome(
-                modulos.findByTurmaOrderByOrdemAsc(turma), referencia, "módulo", "'" + turma.getNome() + "'");
+        return turma == null
+                ? Referencias.porNome(modulos.findAllByOrderByOrdemAscIdAsc(), referencia, "módulo", "a biblioteca")
+                : Referencias.porNome(modulos.daTurma(turma), referencia, "módulo", "'" + turma.getNome() + "'");
     }
 
     @Transactional(readOnly = true)
@@ -75,52 +77,72 @@ public class EstruturaServico {
 
     // --- leitura -------------------------------------------------------------
 
+    /** {@code turmas}: vazia é "toda turma que tem o módulo"; com nomes, só elas. */
     public record ItemNaArvore(
             Integer id, String nome, Integer ordem, Status status, Integer videoId,
-            String vimeoId) {}
+            String vimeoId, List<String> turmas) {}
 
     public record SubModuloNaArvore(
             Integer id, String nome, TipoSubModulo tipo, Integer ordem, List<ItemNaArvore> itens) {}
 
+    /** {@code turma}: a turma pela qual se olha; {@code turmas}: todas as que recebem o módulo. */
     public record ModuloNaArvore(
-            Integer id, String nome, Integer ordem, String categoria, String turma,
+            Integer id, String nome, Integer ordem, String categoria, String turma, List<String> turmas,
             List<SubModuloNaArvore> submodulos) {}
 
+    private static List<String> nomes(List<Turma> turmas) {
+        return turmas.stream().map(Turma::getNome).toList();
+    }
+
     /**
-     * Módulos › sub-módulos › itens de uma turma.
+     * Módulos › sub-módulos › itens como uma turma os enxerga: os módulos que ela recebe e os que
+     * têm aula só dela (decisão 0011).
      *
-     * <p>{@code apenasPublicados} é o que a tela do aluno pede: módulo e sub-módulo não têm status
-     * próprio, então aparecem quando sobra item publicado dentro — e somem quando não sobra.
+     * <p>{@code doAluno}: só o que o aluno vê — item publicado e visível para a turma. Módulo e
+     * sub-módulo não têm status próprio, então aparecem quando sobra item dentro, a não ser que
+     * quem chama peça {@code manterVazios} (a tela do curso, que mostra ali a aula ao vivo).
+     * Sem {@code doAluno}, o professor vê todos os itens, com a restrição de cada um.
      */
     @Transactional(readOnly = true)
-    public List<ModuloNaArvore> arvoreDaTurma(Turma turma, boolean apenasPublicados) {
+    public List<ModuloNaArvore> arvoreDaTurma(Turma turma, boolean doAluno, boolean manterVazios) {
         var arvore = new java.util.ArrayList<ModuloNaArvore>();
 
-        for (var modulo : modulos.findByTurmaOrderByOrdemAsc(turma)) {
+        for (var modulo : modulos.daTurma(turma)) {
             var galhos = new java.util.ArrayList<SubModuloNaArvore>();
 
             for (var sub : submodulos.findByModuloOrderByOrdemAsc(modulo)) {
-                var lista = apenasPublicados
-                        ? itens.findBySubmoduloAndStatusOrderByOrdemAsc(sub, Status.PUBLICADO)
-                        : itens.findBySubmoduloOrderByOrdemAsc(sub);
-                if (apenasPublicados && lista.isEmpty()) {
+                var lista = itens.findBySubmoduloOrderByOrdemAsc(sub).stream()
+                        .filter(i -> !doAluno || (i.getStatus() == Status.PUBLICADO && i.visivelPara(turma)))
+                        .toList();
+                if (doAluno && !manterVazios && lista.isEmpty()) {
                     continue;
                 }
                 galhos.add(new SubModuloNaArvore(sub.getId(), sub.getNome(), sub.getTipo(), sub.getOrdem(),
                         lista.stream()
                                 .map(i -> new ItemNaArvore(
                                         i.getId(), i.getNome(), i.getOrdem(), i.getStatus(), i.getVideo().getId(),
-                                        i.getVideo().getVimeoId()))
+                                        i.getVideo().getVimeoId(), nomes(i.getTurmas())))
                                 .toList()));
             }
 
-            if (apenasPublicados && galhos.isEmpty()) {
+            if (doAluno && !manterVazios && galhos.isEmpty()) {
                 continue;
             }
-            arvore.add(new ModuloNaArvore(
-                    modulo.getId(), modulo.getNome(), modulo.getOrdem(), modulo.getCategoria(), turma.getNome(), galhos));
+            arvore.add(new ModuloNaArvore(modulo.getId(), modulo.getNome(), modulo.getOrdem(),
+                    modulo.getCategoria(), turma.getNome(), nomes(modulo.getTurmas()), galhos));
         }
         return arvore;
+    }
+
+    public record ModuloDaBiblioteca(Integer id, String nome, Integer ordem, String categoria, List<String> turmas) {}
+
+    /** Todos os módulos, de todas as turmas e de nenhuma: é daqui que se atribui. */
+    @Transactional(readOnly = true)
+    public List<ModuloDaBiblioteca> biblioteca() {
+        return modulos.findAllByOrderByOrdemAscIdAsc().stream()
+                .map(m -> new ModuloDaBiblioteca(m.getId(), m.getNome(), m.getOrdem(), m.getCategoria(),
+                        nomes(m.getTurmas())))
+                .toList();
     }
 
     @Transactional(readOnly = true)
@@ -146,7 +168,7 @@ public class EstruturaServico {
 
     @Transactional(readOnly = true)
     public int contarModulos(Turma turma) {
-        return modulos.countByTurma(turma);
+        return modulos.daTurma(turma).size();
     }
 
     @Transactional(readOnly = true)
@@ -160,15 +182,78 @@ public class EstruturaServico {
     public Modulo criarModulo(Identidade ident, Turma turma, String nome, Integer ordem) {
         ident.exigirOperador();
         var limpo = exigirNome(nome, "O módulo precisa de um nome, ex.: 'K01 - Introdução à química orgânica'.");
+        if (turma != null) {
+            exigirNomeLivre(turma, limpo, null);
+        }
 
-        modulos.findFirstByTurmaAndNomeIgnoreCase(turma, limpo).ifPresent(existente -> {
-            throw new RegraDeNegocio(
-                    "'%s' já tem um módulo chamado '%s'.".formatted(turma.getNome(), existente.getNome()));
-        });
-
-        var modulo = new Modulo(turma, limpo, ordem != null ? ordem : modulos.maiorOrdem(turma) + 1);
+        // Nasce na biblioteca; com turma, já atribuído a ela.
+        var modulo = new Modulo(limpo, ordem != null ? ordem : modulos.maiorOrdem() + 1);
+        if (turma != null) {
+            modulo.getTurmas().add(turma);
+        }
         modulo.tocar(ident);
         return modulos.save(modulo);
+    }
+
+    /** Duas pastas com o mesmo nome na mesma turma confundiriam aluno e professor. */
+    private void exigirNomeLivre(Turma turma, String nome, Integer exceto) {
+        modulos.daTurma(turma).stream()
+                .filter(m -> !m.getId().equals(exceto) && m.getNome().equalsIgnoreCase(nome))
+                .findFirst()
+                .ifPresent(existente -> {
+                    throw new RegraDeNegocio(
+                            "'%s' já tem um módulo chamado '%s'.".formatted(turma.getNome(), existente.getNome()));
+                });
+    }
+
+    // --- atribuição às turmas (decisão 0011) ------------------------------------------
+
+    /** Troca a lista inteira de turmas que recebem o módulo. Vazia deixa o módulo só na biblioteca. */
+    @Transactional
+    public Modulo atribuirModulo(Identidade ident, Modulo modulo, List<Turma> turmas) {
+        ident.exigirOperador();
+        var unicas = new java.util.LinkedHashMap<Integer, Turma>();
+        turmas.forEach(t -> unicas.putIfAbsent(t.getId(), t));
+        unicas.values().stream().filter(t -> !modulo.eDa(t))
+                .forEach(t -> exigirNomeLivre(t, modulo.getNome(), modulo.getId()));
+        modulo.getTurmas().clear();
+        modulo.getTurmas().addAll(unicas.values());
+        modulo.tocar(ident);
+        return modulos.save(modulo);
+    }
+
+    /** Deixa a aula só para estas turmas. Lista vazia devolve a aula a toda turma do módulo. */
+    @Transactional
+    public Item restringirItem(Identidade ident, Item item, List<Turma> turmas) {
+        ident.exigirOperador();
+        var unicas = new java.util.LinkedHashMap<Integer, Turma>();
+        turmas.forEach(t -> unicas.putIfAbsent(t.getId(), t));
+        item.getTurmas().clear();
+        item.getTurmas().addAll(unicas.values());
+        item.tocar(ident);
+        return itens.save(item);
+    }
+
+    public record ModulosCopiados(String de, String para, int modulos, int itens) {}
+
+    /** A turma {@code para} passa a receber o que {@code de} recebe: módulos e aulas só dela. */
+    @Transactional
+    public ModulosCopiados copiarModulos(Identidade ident, Turma de, Turma para) {
+        ident.exigirOperador();
+        var novos = modulos.daTurma(de).stream().filter(m -> m.eDa(de) && !m.eDa(para)).toList();
+        for (var m : novos) {
+            exigirNomeLivre(para, m.getNome(), m.getId());
+            m.getTurmas().add(para);
+            m.tocar(ident);
+        }
+        var restritos = itens.restritosA(de).stream()
+                .filter(i -> i.getTurmas().stream().noneMatch(t -> t.getId().equals(para.getId())))
+                .toList();
+        for (var i : restritos) {
+            i.getTurmas().add(para);
+            i.tocar(ident);
+        }
+        return new ModulosCopiados(de.getNome(), para.getNome(), novos.size(), restritos.size());
     }
 
     @Transactional
@@ -178,7 +263,9 @@ public class EstruturaServico {
             modulo.mudarCategoria(br.com.plataforma.comum.Categoria.limpar(categoria));
         }
         if (nome != null) {
-            modulo.renomear(exigirNome(nome, "O nome do módulo não pode ficar vazio."));
+            var limpo = exigirNome(nome, "O nome do módulo não pode ficar vazio.");
+            modulo.getTurmas().forEach(t -> exigirNomeLivre(t, limpo, modulo.getId()));
+            modulo.renomear(limpo);
         }
         if (ordem != null) {
             modulo.reordenar(ordem);
@@ -193,7 +280,7 @@ public class EstruturaServico {
         var publicados = itens.contarNoModulo(modulo, Status.PUBLICADO);
         modulo.remover(ident);
         modulos.save(modulo);
-        return new ModuloRemovido(modulo.getNome(), modulo.getTurma().getNome(), publicados, true);
+        return new ModuloRemovido(modulo.getNome(), String.join(", ", nomes(modulo.getTurmas())), publicados, true);
     }
 
     // --- sub-módulo ----------------------------------------------------------

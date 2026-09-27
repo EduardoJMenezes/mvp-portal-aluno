@@ -9,12 +9,16 @@ import org.springframework.data.jpa.repository.Query;
 /** Sem {@code public}: nenhuma borda alcança o banco sem passar pelo {@link EstruturaServico}. */
 interface ModuloRepositorio extends JpaRepository<Modulo, Integer> {
 
-    Optional<Modulo> findFirstByTurmaAndNomeIgnoreCase(Turma turma, String nome);
+    /** Os módulos que a turma recebe, e os que têm aula só dela (decisão 0011). */
+    @Query("""
+            select m from Modulo m
+             where :turma member of m.turmas
+                or exists (select 1 from Item i where i.submodulo.modulo = m and :turma member of i.turmas)
+             order by m.ordem, m.id""")
+    List<Modulo> daTurma(Turma turma);
 
-    List<Modulo> findByTurmaOrderByOrdemAsc(Turma turma);
+    List<Modulo> findAllByOrderByOrdemAscIdAsc();
 
-    int countByTurma(Turma turma);
-
-    @Query("select coalesce(max(m.ordem), 0) from Modulo m where m.turma = :turma")
-    int maiorOrdem(Turma turma);
+    @Query("select coalesce(max(m.ordem), 0) from Modulo m")
+    int maiorOrdem();
 }

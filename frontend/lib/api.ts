@@ -157,11 +157,14 @@ export type Video = {
   duracao_segundos?: number | null;
 };
 
-export type ItemCurso = { id: number; nome: string; ordem: number; status: StatusConteudo; video_id: number; video?: Video | null };
+/** `turmas`: vazia é "toda turma do módulo"; com nomes, a aula é só delas (decisão 0011). */
+export type ItemCurso = { id: number; nome: string; ordem: number; status: StatusConteudo; video_id: number; video?: Video | null; turmas?: string[] };
 /** Aula ao vivo agendada no sub-módulo, enquanto a gravação não chegou. ENCERRADA aqui é "processando". */
 export type AulaNoCurso = { aula_id: number; titulo: string; inicio_em: string; minutos: number; estado: Aula["estado"]; abre_em: string };
 export type SubModulo = { id: number; nome: string; tipo: string; ordem: number; itens: ItemCurso[]; aulas?: AulaNoCurso[] };
-export type Modulo = { id: number; nome: string; ordem: number; categoria?: string | null; turma: string; submodulos: SubModulo[] };
+/** `turmas`: as que recebem o módulo, que mora numa biblioteca (decisão 0011). Só o professor recebe. */
+export type Modulo = { id: number; nome: string; ordem: number; categoria?: string | null; turma: string; turmas?: string[]; submodulos: SubModulo[] };
+export type ModuloDaBiblioteca = { id: number; nome: string; ordem: number; categoria?: string | null; turmas: string[] };
 export type ConteudoDaTurma = { turma: string; turma_id: number; modulos: Modulo[] };
 
 /** A categoria livre de cada feature (decisão 0009): o botão do menu recorta a feature por ela. */
@@ -626,6 +629,13 @@ export const api = {
 
   // professor: consulta
   turmas: () => pedir<Turma[]>("/admin/turmas"),
+  biblioteca: () => pedir<ModuloDaBiblioteca[]>("/admin/biblioteca"),
+  turmasDoModulo: (modulo: number, turmas: string[]) =>
+    pedir<ModuloDaBiblioteca>(`/admin/modulos/${modulo}/turmas`, { method: "PUT", json: { turmas } }),
+  turmasDoItem: (item: number, turmas: string[]) =>
+    pedir<{ item_id: number; turmas: string[] }>(`/admin/itens/${item}/turmas`, { method: "PUT", json: { turmas } }),
+  copiarModulos: (turma: number, de: number) =>
+    pedir<{ de: string; para: string; modulos: number; itens: number }>(`/admin/turmas/${turma}/modulos/copiar`, { method: "POST", json: { de: String(de) } }),
   menuDaTurma: (turma: number) => pedir<MenuDaTurma>(`/admin/turmas/${turma}/menu`),
   definirMenu: (turma: number, botoes: BotaoDoMenu[]) =>
     pedir<MenuDaTurma>(`/admin/turmas/${turma}/menu`, { method: "PUT", json: { botoes } }),

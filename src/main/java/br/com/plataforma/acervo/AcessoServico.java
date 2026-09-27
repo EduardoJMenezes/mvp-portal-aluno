@@ -53,8 +53,10 @@ public class AcessoServico {
                  where i.video.id in :ids
                    and i.status = br.com.plataforma.comum.Status.PUBLICADO
                    and exists (select 1 from Matricula m
-                                where m.turma = i.submodulo.modulo.turma
-                                  and m.usuarioId = :usuario)""", Integer.class)
+                                where m.usuarioId = :usuario
+                                  and (m.turma member of i.turmas
+                                       or (i.turmas is empty
+                                           and m.turma member of i.submodulo.modulo.turmas)))""", Integer.class)
                 .setParameter("ids", ids)
                 .setParameter("usuario", ident.usuarioId())
                 .getResultList();
