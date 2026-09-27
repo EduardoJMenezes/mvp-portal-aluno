@@ -417,6 +417,8 @@ export type Aula = {
   /** A gravação no curso, já publicada. */
   assistir: { modulo_id: number; item_id: number } | null;
   categoria?: string | null;
+  /** A gravação da aula sem capítulo: toca na própria tela de Lives. */
+  video?: Video | null;
 };
 
 export type Material = {

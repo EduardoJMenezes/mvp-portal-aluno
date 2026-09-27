@@ -2,7 +2,8 @@
 
 import { Suspense, useState } from "react";
 import { useCategoria } from "@/components/Categoria";
-import { Aviso, Botao, BotaoLink, Cartao, Estado, Pagina, TituloDeSecao, Vazio } from "@/components/ui";
+import { Player } from "@/components/Player";
+import { Aviso, Botao, BotaoLink, Cartao, Estado, Etiqueta, Pagina, TituloDeSecao, Vazio } from "@/components/ui";
 import { abrirEmNovaAba, api, casaCategoria, useDados, type Aula } from "@/lib/api";
 import { emBrasilia } from "@/lib/formato";
 
@@ -15,8 +16,8 @@ export default function AulasDoAluno() {
 }
 
 /**
- * As lives: a que está no ar em destaque, e embaixo as que já aconteceram, com a gravação. A
- * próxima aparece no capítulo do curso e acende o botão do menu quando a sala abre.
+ * As lives: a que está no ar em destaque, as próximas, e as que já aconteceram com a gravação —
+ * no capítulo do curso, se a aula mora num, ou tocando aqui mesmo, se não mora.
  */
 function Lives() {
   const categoria = useCategoria();
@@ -24,6 +25,7 @@ function Lives() {
   const lista = useDados(() => api.aulas(), [], 60);
   const [erro, setErro] = useState("");
   const [entrando, setEntrando] = useState(0);
+  const [tocando, setTocando] = useState(0);
 
   const entrar = async (aula: Aula) => {
     setErro("");
@@ -40,7 +42,7 @@ function Lives() {
   return (
     <Pagina
       titulo={categoria ?? "Aulas ao vivo"}
-      legenda="A aula ao vivo aparece aqui em destaque quando a sala abre, 15 minutos antes. Embaixo, as que já aconteceram."
+      legenda="A aula ao vivo aparece em destaque quando a sala abre, 15 minutos antes. Embaixo, as próximas e as que já aconteceram."
     >
       {erro && <Aviso tom="erro">{erro}</Aviso>}
       <Estado {...lista} linhas={3}>
@@ -48,10 +50,11 @@ function Lives() {
           const daqui = aulas.filter((a) => casaCategoria(categoria, a.categoria));
           const noAr = daqui.filter((a) => a.estado === "ABERTA" || a.estado === "AGUARDANDO");
           const passadas = daqui.filter((a) => a.estado === "ENCERRADA");
-          if (!noAr.length && !passadas.length) {
+          const proximas = daqui.filter((a) => a.estado === "AGENDADA").reverse();
+          if (!noAr.length && !passadas.length && !proximas.length) {
             return (
               <Vazio titulo="Nenhuma aula por aqui ainda">
-                Quando a sala de uma aula abrir, ela aparece aqui em destaque. Depois, fica a gravação.
+                Quando o professor marcar uma aula, ela aparece aqui com o horário. Depois, fica a gravação.
               </Vazio>
             );
           }
@@ -84,13 +87,29 @@ function Lives() {
                   ))}
                 </section>
               )}
+              {proximas.length > 0 && (
+                <section className="flex flex-col gap-3">
+                  <TituloDeSecao>Próximas</TituloDeSecao>
+                  <ul className="grid gap-3">
+                    {proximas.map((aula) => (
+                      <Cartao key={aula.aula_id} como="li" className="p-5">
+                        <h3 className="text-lg font-semibold text-tinta">{aula.titulo}</h3>
+                        <p className="text-[13px] text-suave">
+                          Ao vivo em {emBrasilia(aula.inicio_em)} · {aula.minutos} min · a sala abre 15 minutos antes
+                        </p>
+                        {aula.descricao && <p className="mt-1 text-sm text-suave">{aula.descricao}</p>}
+                      </Cartao>
+                    ))}
+                  </ul>
+                </section>
+              )}
               {passadas.length > 0 && (
                 <section className="flex flex-col gap-3">
                   <TituloDeSecao>Aulas que já aconteceram</TituloDeSecao>
                   <ul className="grid gap-3">
                     {passadas.map((aula) => (
-                      <Cartao key={aula.aula_id} como="li">
-                        <div className="flex flex-wrap items-center justify-between gap-3 p-5">
+                      <Cartao key={aula.aula_id} como="li" className="flex flex-col gap-3 p-5">
+                        <div className="flex flex-wrap items-center justify-between gap-3">
                           <div className="min-w-0">
                             <h3 className="text-lg font-semibold text-tinta">{aula.titulo}</h3>
                             <p className="text-[13px] text-suave">
@@ -101,8 +120,15 @@ function Lives() {
                             <BotaoLink variante="secundario" href={`/curso/aula/?modulo=${aula.assistir.modulo_id}&item=${aula.assistir.item_id}`}>
                               Assistir à gravação
                             </BotaoLink>
+                          ) : aula.video ? (
+                            <Botao variante="secundario" aria-expanded={tocando === aula.aula_id} onClick={() => setTocando(tocando === aula.aula_id ? 0 : aula.aula_id)}>
+                              {tocando === aula.aula_id ? "Fechar" : "Assistir à gravação"}
+                            </Botao>
+                          ) : aula.grava ? (
+                            <Etiqueta>Gravação processando</Etiqueta>
                           ) : null}
                         </div>
+                        {tocando === aula.aula_id && aula.video && <Player video={aula.video} />}
                       </Cartao>
                     ))}
                   </ul>

@@ -140,6 +140,31 @@ class WebhookDoZoomTest extends BaseDoPortal {
                 .isEqualTo("990000001");
     }
 
+    /** Aula sem capítulo (monitoria solta): a gravação toca na tela de Lives, para quem a aula alcança. */
+    @Test
+    void semCapituloAGravacaoTocaNaTelaDeLives() throws Exception {
+        var corpo = post("/api/admin/aulas", """
+                {"titulo": "Monitoria 1", "inicio_em": "%s", "turmas": ["Extensivo 2027"], "categoria": "Monitoria"}"""
+                .formatted(Instant.now().plus(5, ChronoUnit.MINUTES)), ADMIN)
+                .andReturn().getResponse().getContentAsString();
+        var aula = Integer.parseInt(corpo.replaceAll(".*\"aula_id\":(\\d+).*", "$1"));
+        patch("/api/admin/aulas/" + aula, "{\"status\": \"PUBLICADO\"}", ADMIN).andExpect(status().isOk());
+        get("/api/aluno/aulas", ALUNO).andExpect(jsonPath("$[0].video").doesNotExist());
+
+        avisar(gravacao(reuniao(aula), "tk")).andExpect(status().isOk());
+
+        get("/api/aluno/aulas", ALUNO)
+                .andExpect(jsonPath("$[0].assistir").doesNotExist())
+                .andExpect(jsonPath("$[0].video.vimeo_id").value("990000001"))
+                .andExpect(jsonPath("$[0].video.embed_url").value("https://player.vimeo.com/video/990000001"));
+
+        // Colocar outro vídeo também vale sem capítulo: troca a gravação, sem item no curso.
+        post("/api/admin/aulas/" + aula + "/video", "{\"video\": \"https://vimeo.com/123456789\"}", ADMIN)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.gravacao_item_id").doesNotExist());
+        get("/api/aluno/aulas", ALUNO).andExpect(jsonPath("$[0].video.vimeo_id").value("123456789"));
+    }
+
     // --- a presença ------------------------------------------------------------
 
     private static String participante(String evento, String reuniao, String email, String campo, String quando) {

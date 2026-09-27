@@ -71,6 +71,11 @@ public class AcervoServico {
         return videos.save(video);
     }
 
+    @Transactional(readOnly = true)
+    public java.util.Optional<Video> porVimeoId(String vimeoId) {
+        return vimeoId == null ? java.util.Optional.empty() : videos.findFirstByVimeoId(vimeoId);
+    }
+
     /** Carimba o vídeo quando algo dele muda fora desta entidade — a classificação, por exemplo. */
     @Transactional
     public void tocar(Identidade ident, Video video) {

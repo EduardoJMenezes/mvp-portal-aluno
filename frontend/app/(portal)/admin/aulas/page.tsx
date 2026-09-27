@@ -14,6 +14,7 @@ import {
   useConfirmar,
 } from "@/components/ui";
 import { CampoCategoria, EditarCategoria, categoriasDe } from "@/components/Categoria";
+import { ColocarVideo } from "@/components/ColocarVideo";
 import { api, useDados, type Aula } from "@/lib/api";
 import { emBrasilia } from "@/lib/formato";
 
@@ -132,6 +133,9 @@ export default function AulasDoProfessor() {
                       </Botao>
                     </div>
                   </div>
+                  {aula.estado === "ENCERRADA" && (
+                    <ColocarVideo aula={aula} aoColocar={(link) => executar(() => api.colocarVideoNaAula(aula.aula_id, link))} />
+                  )}
                   <QuemAlcanca
                     aula={aula}
                     turmas={nomesDasTurmas}
@@ -404,7 +408,7 @@ function QuemAlcanca({
       {aula.gravacao && aula.gravacao !== "enviando" && (
         <p className="text-[13px] text-suave">
           Gravação no Vimeo
-          {aula.gravacao_item_id ? " e publicada no curso." : "."}
+          {aula.gravacao_item_id ? " e publicada no curso." : ", tocando na tela de Lives."}
         </p>
       )}
       {aula.presentes.length > 0 && (

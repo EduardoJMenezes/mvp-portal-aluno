@@ -16,6 +16,8 @@ interface VideoRepositorio extends JpaRepository<Video, Integer> {
      * ressuscitá-lo, não inserir uma segunda linha. Nativa porque é o único jeito de escapar do
      * {@code @SQLRestriction} — e é o preço que ele cobra, documentado.
      */
+    Optional<Video> findFirstByVimeoId(String vimeoId);
+
     @Query(value = "SELECT * FROM videos WHERE vimeo_id = :vimeoId", nativeQuery = true)
     Optional<Video> acharMesmoRemovido(String vimeoId);
 

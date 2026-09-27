@@ -5,6 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { Suspense, useState, type FormEvent, type ReactNode } from "react";
 import { Aviso, Botao, BotaoLink, Campo, Cartao, Estado, Etiqueta, Pagina, Vazio, useConfirmar } from "@/components/ui";
 import { CampoCategoria, EditarCategoria, categoriasDe } from "@/components/Categoria";
+import { ColocarVideo } from "@/components/ColocarVideo";
 import { abrirEmNovaAba, api, useDados, type Assunto, type Aula, type Modulo, type SubModulo, type VideoVimeo } from "@/lib/api";
 import { duracao, emBrasilia, plural } from "@/lib/formato";
 
@@ -475,8 +476,6 @@ const ESTADO_DA_AULA: Record<Aula["estado"], string> = {
 };
 
 function AulasDoSubmodulo({ aulas, executar }: { aulas: Aula[]; executar: Executar }) {
-  const [trocando, setTrocando] = useState<number | null>(null);
-  const [video, setVideo] = useState("");
   const [erro, setErro] = useState("");
 
   const iniciar = async (aula: Aula) => {
@@ -511,34 +510,14 @@ function AulasDoSubmodulo({ aulas, executar }: { aulas: Aula[]; executar: Execut
                   {aula.tem_sala && aula.estado !== "ENCERRADA" && (
                     <Botao tamanho="pequeno" variante="primario" onClick={() => void iniciar(aula)}>Iniciar</Botao>
                   )}
-                  {aula.estado === "ENCERRADA" && (
-                    <Botao
-                      variante="texto"
-                      aria-expanded={trocando === aula.aula_id}
-                      onClick={() => {
-                        setTrocando(trocando === aula.aula_id ? null : aula.aula_id);
-                        setVideo("");
-                      }}
-                    >
-                      {aula.gravacao_item_id ? "Trocar vídeo" : "Colocar vídeo"}
-                    </Botao>
-                  )}
                   <Link href="/admin/aulas/" className="px-1 text-sm text-acento hover:underline">Gerenciar</Link>
                 </div>
               </div>
-              {trocando === aula.aula_id && (
-                <form
-                  className="flex flex-wrap items-end gap-2"
-                  onSubmit={async (e) => {
-                    e.preventDefault();
-                    if (await executar(() => api.colocarVideoNaAula(aula.aula_id, video.trim()), `Vídeo publicado no lugar da gravação de "${aula.titulo}".`)) setTrocando(null);
-                  }}
-                >
-                  <Campo rotulo="Link do vídeo no Vimeo" dica="Entra publicado, na posição da gravação." className="min-w-60 flex-1">
-                    {(id) => <input id={id} required value={video} onChange={(e) => setVideo(e.target.value)} placeholder="https://vimeo.com/123456789" className="campo" />}
-                  </Campo>
-                  <Botao type="submit" variante="primario" tamanho="pequeno" disabled={!video.trim()}>Publicar vídeo</Botao>
-                </form>
+              {aula.estado === "ENCERRADA" && (
+                <ColocarVideo
+                  aula={aula}
+                  aoColocar={(link) => executar(() => api.colocarVideoNaAula(aula.aula_id, link), `Vídeo publicado no lugar da gravação de "${aula.titulo}".`)}
+                />
               )}
             </li>
           );

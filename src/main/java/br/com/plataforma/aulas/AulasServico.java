@@ -1,6 +1,7 @@
 package br.com.plataforma.aulas;
 
 import br.com.plataforma.acervo.AcervoServico;
+import br.com.plataforma.acervo.AcessoServico;
 import br.com.plataforma.catalogo.Turma;
 import br.com.plataforma.comum.Categoria;
 import br.com.plataforma.comum.Identidade;
@@ -129,7 +130,8 @@ public class AulasServico {
             Integer aulaId, String titulo, String descricao, String inicioEm, Integer minutos, Status status,
             Estado estado, String abreEm, boolean grava, boolean temSala, List<String> turmas,
             List<Pessoa> alunos, Integer gravacaoItemId, Integer submoduloId, String gravacao,
-            List<Presente> presentes, Assistir assistir, String categoria) {}
+            List<Presente> presentes, Assistir assistir, String categoria,
+            AcessoServico.VideoDescrito video) {}
 
     private Assistir assistir(Aula a) {
         return estrutura.item(a.getGravacaoItemId())
@@ -139,6 +141,7 @@ public class AulasServico {
     }
 
     private Resumo resumo(Aula a, Instant agora, boolean operador) {
+        var assistir = assistir(a);
         var presentes = !operador ? List.<Presente>of() : presencas.findByAulaId(a.getId()).stream()
                 .filter(p -> p.getEntrouEm() != null)
                 .map(p -> new Presente(contas.buscar(p.getUsuarioId()).map(Usuario::getNome).orElse("?"),
@@ -149,7 +152,19 @@ public class AulasServico {
                 a.getZoomMeetingId() != null, a.getTurmas().stream().map(Turma::getNome).toList(),
                 a.getAlunos().stream().map(Pessoa::de).toList(), a.getGravacaoItemId(),
                 operador ? a.getSubmoduloId() : null, operador ? a.getGravacaoVimeoId() : null, presentes,
-                assistir(a), a.getCategoria());
+                assistir, a.getCategoria(), gravacaoSolta(a, assistir));
+    }
+
+    /**
+     * A gravação da aula que não mora em capítulo: toca na própria tela de Lives. Quem recebe o
+     * resumo já passou por {@link #alcanca}, e é essa a regra de quem assiste.
+     */
+    private AcessoServico.VideoDescrito gravacaoSolta(Aula a, Assistir assistir) {
+        var id = a.getGravacaoVimeoId();
+        if (assistir != null || id == null || id.equals("enviando")) {
+            return null;
+        }
+        return acervo.porVimeoId(id).map(v -> AcessoServico.descrever(v, true)).orElse(null);
     }
 
     // --- leitura -------------------------------------------------------------
@@ -319,9 +334,6 @@ public class AulasServico {
     public Resumo colocarVideo(Identidade ident, String referencia, String linkOuId, Instant agora) {
         ident.exigirOperador();
         var a = exigir(referencia);
-        var sub = estrutura.submodulo(a.getSubmoduloId()).filter(s -> s.getModulo() != null)
-                .orElseThrow(() -> new RegraDeNegocio(
-                        "'%s' não está em nenhum capítulo do curso.".formatted(a.getTitulo())));
         var achado = ID_DO_VIMEO.matcher(linkOuId == null ? "" : linkOuId);
         if (!achado.find()) {
             throw new RegraDeNegocio("Cole o link do vídeo no Vimeo (ex.: https://vimeo.com/123456789).");
@@ -332,9 +344,11 @@ public class AulasServico {
                 dados.thumbnailUrl(), dados.duracaoSegundos(), null);
         var anterior = estrutura.item(a.getGravacaoItemId());
         anterior.ifPresent(i -> estrutura.removerItem(ident, i));
-        var item = estrutura.criarItem(ident, sub, video, a.getTitulo(), anterior.map(Item::getOrdem).orElse(null),
-                Status.PUBLICADO, null);
-        a.gravacaoChegou(video.getVimeoId(), item.getId());
+        // Sem capítulo, não há item: a gravação toca na tela de Lives.
+        var sub = estrutura.submodulo(a.getSubmoduloId()).filter(s -> s.getModulo() != null);
+        var item = sub.map(s -> estrutura.criarItem(ident, s, video, a.getTitulo(),
+                anterior.map(Item::getOrdem).orElse(null), Status.PUBLICADO, null).getId()).orElse(null);
+        a.gravacaoChegou(video.getVimeoId(), item);
         a.tocar(ident);
         return resumo(a, agora, true);
     }

@@ -120,12 +120,8 @@ public class EventosDoZoom {
                 .orElse(null);
     }
 
-    /** O item publicado, no nome de quem agendou a aula. Sem destino vivo, não há item. */
+    /** O vídeo no acervo e, com capítulo, o item publicado, no nome de quem agendou a aula. */
     private Integer publicar(Aula aula, EnvioAoVimeo.Enviado enviado) {
-        var sub = estrutura.submodulo(aula.getSubmoduloId()).orElse(null);
-        if (sub == null || sub.getModulo() == null) {
-            return null;
-        }
         var dono = contas.buscar(aula.getCriadoPorId()).orElse(null);
         if (dono == null || !dono.getPapel().eOperador()) {
             log.warn("aula {}: quem agendou não é mais operador; a gravação fica só no acervo", aula.getId());
@@ -134,6 +130,11 @@ public class EventosDoZoom {
         var ident = new Identidade(dono.getId(), dono.getNome(), dono.getEmail(), dono.getPapel(), Canal.ZOOM);
         var video = acervo.registrar(ident, enviado.vimeoId(), aula.getTitulo(), enviado.url(), enviado.embedUrl(),
                 null, null, null);
+        // Sem capítulo, a gravação fica no acervo e toca na tela de Lives.
+        var sub = estrutura.submodulo(aula.getSubmoduloId()).orElse(null);
+        if (sub == null || sub.getModulo() == null) {
+            return null;
+        }
         return estrutura.criarItem(ident, sub, video, aula.getTitulo(), null, Status.PUBLICADO, null).getId();
     }
 
