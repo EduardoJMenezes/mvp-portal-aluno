@@ -24,7 +24,7 @@ Tudo em Java, no pacote `br.com.plataforma.aulas`.
 | Presença (entrou, saiu) de quem veio pelo link do portal | `EventosDoZoom`, `live_class_attendance` |
 | Sala no ar de verdade: `meeting.started`/`meeting.ended` (V3) — "Aguardando o professor", "Ao vivo agora", "Encerrada" | `AulasServico.estado`, `EventosDoZoom` |
 | "Assistir à gravação" para o aluno | `AulasServico.assistir` |
-| Pelo chat: `agendar_aula` (rascunho, sem sala) e `listar_aulas` | `comandos/AulasComandos` + `mvp-portal-mcp/app/mcp_server/tools_aulas.py` |
+| Pelo chat: `agendar_aula` (rascunho, ou já publicada com `publicar` depois do ok no chat) e `listar_aulas` | `comandos/AulasComandos` + `mvp-portal-mcp/app/mcp_server/tools_aulas.py` |
 | Telas | "Aula ao vivo" em `/admin/turmas/curso` (agendar no capítulo, colocar vídeo), `/admin/aulas` (presença, estado da gravação), `/curso/aula` e `/aulas` |
 | Testes | `AulasTest`, `WebhookDoZoomTest`, `AulasComandosTest`; `tests/test_aulas.py` no mcp |
 
@@ -42,7 +42,9 @@ Decisões que o código já toma:
   devolveria o HMAC de qualquer texto, e com ele dá para forjar aviso.
 * **Timestamp do aviso em segundos** (o código antigo lia como milissegundos e
   recusaria todo aviso verdadeiro).
-* **Publicar aula (abrir a sala) só no portal.** Pelo chat, só rascunho.
+* **Pelo chat, o Claude publica depois do ok do professor no chat** (decisão
+  0008 do cofre), e a API recusa publicar pelo chat nos horários da outra
+  plataforma da conta do Zoom: terça 17h–19h e quarta 19h–21h (Brasília).
 
 Falta, e depende do professor:
 
@@ -258,7 +260,7 @@ mais de um.
    as duas telas, e o **cano da gravação até o Vimeo**. É o pedido inteiro.
 2. **Presença** — webhook de entrada e saída: quem assistiu ao vivo, quanto
    tempo, na tela do professor. E "ao vivo agora" no portal do aluno.
-3. **Pelo chat** — tool MCP `agendar_aula`, com rascunho e aprovação.
+3. **Pelo chat** — tool MCP `agendar_aula`, com `publicar` depois do ok do professor no chat.
 
 Fase 1 é o que eu começaria. A 2 é barata depois que o webhook já existe.
 
