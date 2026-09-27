@@ -74,9 +74,9 @@ class AdminContasTest extends BaseDoPortal {
 
     @Test
     void turmaNasceEMudaDeNome() throws Exception {
-        post("/api/admin/turmas", "{\"nome\": \"Semi 2028\", \"ano\": 2028}", ADMIN).andExpect(status().isOk())
+        post("/api/admin/turmas", "{\"nome\": \"Semi 2028\"}", ADMIN).andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").isNumber());
-        post("/api/admin/turmas", "{\"nome\": \"semi 2028\", \"ano\": 2028}", ADMIN).andExpect(status().isBadRequest())
+        post("/api/admin/turmas", "{\"nome\": \"semi 2028\"}", ADMIN).andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.detail").value("Já existe uma turma chamada 'semi 2028'."));
         patch("/api/admin/turmas/Semi 2028", "{\"nome\": \"Semi 2029\", \"ano\": 2029}", ADMIN).andExpect(status().isOk())
                 .andExpect(jsonPath("$.nome").value("Semi 2029"));

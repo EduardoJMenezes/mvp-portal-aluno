@@ -184,7 +184,6 @@ export type MenuDaTurma = { turma_id: number; turma: string; padrao: boolean; bo
 export type Turma = {
   id: number;
   nome: string;
-  ano: number;
   alunos: number;
   modulos: number;
   itens_publicados: number;
@@ -650,9 +649,9 @@ export const api = {
     pedir<Desempenho>(`/admin/alunos/${seg(String(aluno))}/desempenho${q({ simulado })}`),
 
   // turmas e alunos
-  criarTurma: (nome: string, ano: number) => pedir<{ id: number; nome: string; ano: number }>("/admin/turmas", { method: "POST", json: { nome, ano } }),
-  editarTurma: (turma: number, dados: { nome?: string; ano?: number }) =>
-    pedir<{ id: number; nome: string; ano: number }>(`/admin/turmas/${turma}`, { method: "PATCH", json: dados }),
+  criarTurma: (nome: string) => pedir<{ id: number; nome: string }>("/admin/turmas", { method: "POST", json: { nome } }),
+  editarTurma: (turma: number, dados: { nome?: string }) =>
+    pedir<{ id: number; nome: string }>(`/admin/turmas/${turma}`, { method: "PATCH", json: dados }),
   alunosDaTurma: (turma: number) => pedir<{ turma_id: number; turma: string; alunos: Aluno[] }>(`/admin/turmas/${turma}/alunos`),
   matricular: (turma: number, email: string, nome: string) =>
     pedir<{ turma: string; aluno: Aluno; senha_temporaria: string | null }>(`/admin/turmas/${turma}/alunos`, { method: "POST", json: { email, nome } }),

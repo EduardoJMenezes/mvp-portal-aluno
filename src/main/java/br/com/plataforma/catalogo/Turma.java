@@ -22,22 +22,14 @@ public class Turma extends Rastreavel implements Nomeavel {
     @Column(nullable = false)
     private String nome;
 
-    @Column(nullable = false)
-    private Integer ano;
-
     protected Turma() {}
 
-    Turma(String nome, Integer ano) {
+    Turma(String nome) {
         this.nome = nome;
-        this.ano = ano;
     }
 
     void renomear(String nome) {
         this.nome = nome;
-    }
-
-    void mudarAno(Integer ano) {
-        this.ano = ano;
     }
 
     @Override
@@ -48,9 +40,5 @@ public class Turma extends Rastreavel implements Nomeavel {
     @Override
     public String getNome() {
         return nome;
-    }
-
-    public Integer getAno() {
-        return ano;
     }
 }

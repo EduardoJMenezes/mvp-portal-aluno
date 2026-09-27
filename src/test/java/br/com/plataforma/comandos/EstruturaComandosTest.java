@@ -254,7 +254,6 @@ class EstruturaComandosTest extends BaseDeComando {
         comando("listar_turmas", "")
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].nome").value("Extensivo 2027"))
-                .andExpect(jsonPath("$[0].ano").value(2027))
                 .andExpect(jsonPath("$[0].alunos").value(1))
                 .andExpect(jsonPath("$[0].modulos").value(1))
                 .andExpect(jsonPath("$[0].itens_publicados").value(1))

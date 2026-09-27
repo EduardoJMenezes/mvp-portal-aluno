@@ -37,10 +37,10 @@ public class CatalogoServico {
     @Transactional(readOnly = true)
     public List<Turma> turmasVisiveis(Identidade ident) {
         if (ident.eOperador()) {
-            return turmas.findAllByOrderByAnoAscNomeAsc();
+            return turmas.findAllByOrderByNomeAsc();
         }
         var ids = contas.turmasDoAluno(ident.usuarioId());
-        return ids.isEmpty() ? List.of() : turmas.findByIdInOrderByAnoAscNomeAsc(ids);
+        return ids.isEmpty() ? List.of() : turmas.findByIdInOrderByNomeAsc(ids);
     }
 
     /**
@@ -104,14 +104,14 @@ public class CatalogoServico {
     }
 
     public record TurmaNaLista(
-            Integer id, String nome, Integer ano, int alunos, int modulos,
+            Integer id, String nome, int alunos, int modulos,
             int itensPublicados, Integer itensEmRascunho) {}
 
     @Transactional(readOnly = true)
     public List<TurmaNaLista> listarTurmas(Identidade ident) {
         return turmasVisiveis(ident).stream()
                 .map(t -> new TurmaNaLista(
-                        t.getId(), t.getNome(), t.getAno(),
+                        t.getId(), t.getNome(),
                         turmas.contarAlunos(t.getId()),
                         estrutura.contarModulos(t),
                         estrutura.contarItensDaTurma(t, Status.PUBLICADO),
@@ -203,7 +203,7 @@ public class CatalogoServico {
 
     // --- cadastro de turma ---------------------------------------------------
 
-    public record TurmaCadastrada(Integer id, String nome, Integer ano) {}
+    public record TurmaCadastrada(Integer id, String nome) {}
 
     private String exigirNomeLivre(String nome, Integer exceto) {
         var limpo = nome == null ? "" : nome.strip();
@@ -218,27 +218,24 @@ public class CatalogoServico {
     }
 
     @Transactional
-    public TurmaCadastrada criarTurma(Identidade ident, String nome, Integer ano) {
+    public TurmaCadastrada criarTurma(Identidade ident, String nome) {
         ident.exigirOperador();
-        var t = new Turma(exigirNomeLivre(nome, null), ano);
+        var t = new Turma(exigirNomeLivre(nome, null));
         t.tocar(ident);
         t = turmas.save(t);
-        return new TurmaCadastrada(t.getId(), t.getNome(), t.getAno());
+        return new TurmaCadastrada(t.getId(), t.getNome());
     }
 
-    /** Muda nome e ano. A turma é endereço de módulo, matrícula e simulado: todos a acompanham. */
+    /** Muda o nome. A turma é endereço de módulo, matrícula e simulado: todos a acompanham. */
     @Transactional
-    public TurmaCadastrada editarTurma(Identidade ident, String referencia, String nome, Integer ano) {
+    public TurmaCadastrada editarTurma(Identidade ident, String referencia, String nome) {
         ident.exigirOperador();
         var t = resolverTurma(referencia);
         if (nome != null) {
             t.renomear(exigirNomeLivre(nome, t.getId()));
         }
-        if (ano != null) {
-            t.mudarAno(ano);
-        }
         t.tocar(ident);
-        return new TurmaCadastrada(t.getId(), t.getNome(), t.getAno());
+        return new TurmaCadastrada(t.getId(), t.getNome());
     }
 
     private static String minusculo(Turma t) {

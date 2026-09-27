@@ -36,7 +36,6 @@ export default function Turmas() {
 
 function NovaTurma({ aoCriar, aoCancelar }: { aoCriar: () => void; aoCancelar: () => void }) {
   const [nome, setNome] = useState("");
-  const [ano, setAno] = useState(String(new Date().getFullYear() + 1));
   const [erro, setErro] = useState("");
   const [salvando, setSalvando] = useState(false);
 
@@ -45,7 +44,7 @@ function NovaTurma({ aoCriar, aoCancelar }: { aoCriar: () => void; aoCancelar: (
     setSalvando(true);
     setErro("");
     try {
-      await api.criarTurma(nome.trim(), Number(ano));
+      await api.criarTurma(nome.trim());
       aoCriar();
     } catch (ex) {
       setErro((ex as Error).message);
@@ -57,14 +56,9 @@ function NovaTurma({ aoCriar, aoCancelar }: { aoCriar: () => void; aoCancelar: (
     <Cartao className="p-5">
       <form onSubmit={criar} className="flex flex-col gap-4">
         <h2 className="text-lg font-semibold text-tinta">Nova turma</h2>
-        <div className="grid gap-4 sm:grid-cols-[1fr_8rem]">
-          <Campo rotulo="Nome" dica="Ex.: Extensivo 2027">
-            {(id) => <input id={id} required maxLength={120} value={nome} onChange={(e) => setNome(e.target.value)} className="campo" />}
-          </Campo>
-          <Campo rotulo="Ano">
-            {(id) => <input id={id} type="number" required min={2000} max={2100} value={ano} onChange={(e) => setAno(e.target.value)} className="campo" />}
-          </Campo>
-        </div>
+        <Campo rotulo="Nome" dica="Ex.: Q1 - Extensivo 2027">
+          {(id) => <input id={id} required maxLength={120} value={nome} onChange={(e) => setNome(e.target.value)} className="campo" />}
+        </Campo>
         {erro && <Aviso tom="erro">{erro}</Aviso>}
         <div className="flex gap-2">
           <Botao type="submit" variante="primario" disabled={salvando || !nome.trim()}>{salvando ? "Criando…" : "Criar turma"}</Botao>
@@ -78,14 +72,13 @@ function NovaTurma({ aoCriar, aoCancelar }: { aoCriar: () => void; aoCancelar: (
 function LinhaDaTurma({ turma, aoMudar }: { turma: Turma; aoMudar: () => void }) {
   const [editando, setEditando] = useState(false);
   const [nome, setNome] = useState(turma.nome);
-  const [ano, setAno] = useState(String(turma.ano));
   const [erro, setErro] = useState("");
 
   async function salvar(e: FormEvent) {
     e.preventDefault();
     setErro("");
     try {
-      await api.editarTurma(turma.id, { nome: nome.trim(), ano: Number(ano) });
+      await api.editarTurma(turma.id, { nome: nome.trim() });
       setEditando(false);
       aoMudar();
     } catch (ex) {
@@ -97,10 +90,7 @@ function LinhaDaTurma({ turma, aoMudar }: { turma: Turma; aoMudar: () => void })
     <Cartao como="li" className="flex flex-col gap-3 p-5">
       {editando ? (
         <form onSubmit={salvar} className="flex flex-col gap-3">
-          <div className="grid gap-3 sm:grid-cols-[1fr_7rem]">
-            <Campo rotulo="Nome">{(id) => <input id={id} required value={nome} onChange={(e) => setNome(e.target.value)} className="campo" />}</Campo>
-            <Campo rotulo="Ano">{(id) => <input id={id} type="number" required min={2000} max={2100} value={ano} onChange={(e) => setAno(e.target.value)} className="campo" />}</Campo>
-          </div>
+          <Campo rotulo="Nome">{(id) => <input id={id} required maxLength={120} value={nome} onChange={(e) => setNome(e.target.value)} className="campo" />}</Campo>
           {erro && <Aviso tom="erro">{erro}</Aviso>}
           <div className="flex gap-2">
             <Botao type="submit" variante="primario" tamanho="pequeno">Salvar</Botao>
@@ -110,10 +100,7 @@ function LinhaDaTurma({ turma, aoMudar }: { turma: Turma; aoMudar: () => void })
       ) : (
         <>
           <div className="flex items-start justify-between gap-3">
-            <div>
-              <h2 className="text-lg font-semibold text-tinta">{turma.nome}</h2>
-              <p className="text-sm text-suave">Ano {turma.ano}</p>
-            </div>
+            <h2 className="text-lg font-semibold text-tinta">{turma.nome}</h2>
             <Botao variante="texto" onClick={() => setEditando(true)}>Renomear</Botao>
           </div>
           <div className="flex flex-wrap gap-2">

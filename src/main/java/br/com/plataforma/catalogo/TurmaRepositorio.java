@@ -9,11 +9,10 @@ interface TurmaRepositorio extends JpaRepository<Turma, Integer> {
 
     List<Turma> findAllByOrderByNomeAsc();
 
-    List<Turma> findAllByOrderByAnoAscNomeAsc();
 
     java.util.Optional<Turma> findFirstByNomeIgnoreCase(String nome);
 
-    List<Turma> findByIdInOrderByAnoAscNomeAsc(java.util.Collection<Integer> ids);
+    List<Turma> findByIdInOrderByNomeAsc(java.util.Collection<Integer> ids);
 
     /** Nativa porque a matrícula ainda não tem entidade: ela entra quando as contas forem portadas. */
     @Query(value = "SELECT count(*) FROM enrollments WHERE turma_id = :turmaId", nativeQuery = true)

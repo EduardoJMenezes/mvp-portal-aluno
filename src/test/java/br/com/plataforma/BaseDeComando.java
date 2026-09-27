@@ -47,9 +47,9 @@ public abstract class BaseDeComando {
                   (1, 'Professora Ana', 'ana@teste.invalid', 'x', 'ADMIN'),
                   (2, 'Aluno Bruno', 'bruno@teste.invalid', 'x', 'ALUNO')""");
         jdbc.update("""
-                INSERT INTO classes (id, nome, ano) VALUES
-                  (10, 'Extensivo 2027', 2027),
-                  (11, 'Intensivo 2027', 2027)""");
+                INSERT INTO classes (id, nome) VALUES
+                  (10, 'Extensivo 2027'),
+                  (11, 'Intensivo 2027')""");
         // Os ids acima são fixos; o que a aplicação criar depois não pode colidir com eles.
         jdbc.execute("SELECT setval('users_id_seq', 100), setval('classes_id_seq', 100)");
     }

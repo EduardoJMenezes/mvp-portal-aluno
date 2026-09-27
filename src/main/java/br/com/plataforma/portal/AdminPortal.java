@@ -129,20 +129,20 @@ public class AdminPortal {
         return catalogo.listarTurmas(ident);
     }
 
-    public record TurmaIn(@NotBlank @Size(max = 120) String nome, @NotNull @Min(2000) @Max(2100) Integer ano) {}
+    public record TurmaIn(@NotBlank @Size(max = 120) String nome) {}
 
-    public record EdicaoTurmaIn(@Size(min = 1, max = 120) String nome, @Min(2000) @Max(2100) Integer ano) {}
+    public record EdicaoTurmaIn(@Size(min = 1, max = 120) String nome) {}
 
     @PostMapping("/turmas")
     public CatalogoServico.TurmaCadastrada criarTurma(@AuthenticationPrincipal Identidade ident,
             @Valid @RequestBody TurmaIn dados) {
-        return catalogo.criarTurma(ident, dados.nome(), dados.ano());
+        return catalogo.criarTurma(ident, dados.nome());
     }
 
     @PatchMapping("/turmas/{turma}")
     public CatalogoServico.TurmaCadastrada editarTurma(@AuthenticationPrincipal Identidade ident,
             @PathVariable String turma, @Valid @RequestBody EdicaoTurmaIn dados) {
-        return catalogo.editarTurma(ident, turma, dados.nome(), dados.ano());
+        return catalogo.editarTurma(ident, turma, dados.nome());
     }
 
     // --- alunos e matrículas -------------------------------------------------
