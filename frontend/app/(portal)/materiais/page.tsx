@@ -1,18 +1,30 @@
 "use client";
 
 import Link from "next/link";
+import { Suspense } from "react";
+import { useCategoria } from "@/components/Categoria";
 import { Cartao, Estado, Etiqueta, Pagina, Vazio } from "@/components/ui";
-import { api, useDados } from "@/lib/api";
+import { api, casaCategoria, useDados } from "@/lib/api";
 import { plural, tamanhoDoArquivo } from "@/lib/formato";
 
-export default function MateriaisDoAluno() {
+export default function PaginaDosMateriais() {
+  return (
+    <Suspense>
+      <MateriaisDoAluno />
+    </Suspense>
+  );
+}
+
+function MateriaisDoAluno() {
+  const categoria = useCategoria();
   const lista = useDados(() => api.materiais());
 
   return (
-    <Pagina titulo="Materiais" legenda="Apostilas e listas da sua turma. Pode riscar por cima: o que você marcar fica salvo na sua conta.">
+    <Pagina titulo={categoria ?? "Materiais"} legenda="Apostilas e listas da sua turma. Pode riscar por cima: o que você marcar fica salvo na sua conta.">
       <Estado {...lista} linhas={3}>
-        {(materiais) =>
-          materiais.length === 0 ? (
+        {(todos) => {
+          const materiais = todos.filter((m) => casaCategoria(categoria, m.categoria));
+          return materiais.length === 0 ? (
             <Vazio titulo="Nenhum material por aqui ainda">Quando o professor publicar uma apostila, ela aparece nesta tela.</Vazio>
           ) : (
             <ul className="grid gap-3 sm:grid-cols-2">
@@ -32,8 +44,8 @@ export default function MateriaisDoAluno() {
                 </Cartao>
               ))}
             </ul>
-          )
-        }
+          );
+        }}
       </Estado>
     </Pagina>
   );

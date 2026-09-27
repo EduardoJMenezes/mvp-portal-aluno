@@ -1,18 +1,33 @@
 "use client";
 
 import Link from "next/link";
+import { Suspense } from "react";
+import { useCategoria } from "@/components/Categoria";
 import { Estado, Pagina, TituloDeSecao, Vazio } from "@/components/ui";
-import { api, useDados, type AulaNoCurso } from "@/lib/api";
+import { api, casaCategoria, useDados, type AulaNoCurso } from "@/lib/api";
 import { emBrasilia, plural } from "@/lib/formato";
 
-export default function MeuCurso() {
-  const conteudo = useDados(() => api.conteudo());
+export default function PaginaDoCurso() {
+  return (
+    <Suspense>
+      <MeuCurso />
+    </Suspense>
+  );
+}
+
+function MeuCurso() {
+  const categoria = useCategoria();
+  const conteudo = useDados(() => api.conteudo(), [], 60);
 
   return (
-    <Pagina titulo="Meu curso" legenda="Aulas e resoluções das turmas em que você está matriculado.">
+    <Pagina titulo={categoria ?? "Meu curso"} legenda="Aulas e resoluções das turmas em que você está matriculado.">
       <Estado {...conteudo} linhas={5}>
-        {(turmas) =>
-          turmas.length === 0 ? (
+        {(todas) => {
+          // O botão do menu mostra só os capítulos daquela categoria; turma sem nenhum some.
+          const turmas = todas
+            .map((t) => ({ ...t, modulos: t.modulos.filter((m) => casaCategoria(categoria, m.categoria)) }))
+            .filter((t) => t.modulos.length > 0);
+          return turmas.length === 0 ? (
             <Vazio titulo="Nada publicado para você ainda">Quando o professor publicar as aulas da sua turma, elas aparecem aqui.</Vazio>
           ) : (
             turmas.map((turma) => (
@@ -40,8 +55,8 @@ export default function MeuCurso() {
                 </ol>
               </section>
             ))
-          )
-        }
+          );
+        }}
       </Estado>
     </Pagina>
   );

@@ -83,7 +83,8 @@ public class SimuladosComandos {
             String fechaEm,
             Integer duracaoMinutos,
             List<String> turmas,
-            List<Object> questoes) {}
+            List<Object> questoes,
+            String categoria) {}
 
     /**
      * Altera o simulado direto — o preview é no chat, antes da chamada.
@@ -104,6 +105,9 @@ public class SimuladosComandos {
         var mexeNaProva = pedido.abreEm() != null || pedido.duracaoMinutos() != null
                 || pedido.turmas() != null || pedido.questoes() != null;
         simulados.exigirMudancaPermitida(s, agora, mexeNaProva, novoFechamento);
+        if (pedido.categoria() != null) {
+            simulados.mudarCategoria(ident, s, pedido.categoria());
+        }
 
         var prova = pedido.questoes() == null ? null : montagem.montar(ident,
                 entradas.traduzir(pedido.questoes()),

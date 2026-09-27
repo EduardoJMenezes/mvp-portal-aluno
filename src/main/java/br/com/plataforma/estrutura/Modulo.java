@@ -39,6 +39,8 @@ public class Modulo extends Rastreavel implements Nomeavel {
     @Column(nullable = false)
     private Integer ordem;
 
+    private String categoria;
+
     protected Modulo() {}
 
     /** Package-private: módulo só nasce pelo {@link EstruturaServico}, que aplica as regras. */
@@ -72,5 +74,13 @@ public class Modulo extends Rastreavel implements Nomeavel {
 
     void reordenar(int ordem) {
         this.ordem = ordem;
+    }
+
+    public String getCategoria() {
+        return categoria;
+    }
+
+    void mudarCategoria(String categoria) {
+        this.categoria = categoria;
     }
 }

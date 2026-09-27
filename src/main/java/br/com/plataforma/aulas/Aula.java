@@ -89,6 +89,8 @@ public class Aula extends Rastreavel {
     @Column(name = "publicado_em")
     private Instant publicadoEm;
 
+    private String categoria;
+
     @ManyToMany(fetch = FetchType.LAZY)
     @JoinTable(name = "live_class_classes",
             joinColumns = @JoinColumn(name = "aula_id"),
@@ -194,6 +196,14 @@ public class Aula extends Rastreavel {
 
     void mudarTitulo(String titulo) {
         this.titulo = titulo;
+    }
+
+    public String getCategoria() {
+        return categoria;
+    }
+
+    void mudarCategoria(String categoria) {
+        this.categoria = categoria;
     }
 
     void mudarHorario(Instant inicioEm, Integer minutos) {

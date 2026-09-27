@@ -2,6 +2,7 @@ package br.com.plataforma.aulas;
 
 import br.com.plataforma.acervo.AcervoServico;
 import br.com.plataforma.catalogo.Turma;
+import br.com.plataforma.comum.Categoria;
 import br.com.plataforma.comum.Identidade;
 import br.com.plataforma.comum.NaoAutorizado;
 import br.com.plataforma.comum.NaoEncontrado;
@@ -128,7 +129,7 @@ public class AulasServico {
             Integer aulaId, String titulo, String descricao, String inicioEm, Integer minutos, Status status,
             Estado estado, String abreEm, boolean grava, boolean temSala, List<String> turmas,
             List<Pessoa> alunos, Integer gravacaoItemId, Integer submoduloId, String gravacao,
-            List<Presente> presentes, Assistir assistir) {}
+            List<Presente> presentes, Assistir assistir, String categoria) {}
 
     private Assistir assistir(Aula a) {
         return estrutura.item(a.getGravacaoItemId())
@@ -148,7 +149,7 @@ public class AulasServico {
                 a.getZoomMeetingId() != null, a.getTurmas().stream().map(Turma::getNome).toList(),
                 a.getAlunos().stream().map(Pessoa::de).toList(), a.getGravacaoItemId(),
                 operador ? a.getSubmoduloId() : null, operador ? a.getGravacaoVimeoId() : null, presentes,
-                assistir(a));
+                assistir(a), a.getCategoria());
     }
 
     // --- leitura -------------------------------------------------------------
@@ -179,6 +180,28 @@ public class AulasServico {
                         Collectors.mapping(a -> new NoCurso(a.getId(), a.getTitulo(), a.getInicioEm().toString(),
                                 a.getMinutos(), estado(a, agora), a.getInicioEm().minus(ABRE_ANTES).toString()),
                                 Collectors.toList())));
+    }
+
+    /**
+     * Aula com a sala aberta ({@code agora}: no ar de fato) que alcança quem pergunta, com as duas
+     * categorias que o menu confere: a da aula e a do capítulo onde ela mora, se morar.
+     */
+    public record NoAr(boolean agora, String categoria, boolean temCapitulo, String categoriaDoCapitulo) {}
+
+    @Transactional(readOnly = true)
+    public List<NoAr> noAr(Identidade ident, Instant agora) {
+        var minhas = ident.eOperador() ? List.<Integer>of() : contas.turmasDoAluno(ident.usuarioId());
+        // Só pode estar no ar quem começa em até 15 min ou começou há menos que a aula mais longa.
+        var desde = agora.minus(Duration.ofMinutes(DURACAO_MAXIMA)).minus(FECHA_DEPOIS);
+        return aulas.findByStatusAndInicioEmBetween(Status.PUBLICADO, desde, agora.plus(ABRE_ANTES)).stream()
+                .filter(a -> ident.eOperador() || alcanca(ident, a, minhas))
+                .filter(a -> estado(a, agora) == Estado.ABERTA || estado(a, agora) == Estado.AGUARDANDO)
+                .map(a -> {
+                    var modulo = estrutura.submodulo(a.getSubmoduloId()).map(s -> s.getModulo()).orElse(null);
+                    return new NoAr(estado(a, agora) == Estado.ABERTA, a.getCategoria(), modulo != null,
+                            modulo == null ? null : modulo.getCategoria());
+                })
+                .toList();
     }
 
     // --- o aluno entrando ----------------------------------------------------
@@ -234,7 +257,7 @@ public class AulasServico {
     public record Dados(
             String titulo, Instant inicioEm, Integer minutos, String descricao, Boolean gravar,
             List<Turma> turmas, List<String> alunos, Integer submoduloId, Boolean publicarGravacao,
-            String status) {}
+            String status, String categoria) {}
 
     /** Nasce em rascunho, <b>sem sala no Zoom</b>: a sala só é criada ao publicar. */
     @Transactional
@@ -250,6 +273,7 @@ public class AulasServico {
         var a = aulas.save(new Aula(titulo, descricao, d.inicioEm(), minutos,
                 d.gravar() == null || d.gravar(), d.submoduloId(),
                 d.publicarGravacao() == null || d.publicarGravacao(), ident.usuarioId()));
+        a.mudarCategoria(Categoria.limpar(d.categoria()));
         enderecar(a, d.turmas(), d.alunos());
         return resumo(a, agora, true);
     }
@@ -267,6 +291,9 @@ public class AulasServico {
         }
         a.mudarHorario(d.inicioEm(), d.minutos());
         a.mudarGravacao(d.gravar(), d.submoduloId(), d.publicarGravacao());
+        if (d.categoria() != null) {
+            a.mudarCategoria(Categoria.limpar(d.categoria()));
+        }
         validarHorario(a.getInicioEm(), a.getMinutos());
         if (d.turmas() != null || d.alunos() != null) {
             enderecar(a, d.turmas(), d.alunos());

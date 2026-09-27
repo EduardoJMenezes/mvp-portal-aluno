@@ -37,7 +37,8 @@ public class EstruturaComandos {
     public record CriarModulo(
             @NotBlank(message = "é obrigatória: o nome ou o id da turma") String turma,
             @NotBlank(message = "é obrigatório, ex.: 'K01 - Introdução à química orgânica'") String nome,
-            List<String> submodulos) {}
+            List<String> submodulos,
+            String categoria) {}
 
     public record ModuloCriado(
             Integer moduloId, String modulo, String turma, List<String> submodulos, String mensagem) {}
@@ -48,6 +49,9 @@ public class EstruturaComandos {
             @AuthenticationPrincipal Identidade ident, @Valid @RequestBody CriarModulo pedido) {
         var turma = catalogo.resolverTurma(pedido.turma());
         var modulo = estrutura.criarModulo(ident, turma, pedido.nome(), null);
+        if (pedido.categoria() != null) {
+            estrutura.editarModulo(ident, modulo, null, null, pedido.categoria());
+        }
 
         var nomes = pedido.submodulos() == null || pedido.submodulos().isEmpty()
                 ? EstruturaServico.SUBMODULOS_PADRAO
@@ -86,21 +90,23 @@ public class EstruturaComandos {
             @NotBlank(message = "é obrigatória: o nome ou o id da turma") String turma,
             @NotBlank(message = "é obrigatório: o módulo a alterar") String modulo,
             String novoNome,
-            Integer novaOrdem) {}
+            Integer novaOrdem,
+            String novaCategoria) {}
 
-    public record ModuloEditado(String modulo, Integer ordem, String turma) {}
+    public record ModuloEditado(String modulo, Integer ordem, String categoria, String turma) {}
 
     @PostMapping("/editar_modulo")
     @Transactional
     public ModuloEditado editarModulo(
             @AuthenticationPrincipal Identidade ident, @Valid @RequestBody EditarModulo pedido) {
-        if (pedido.novoNome() == null && pedido.novaOrdem() == null) {
-            throw new RegraDeNegocio("Diga o que mudar: nome, ordem, ou os dois.");
+        if (pedido.novoNome() == null && pedido.novaOrdem() == null && pedido.novaCategoria() == null) {
+            throw new RegraDeNegocio("Diga o que mudar: nome, ordem ou categoria.");
         }
         var turma = catalogo.resolverTurma(pedido.turma());
         var alvos = estrutura.alvos(turma, pedido.modulo(), null, null);
-        var modulo = estrutura.editarModulo(ident, alvos.modulo(), pedido.novoNome(), pedido.novaOrdem());
-        return new ModuloEditado(modulo.getNome(), modulo.getOrdem(), turma.getNome());
+        var modulo = estrutura.editarModulo(ident, alvos.modulo(), pedido.novoNome(), pedido.novaOrdem(),
+                pedido.novaCategoria());
+        return new ModuloEditado(modulo.getNome(), modulo.getOrdem(), modulo.getCategoria(), turma.getNome());
     }
 
     // --- editar_item ---------------------------------------------------------

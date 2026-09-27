@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useState, type FormEvent } from "react";
 import { Aviso, Botao, Campo, Cartao, Estado, Etiqueta, Pagina, TituloDeSecao, Vazio, useConfirmar } from "@/components/ui";
+import { EditarCategoria, categoriasDe } from "@/components/Categoria";
 import { api, useDados, type Material } from "@/lib/api";
 import { emBrasilia, tamanhoDoArquivo } from "@/lib/formato";
 
@@ -55,6 +56,11 @@ export default function MateriaisDoProfessor() {
                     <div className="min-w-0">
                       <div className="mb-1 flex flex-wrap items-center gap-2">
                         {m.status === "PUBLICADO" ? <Etiqueta tom="sucesso">Publicado</Etiqueta> : <Etiqueta tom="atencao">Rascunho</Etiqueta>}
+                        <EditarCategoria
+                          valor={m.categoria}
+                          sugestoes={categoriasDe(materiais)}
+                          aoSalvar={(categoria) => executar(() => api.editarMaterial(m.material_id, { categoria }))}
+                        />
                         <span className="text-[13px] text-suave">{tamanhoDoArquivo(m.tamanho)} · enviado {emBrasilia(m.criado_em)}</span>
                       </div>
                       <p className="text-lg font-semibold text-tinta">{m.titulo}</p>

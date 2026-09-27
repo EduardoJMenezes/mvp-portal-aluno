@@ -83,7 +83,22 @@ class EstruturaComandosTest extends BaseDeComando {
         comando("editar_modulo", """
                 {"turma": "Extensivo 2027", "modulo": "K01"}""")
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.detail").value("Diga o que mudar: nome, ordem, ou os dois."));
+                .andExpect(jsonPath("$.detail").value("Diga o que mudar: nome, ordem ou categoria."));
+    }
+
+    /** A categoria é a gaveta do menu (decisão 0009): texto livre, e vazio tira. */
+    @Test
+    void aCategoriaDoModuloEntraESai() throws Exception {
+        montarK01();
+
+        comando("editar_modulo", """
+                {"turma": "Extensivo 2027", "modulo": "K01", "nova_categoria": "  Extensivo "}""")
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.categoria").value("Extensivo"));
+        comando("editar_modulo", """
+                {"turma": "Extensivo 2027", "modulo": "K01", "nova_categoria": ""}""")
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.categoria").doesNotExist());
     }
 
     // --- editar_item ---------------------------------------------------------

@@ -86,14 +86,14 @@ public class MateriaisServico {
     public record Resumo(
             Integer materialId, String titulo, String arquivo, Integer tamanho, Status status,
             List<String> turmas, List<Pessoa> alunos, String criadoEm, String publicadoEm,
-            Integer paginasAnotadas) {}
+            Integer paginasAnotadas, String categoria) {}
 
     private static Resumo resumo(Material m, Integer anotadas) {
         return new Resumo(m.getId(), m.getTitulo(), m.getArquivoNome(), m.getTamanho(), m.getStatus(),
                 m.getTurmas().stream().map(Turma::getNome).toList(),
                 m.getAlunos().stream().map(Pessoa::de).toList(),
                 m.getCriadoEm() == null ? null : m.getCriadoEm().toString(),
-                m.getPublicadoEm() == null ? null : m.getPublicadoEm().toString(), anotadas);
+                m.getPublicadoEm() == null ? null : m.getPublicadoEm().toString(), anotadas, m.getCategoria());
     }
 
     // --- leitura -------------------------------------------------------------
@@ -177,9 +177,12 @@ public class MateriaisServico {
     /** Título, quem alcança, e publicar ou tirar do ar. */
     @Transactional
     public Resumo editar(Identidade ident, String referencia, String titulo, String status,
-            List<Turma> turmas, List<String> alunos, Instant agora) {
+            List<Turma> turmas, List<String> alunos, String categoria, Instant agora) {
         ident.exigirOperador();
         var m = exigir(referencia);
+        if (categoria != null) {
+            m.mudarCategoria(br.com.plataforma.comum.Categoria.limpar(categoria));
+        }
         if (titulo != null) {
             if (titulo.isBlank()) {
                 throw new RegraDeNegocio("O material precisa de um título.");

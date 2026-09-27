@@ -232,9 +232,9 @@ public class AdminPortal {
 
     // --- curso: módulo, sub-módulo e item ------------------------------------
 
-    public record ModuloIn(@NotBlank String nome, List<String> submodulos) {}
+    public record ModuloIn(@NotBlank String nome, List<String> submodulos, String categoria) {}
 
-    public record EdicaoModuloIn(String nome, Integer ordem) {}
+    public record EdicaoModuloIn(String nome, Integer ordem, String categoria) {}
 
     public record SubModuloIn(@NotBlank String nome) {}
 
@@ -247,13 +247,15 @@ public class AdminPortal {
     @PostMapping("/turmas/{turma}/modulos")
     public EstruturaComandos.ModuloCriado criarModulo(@AuthenticationPrincipal Identidade ident,
             @PathVariable String turma, @Valid @RequestBody ModuloIn dados) {
-        return estruturaComandos.criarModulo(ident, new EstruturaComandos.CriarModulo(turma, dados.nome(), dados.submodulos()));
+        return estruturaComandos.criarModulo(ident, new EstruturaComandos.CriarModulo(turma, dados.nome(), dados.submodulos(),
+                dados.categoria()));
     }
 
     @PatchMapping("/turmas/{turma}/modulos/{modulo}")
     public EstruturaComandos.ModuloEditado editarModulo(@AuthenticationPrincipal Identidade ident,
             @PathVariable String turma, @PathVariable String modulo, @RequestBody EdicaoModuloIn dados) {
-        return estruturaComandos.editarModulo(ident, new EstruturaComandos.EditarModulo(turma, modulo, dados.nome(), dados.ordem()));
+        return estruturaComandos.editarModulo(ident, new EstruturaComandos.EditarModulo(turma, modulo, dados.nome(), dados.ordem(),
+                dados.categoria()));
     }
 
     @DeleteMapping("/turmas/{turma}/modulos/{modulo}")
@@ -558,7 +560,7 @@ public class AdminPortal {
             String abreEm, String fechaEm, @Min(1) Integer duracaoMinutos, String pastaResolucao) {}
 
     public record EdicaoSimuladoIn(String titulo, String abreEm, String fechaEm, @Min(1) Integer duracaoMinutos,
-            List<String> turmas, List<Object> questoes) {}
+            List<String> turmas, List<Object> questoes, String categoria) {}
 
     @GetMapping("/simulados")
     public List<SimuladosServico.ResumoDoSimulado> listaSimulados(@AuthenticationPrincipal Identidade ident,
@@ -590,7 +592,7 @@ public class AdminPortal {
             @PathVariable String simulado, @Valid @RequestBody EdicaoSimuladoIn dados) {
         return simuladosComandos.editarSimulado(ident, new SimuladosComandos.EditarSimulado(simulado, dados.titulo(),
                 dados.abreEm(), dados.fechaEm(), dados.duracaoMinutos(), dados.turmas(),
-                vimeoImportacao.questoesComResolucao(dados.questoes())));
+                vimeoImportacao.questoesComResolucao(dados.questoes()), dados.categoria()));
     }
 
     @DeleteMapping("/simulados/{simulado}")
@@ -613,7 +615,7 @@ public class AdminPortal {
     // --- materiais -----------------------------------------------------------
 
     public record EdicaoMaterialIn(@Size(min = 1, max = 200) String titulo, String status, List<String> turmas,
-            List<String> alunos) {}
+            List<String> alunos, String categoria) {}
 
     @GetMapping("/materiais")
     public List<MateriaisServico.Resumo> listaMateriais(@AuthenticationPrincipal Identidade ident) {
@@ -643,7 +645,8 @@ public class AdminPortal {
     public MateriaisServico.Resumo editarMaterial(@AuthenticationPrincipal Identidade ident,
             @PathVariable String material, @Valid @RequestBody EdicaoMaterialIn dados) {
         return materiais.editar(ident, material, dados.titulo(), dados.status(),
-                dados.turmas() == null ? null : catalogo.resolverTurmas(dados.turmas()), dados.alunos(), Instant.now());
+                dados.turmas() == null ? null : catalogo.resolverTurmas(dados.turmas()), dados.alunos(),
+                dados.categoria(), Instant.now());
     }
 
     @DeleteMapping("/materiais/{material}")
@@ -658,11 +661,12 @@ public class AdminPortal {
 
     public record AulaIn(@NotBlank @Size(max = 200) String titulo, @NotBlank String inicioEm,
             @Min(5) @Max(480) Integer minutos, @Size(max = 2000) String descricao, Boolean gravar,
-            List<String> turmas, List<String> alunos, Integer submoduloId, Boolean publicarGravacao) {}
+            List<String> turmas, List<String> alunos, Integer submoduloId, Boolean publicarGravacao,
+            String categoria) {}
 
     public record EdicaoAulaIn(@Size(min = 1, max = 200) String titulo, String inicioEm, @Min(5) @Max(480) Integer minutos,
             String status, List<String> turmas, List<String> alunos, Boolean gravar, Integer submoduloId,
-            Boolean publicarGravacao) {}
+            Boolean publicarGravacao, String categoria) {}
 
     private static Instant horario(String texto) {
         if (texto == null) {
@@ -686,7 +690,8 @@ public class AdminPortal {
     public AulasServico.Resumo criarAula(@AuthenticationPrincipal Identidade ident, @Valid @RequestBody AulaIn d) {
         return aulas.criar(ident, new AulasServico.Dados(d.titulo(), horario(d.inicioEm()), d.minutos(), d.descricao(),
                 d.gravar(), d.turmas() == null ? List.of() : catalogo.resolverTurmas(d.turmas()),
-                d.alunos() == null ? List.of() : d.alunos(), d.submoduloId(), d.publicarGravacao(), null), Instant.now());
+                d.alunos() == null ? List.of() : d.alunos(), d.submoduloId(), d.publicarGravacao(), null,
+                d.categoria()), Instant.now());
     }
 
     @PatchMapping("/aulas/{aula}")
@@ -695,7 +700,7 @@ public class AdminPortal {
             @Valid @RequestBody EdicaoAulaIn d) {
         return aulas.editar(ident, aula, new AulasServico.Dados(d.titulo(), horario(d.inicioEm()), d.minutos(), null,
                 d.gravar(), d.turmas() == null ? null : catalogo.resolverTurmas(d.turmas()), d.alunos(),
-                d.submoduloId(), d.publicarGravacao(), d.status()), Instant.now());
+                d.submoduloId(), d.publicarGravacao(), d.status(), d.categoria()), Instant.now());
     }
 
     /** Some do portal e desmarca a sala — a nossa, pelo id que guardamos. */

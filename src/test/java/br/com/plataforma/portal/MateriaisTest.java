@@ -32,6 +32,15 @@ class MateriaisTest extends BaseDoPortal {
     }
 
     @Test
+    void aCategoriaChegaAoAluno() throws Exception {
+        patch("/api/admin/materiais/" + material, """
+                {"turmas": ["Extensivo 2027"], "status": "PUBLICADO", "categoria": "Listas"}""", ADMIN)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.categoria").value("Listas"));
+        get("/api/aluno/materiais", ALUNO).andExpect(jsonPath("$[0].categoria").value("Listas"));
+    }
+
+    @Test
     void rascunhoNaoChegaAoAlunoEPublicarSemDestinoRecusa() throws Exception {
         get("/api/aluno/materiais", ALUNO).andExpect(jsonPath("$.length()").value(0));
         patch("/api/admin/materiais/" + material, "{\"status\": \"PUBLICADO\"}", ADMIN)

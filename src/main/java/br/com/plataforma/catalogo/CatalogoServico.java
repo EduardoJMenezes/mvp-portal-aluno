@@ -136,7 +136,8 @@ public class CatalogoServico {
             List<ItemComVideo> itens, List<br.com.plataforma.aulas.AulasServico.NoCurso> aulas) {}
 
     public record ModuloComVideos(
-            Integer id, String nome, Integer ordem, String turma, List<SubModuloComVideos> submodulos) {}
+            Integer id, String nome, Integer ordem, String categoria, String turma,
+            List<SubModuloComVideos> submodulos) {}
 
     public record ConteudoDaTurma(String turma, Integer turmaId, List<ModuloComVideos> modulos) {}
 
@@ -157,7 +158,7 @@ public class CatalogoServico {
         var aoVivo = aulas.noCurso(ident, agora);
         for (var turma : turmasVisiveis(ident)) {
             var modulos = estrutura.arvoreDaTurma(turma, false).stream()
-                    .map(m -> new EstruturaServico.ModuloNaArvore(m.id(), m.nome(), m.ordem(), m.turma(),
+                    .map(m -> new EstruturaServico.ModuloNaArvore(m.id(), m.nome(), m.ordem(), m.categoria(), m.turma(),
                             m.submodulos().stream()
                                     .map(s -> new EstruturaServico.SubModuloNaArvore(s.id(), s.nome(), s.tipo(),
                                             s.ordem(), s.itens().stream()
@@ -177,7 +178,7 @@ public class CatalogoServico {
             var liberados = acesso.videosLiberados(ident, ids, agora);
 
             saida.add(new ConteudoDaTurma(turma.getNome(), turma.getId(), modulos.stream()
-                    .map(m -> new ModuloComVideos(m.id(), m.nome(), m.ordem(), m.turma(),
+                    .map(m -> new ModuloComVideos(m.id(), m.nome(), m.ordem(), m.categoria(), m.turma(),
                             m.submodulos().stream().map(s -> new SubModuloComVideos(s.id(), s.nome(),
                                     s.tipo(), s.ordem(), s.itens().stream()
                                             .map(i -> new ItemComVideo(i.id(), i.nome(), i.ordem(),

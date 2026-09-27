@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useState, type FormEvent, type ReactNode } from "react";
 import { Aviso, Botao, BotaoLink, Campo, Cartao, Estado, Etiqueta, Pagina, Vazio, useConfirmar } from "@/components/ui";
+import { CampoCategoria, EditarCategoria, categoriasDe } from "@/components/Categoria";
 import { abrirEmNovaAba, api, useDados, type Assunto, type Aula, type Modulo, type SubModulo, type VideoVimeo } from "@/lib/api";
 import { duracao, emBrasilia, plural } from "@/lib/formato";
 
@@ -50,6 +51,7 @@ function CursoDaTurma() {
       acoes={
         <>
           <BotaoLink href={`/admin/turmas/alunos/?turma=${turmaId}`}>Alunos</BotaoLink>
+          <BotaoLink href={`/admin/turmas/menu/?turma=${turmaId}`}>Menu do aluno</BotaoLink>
           <Botao variante="primario" onClick={() => setNovoModulo(true)}>Novo módulo</Botao>
         </>
       }
@@ -57,7 +59,9 @@ function CursoDaTurma() {
       {dialogo}
       {erro && <Aviso tom="erro">{erro}</Aviso>}
       {aviso && <Aviso tom="sucesso">{aviso}</Aviso>}
-      {novoModulo && <NovoModulo turma={turmaId} executar={executar} aoFechar={() => setNovoModulo(false)} />}
+      {novoModulo && (
+        <NovoModulo turma={turmaId} categorias={categoriasDe(dados.dados?.modulos ?? [])} executar={executar} aoFechar={() => setNovoModulo(false)} />
+      )}
       <Estado {...dados} linhas={4}>
         {({ modulos, assuntos, aulas, turma }) =>
           modulos.length === 0 ? (
@@ -72,6 +76,8 @@ function CursoDaTurma() {
                   vizinhos={{ acima: modulos[i - 1], abaixo: modulos[i + 1], posicao: i + 1 }}
                   assuntos={assuntos}
                   aulas={aulas}
+                  categorias={categoriasDe(modulos)}
+                  categoriasDeAula={categoriasDe(aulas)}
                   nomeDaTurma={turma?.nome ?? ""}
                   executar={executar}
                   confirmar={confirmar}
@@ -85,14 +91,15 @@ function CursoDaTurma() {
   );
 }
 
-function NovoModulo({ turma, executar, aoFechar }: { turma: number; executar: Executar; aoFechar: () => void }) {
+function NovoModulo({ turma, categorias, executar, aoFechar }: { turma: number; categorias: string[]; executar: Executar; aoFechar: () => void }) {
   const [nome, setNome] = useState("");
   const [subs, setSubs] = useState("Aulas, Questões da apostila");
+  const [categoria, setCategoria] = useState("");
 
   async function criar(e: FormEvent) {
     e.preventDefault();
     const lista = subs.split(",").map((s) => s.trim()).filter(Boolean);
-    if (await executar(() => api.criarModulo(turma, nome.trim(), lista.length ? lista : undefined), `Módulo "${nome.trim()}" criado.`)) aoFechar();
+    if (await executar(() => api.criarModulo(turma, nome.trim(), lista.length ? lista : undefined, categoria.trim() || undefined), `Módulo "${nome.trim()}" criado.`)) aoFechar();
   }
 
   return (
@@ -105,6 +112,9 @@ function NovoModulo({ turma, executar, aoFechar }: { turma: number; executar: Ex
           </Campo>
           <Campo rotulo="Sub-módulos" dica="Separados por vírgula">
             {(id) => <input id={id} value={subs} onChange={(e) => setSubs(e.target.value)} className="campo" />}
+          </Campo>
+          <Campo rotulo="Categoria" dica="Opcional, ex.: Extensivo. É o que o botão do menu usa para mostrar só alguns capítulos.">
+            {(id) => <CampoCategoria id={id} valor={categoria} aoMudar={setCategoria} sugestoes={categorias} />}
           </Campo>
         </div>
         <div className="flex gap-2">
@@ -124,6 +134,8 @@ function CartaoDoModulo({
   vizinhos,
   assuntos,
   aulas,
+  categorias,
+  categoriasDeAula,
   nomeDaTurma,
   executar,
   confirmar,
@@ -133,6 +145,8 @@ function CartaoDoModulo({
   vizinhos: { acima?: Modulo; abaixo?: Modulo; posicao: number };
   assuntos: Assunto[];
   aulas: Aula[];
+  categorias: string[];
+  categoriasDeAula: string[];
   nomeDaTurma: string;
   executar: Executar;
   confirmar: Confirmar;
@@ -182,6 +196,11 @@ function CartaoDoModulo({
           <div className="flex min-w-0 items-center gap-3">
             <span className="flex size-7 shrink-0 items-center justify-center rounded-md bg-lilas text-sm font-semibold tabular-nums text-acento-forte">{vizinhos.posicao}</span>
             <h2 className="truncate text-lg font-semibold text-tinta">{modulo.nome}</h2>
+            <EditarCategoria
+              valor={modulo.categoria}
+              sugestoes={categorias}
+              aoSalvar={(categoria) => executar(() => api.editarModulo(turma, modulo.id, { categoria }))}
+            />
           </div>
         )}
         {!renomeando && (
@@ -226,6 +245,7 @@ function CartaoDoModulo({
               sub={sub}
               assuntos={assuntos}
               aulas={aulas.filter((a) => a.submodulo_id === sub.id).sort((a, b) => a.inicio_em.localeCompare(b.inicio_em))}
+              categoriasDeAula={categoriasDeAula}
               executar={executar}
               confirmar={confirmar}
             />
@@ -243,6 +263,7 @@ function SecaoDoSubmodulo({
   sub,
   assuntos,
   aulas,
+  categoriasDeAula,
   executar,
   confirmar,
 }: {
@@ -252,6 +273,7 @@ function SecaoDoSubmodulo({
   sub: SubModulo;
   assuntos: Assunto[];
   aulas: Aula[];
+  categoriasDeAula: string[];
   executar: Executar;
   confirmar: Confirmar;
 }) {
@@ -296,7 +318,7 @@ function SecaoDoSubmodulo({
 
       {painel === "videos" && <AdicionarVideos turma={turma} modulo={modulo} sub={sub} executar={executar} aoFechar={() => setPainel(null)} />}
       {painel === "classificar" && <Classificar turma={turma} modulo={modulo} sub={sub} assuntos={assuntos} executar={executar} aoFechar={() => setPainel(null)} />}
-      {painel === "aula" && <NovaAulaAoVivo nomeDaTurma={nomeDaTurma} sub={sub} executar={executar} aoFechar={() => setPainel(null)} />}
+      {painel === "aula" && <NovaAulaAoVivo nomeDaTurma={nomeDaTurma} sub={sub} categorias={categoriasDeAula} executar={executar} aoFechar={() => setPainel(null)} />}
       {aulas.length > 0 && <AulasDoSubmodulo aulas={aulas} executar={executar} />}
 
       {sub.itens.length > 0 && (
@@ -384,7 +406,8 @@ function SecaoDoSubmodulo({
 // --- aula ao vivo no sub-módulo ----------------------------------------------
 
 /** Agenda e já publica: a sala do Zoom abre agora, e a aula aparece no capítulo para a turma. */
-function NovaAulaAoVivo({ nomeDaTurma, sub, executar, aoFechar }: { nomeDaTurma: string; sub: SubModulo; executar: Executar; aoFechar: () => void }) {
+function NovaAulaAoVivo({ nomeDaTurma, sub, categorias, executar, aoFechar }: { nomeDaTurma: string; sub: SubModulo; categorias: string[]; executar: Executar; aoFechar: () => void }) {
+  const [categoria, setCategoria] = useState("");
   const [titulo, setTitulo] = useState("");
   const [quando, setQuando] = useState("");
   const [minutos, setMinutos] = useState(90);
@@ -403,6 +426,7 @@ function NovaAulaAoVivo({ nomeDaTurma, sub, executar, aoFechar }: { nomeDaTurma:
         descricao: descricao.trim(),
         turmas: [nomeDaTurma],
         submodulo_id: sub.id,
+        categoria: categoria.trim(),
       });
       await api.editarAula(aula.aula_id, { status: "PUBLICADO" });
     }, `"${titulo.trim()}" agendada em ${sub.nome}. A turma já vê no capítulo.`);
@@ -423,9 +447,14 @@ function NovaAulaAoVivo({ nomeDaTurma, sub, executar, aoFechar }: { nomeDaTurma:
           {(id) => <input id={id} type="number" min={5} max={480} value={minutos} onChange={(e) => setMinutos(Number(e.target.value))} className="campo w-24" />}
         </Campo>
       </div>
-      <Campo rotulo="Descrição" dica="Opcional; aparece para o aluno.">
-        {(id) => <input id={id} maxLength={2000} value={descricao} onChange={(e) => setDescricao(e.target.value)} className="campo" />}
-      </Campo>
+      <div className="grid gap-3 sm:grid-cols-[2fr_1fr]">
+        <Campo rotulo="Descrição" dica="Opcional; aparece para o aluno.">
+          {(id) => <input id={id} maxLength={2000} value={descricao} onChange={(e) => setDescricao(e.target.value)} className="campo" />}
+        </Campo>
+        <Campo rotulo="Categoria" dica="Ex.: Aula, Monitoria. Separa as lives no menu.">
+          {(id) => <CampoCategoria id={id} valor={categoria} aoMudar={setCategoria} sugestoes={categorias} />}
+        </Campo>
+      </div>
       <p className="text-[13px] text-suave">
         A sala do Zoom é criada agora, para a turma {nomeDaTurma}. A aula é gravada, e a gravação entra publicada aqui, em {sub.nome}.
       </p>

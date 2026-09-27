@@ -86,6 +86,18 @@ class SimuladosComandosTest extends BaseDeComando {
                 .andExpect(jsonPath("$.abre_em").value(org.hamcrest.Matchers.startsWith("2090-03-01T14:00")));
     }
 
+    /** A categoria é só a gaveta do menu: muda até com a prova aberta. */
+    @Test
+    void aCategoriaMudaMesmoComAProvaAberta() throws Exception {
+        provaAberta("Em andamento");
+
+        comando("editar_simulado", """
+                {"simulado": "Em andamento", "categoria": "Rodmelo"}""")
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.categoria").value("Rodmelo"));
+        comando("listar_simulados", "{}").andExpect(jsonPath("$[0].categoria").value("Rodmelo"));
+    }
+
     @Test
     void abertoSoOTituloEOFechamentoEsticado() throws Exception {
         provaAberta("Em andamento");

@@ -1,7 +1,9 @@
 "use client";
 
+import { Suspense } from "react";
+import { useCategoria } from "@/components/Categoria";
 import { BotaoLink, Cartao, Estado, Etiqueta, Pagina, TituloDeSecao, Vazio, type Tom } from "@/components/ui";
-import { api, useDados, type SimuladoResumo } from "@/lib/api";
+import { api, casaCategoria, useDados, type SimuladoResumo } from "@/lib/api";
 import { emBrasilia, plural } from "@/lib/formato";
 
 type Grupo = { titulo: string; filtro: (s: SimuladoResumo) => boolean };
@@ -13,14 +15,24 @@ const GRUPOS: Grupo[] = [
   { titulo: "Encerrados", filtro: (s) => s.situacao === "ENCERRADO" },
 ];
 
-export default function Simulados() {
+export default function PaginaDosSimulados() {
+  return (
+    <Suspense>
+      <Simulados />
+    </Suspense>
+  );
+}
+
+function Simulados() {
+  const categoria = useCategoria();
   const simulados = useDados(() => api.simulados());
 
   return (
-    <Pagina titulo="Simulados" legenda="Os simulados publicados para a sua turma. O resultado de cada um sai quando ele fecha.">
+    <Pagina titulo={categoria ? `Simulados ${categoria}` : "Simulados"} legenda="Os simulados publicados para a sua turma. O resultado de cada um sai quando ele fecha.">
       <Estado {...simulados} linhas={4}>
-        {(lista) =>
-          lista.length === 0 ? (
+        {(todos) => {
+          const lista = todos.filter((s) => casaCategoria(categoria, s.categoria));
+          return lista.length === 0 ? (
             <Vazio titulo="Nenhum simulado disponível">Quando o professor publicar um simulado para a sua turma, ele aparece aqui.</Vazio>
           ) : (
             GRUPOS.map((grupo) => {
@@ -37,8 +49,8 @@ export default function Simulados() {
                 </section>
               );
             })
-          )
-        }
+          );
+        }}
       </Estado>
     </Pagina>
   );

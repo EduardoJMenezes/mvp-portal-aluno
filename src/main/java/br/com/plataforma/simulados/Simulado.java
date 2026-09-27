@@ -42,6 +42,8 @@ public class Simulado extends Rastreavel implements Nomeavel {
     @Column(nullable = false)
     private String titulo;
 
+    private String categoria;
+
     @Column(name = "abre_em")
     private Instant abreEm;
 
@@ -149,6 +151,14 @@ public class Simulado extends Rastreavel implements Nomeavel {
 
     void mudarTitulo(String titulo) {
         this.titulo = titulo;
+    }
+
+    public String getCategoria() {
+        return categoria;
+    }
+
+    void mudarCategoria(String categoria) {
+        this.categoria = categoria;
     }
 
     void mudarJanela(Instant abreEm, Instant fechaEm) {

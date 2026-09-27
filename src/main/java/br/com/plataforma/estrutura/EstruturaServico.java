@@ -83,7 +83,8 @@ public class EstruturaServico {
             Integer id, String nome, TipoSubModulo tipo, Integer ordem, List<ItemNaArvore> itens) {}
 
     public record ModuloNaArvore(
-            Integer id, String nome, Integer ordem, String turma, List<SubModuloNaArvore> submodulos) {}
+            Integer id, String nome, Integer ordem, String categoria, String turma,
+            List<SubModuloNaArvore> submodulos) {}
 
     /**
      * Módulos › sub-módulos › itens de uma turma.
@@ -117,7 +118,7 @@ public class EstruturaServico {
                 continue;
             }
             arvore.add(new ModuloNaArvore(
-                    modulo.getId(), modulo.getNome(), modulo.getOrdem(), turma.getNome(), galhos));
+                    modulo.getId(), modulo.getNome(), modulo.getOrdem(), modulo.getCategoria(), turma.getNome(), galhos));
         }
         return arvore;
     }
@@ -171,8 +172,11 @@ public class EstruturaServico {
     }
 
     @Transactional
-    public Modulo editarModulo(Identidade ident, Modulo modulo, String nome, Integer ordem) {
+    public Modulo editarModulo(Identidade ident, Modulo modulo, String nome, Integer ordem, String categoria) {
         ident.exigirOperador();
+        if (categoria != null) {
+            modulo.mudarCategoria(br.com.plataforma.comum.Categoria.limpar(categoria));
+        }
         if (nome != null) {
             modulo.renomear(exigirNome(nome, "O nome do módulo não pode ficar vazio."));
         }

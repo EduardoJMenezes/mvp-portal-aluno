@@ -13,6 +13,7 @@ import {
   Vazio,
   useConfirmar,
 } from "@/components/ui";
+import { CampoCategoria, EditarCategoria, categoriasDe } from "@/components/Categoria";
 import { api, useDados, type Aula } from "@/lib/api";
 import { emBrasilia } from "@/lib/formato";
 
@@ -69,6 +70,7 @@ export default function AulasDoProfessor() {
       {dialogo}
       <Agendar
         turmas={nomesDasTurmas}
+        categorias={categoriasDe(lista.dados ?? [])}
         aoAgendar={(dados) => executar(() => api.agendarAula(dados))}
       />
       {erro && <Aviso tom="erro">{erro}</Aviso>}
@@ -93,6 +95,11 @@ export default function AulasDoProfessor() {
                         {aula.estado === "AGUARDANDO" && <Etiqueta tom="info">Aguardando você iniciar</Etiqueta>}
                         {aula.estado === "ENCERRADA" && <Etiqueta>Encerrada</Etiqueta>}
                         {aula.grava && <Etiqueta>Grava</Etiqueta>}
+                        <EditarCategoria
+                          valor={aula.categoria}
+                          sugestoes={categoriasDe(aulas)}
+                          aoSalvar={(categoria) => executar(() => api.editarAula(aula.aula_id, { categoria }))}
+                        />
                       </div>
                       <p className="text-lg font-semibold text-tinta">{aula.titulo}</p>
                       <p className="text-[13px] text-suave">
@@ -149,15 +156,17 @@ type Novo = {
   descricao: string;
   turmas: string[];
   submodulo_id: number | null;
+  categoria: string;
 };
 
-function Agendar({ turmas, aoAgendar }: { turmas: string[]; aoAgendar: (d: Novo) => Promise<boolean> }) {
+function Agendar({ turmas, categorias, aoAgendar }: { turmas: string[]; categorias: string[]; aoAgendar: (d: Novo) => Promise<boolean> }) {
   const [titulo, setTitulo] = useState("");
   const [quando, setQuando] = useState("");
   const [minutos, setMinutos] = useState(90);
   const [descricao, setDescricao] = useState("");
   const [escolhidas, setEscolhidas] = useState<string[]>([]);
   const [destino, setDestino] = useState<number | null>(null);
+  const [categoria, setCategoria] = useState("");
   const [salvando, setSalvando] = useState(false);
 
   async function enviar(e: FormEvent) {
@@ -172,6 +181,7 @@ function Agendar({ turmas, aoAgendar }: { turmas: string[]; aoAgendar: (d: Novo)
       descricao: descricao.trim(),
       turmas: escolhidas,
       submodulo_id: destino,
+      categoria: categoria.trim(),
     });
     setSalvando(false);
     if (ok) {
@@ -239,6 +249,9 @@ function Agendar({ turmas, aoAgendar }: { turmas: string[]; aoAgendar: (d: Novo)
           )}
         </Campo>
         <Turmas turmas={turmas} escolhidas={escolhidas} aoMudar={setEscolhidas} />
+        <Campo rotulo="Categoria" dica="Texto livre, ex.: Aula ou Monitoria. É o que o botão do menu usa para separar as lives.">
+          {(id) => <CampoCategoria id={id} valor={categoria} aoMudar={setCategoria} sugestoes={categorias} />}
+        </Campo>
         <DestinoDaGravacao turmas={escolhidas} valor={destino} aoMudar={setDestino} />
         <Botao type="submit" variante="primario" disabled={salvando} className="w-fit">
           {salvando ? "Agendando…" : "Agendar em rascunho"}

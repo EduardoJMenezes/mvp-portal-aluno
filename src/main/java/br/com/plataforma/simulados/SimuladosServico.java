@@ -203,13 +203,13 @@ public class SimuladosServico {
     public record ResumoDoSimulado(
             Integer simuladoId, String titulo, Status status, Situacao situacao, List<String> turmas,
             String abreEm, String fechaEm, Integer duracaoMinutos, int totalQuestoes,
-            Integer tentativas) {}
+            Integer tentativas, String categoria) {}
 
     public ResumoDoSimulado resumo(Simulado s, Instant agora, Integer quantasTentativas) {
         return new ResumoDoSimulado(s.getId(), s.getTitulo(), s.getStatus(), situacao(s, agora),
                 s.getTurmas().stream().map(Turma::getNome).toList(),
                 Relogio.iso(s.getAbreEm()), Relogio.iso(s.getFechaEm()), s.getDuracaoMinutos(),
-                s.getQuestoes().size(), quantasTentativas);
+                s.getQuestoes().size(), quantasTentativas, s.getCategoria());
     }
 
     @Transactional(readOnly = true)
@@ -349,6 +349,13 @@ public class SimuladosServico {
                                 .formatted(s.getTitulo()));
             }
         }
+    }
+
+    /** A categoria muda em qualquer situação: é só a gaveta onde o simulado aparece. */
+    @Transactional
+    public void mudarCategoria(Identidade ident, Simulado s, String categoria) {
+        ident.exigirOperador();
+        s.mudarCategoria(br.com.plataforma.comum.Categoria.limpar(categoria));
     }
 
     /** Aplica o que foi permitido. Recebe a prova já montada: montar é orquestração da borda. */

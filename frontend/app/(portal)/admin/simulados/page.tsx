@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { BotaoLink, Cartao, Estado, Etiqueta, Pagina, Vazio } from "@/components/ui";
+import { EditarCategoria, categoriasDe } from "@/components/Categoria";
+import { Aviso, BotaoLink, Cartao, Estado, Etiqueta, Pagina, Vazio } from "@/components/ui";
 import { api, useDados } from "@/lib/api";
 import { emBrasilia, plural } from "@/lib/formato";
 import { SITUACAO } from "@/lib/rotulos";
@@ -11,6 +12,19 @@ export default function SimuladosDoProfessor() {
   const turmas = useDados(() => api.turmas());
   const [turma, setTurma] = useState("");
   const lista = useDados(() => api.simuladosDoProfessor(turma || undefined), [turma]);
+  const [erro, setErro] = useState("");
+
+  async function mudarCategoria(id: number, categoria: string) {
+    setErro("");
+    try {
+      await api.editarSimulado(id, { categoria });
+      await lista.recarregar();
+      return true;
+    } catch (ex) {
+      setErro((ex as Error).message);
+      return false;
+    }
+  }
 
   return (
     <Pagina
@@ -32,6 +46,7 @@ export default function SimuladosDoProfessor() {
           ))}
         </select>
       </div>
+      {erro && <Aviso tom="erro">{erro}</Aviso>}
       <Estado {...lista} linhas={4}>
         {(simulados) =>
           simulados.length === 0 ? (
@@ -42,6 +57,7 @@ export default function SimuladosDoProfessor() {
                 <thead>
                   <tr>
                     <th scope="col">Simulado</th>
+                    <th scope="col">Categoria</th>
                     <th scope="col">Situação</th>
                     <th scope="col">Abre</th>
                     <th scope="col">Fecha</th>
@@ -59,6 +75,9 @@ export default function SimuladosDoProfessor() {
                             {s.turmas.join(", ") || "Sem turma"} · {plural(s.total_questoes, "questão", "questões")}
                             {s.duracao_minutos ? ` · ${s.duracao_minutos} min` : ""}
                           </p>
+                        </td>
+                        <td>
+                          <EditarCategoria valor={s.categoria} sugestoes={categoriasDe(simulados)} aoSalvar={(c) => mudarCategoria(s.simulado_id, c)} />
                         </td>
                         <td><Etiqueta tom={tom}>{rotulo}</Etiqueta></td>
                         <td className="whitespace-nowrap tabular-nums">{emBrasilia(s.abre_em)}</td>

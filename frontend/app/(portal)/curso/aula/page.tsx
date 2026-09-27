@@ -17,7 +17,8 @@ export default function PaginaDaAula() {
 }
 
 function Aula() {
-  const conteudo = useDados(() => api.conteudo());
+  // Relido a cada minuto: a aula ao vivo do capítulo muda de estado sem recarregar.
+  const conteudo = useDados(() => api.conteudo(), [], 60);
   return (
     <Estado {...conteudo} linhas={4}>
       {(turmas) => <Modulo turmas={turmas} />}

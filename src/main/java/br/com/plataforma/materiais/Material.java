@@ -41,6 +41,8 @@ public class Material extends Rastreavel {
     @Column(nullable = false)
     private String titulo;
 
+    private String categoria;
+
     @Column(name = "arquivo_nome")
     private String arquivoNome;
 
@@ -121,6 +123,14 @@ public class Material extends Rastreavel {
 
     void mudarTitulo(String titulo) {
         this.titulo = titulo;
+    }
+
+    public String getCategoria() {
+        return categoria;
+    }
+
+    void mudarCategoria(String categoria) {
+        this.categoria = categoria;
     }
 
     void mudarStatus(Status status, Instant agora) {

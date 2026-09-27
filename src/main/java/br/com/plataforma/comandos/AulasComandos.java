@@ -57,7 +57,8 @@ public class AulasComandos {
             Boolean gravar,
             String modulo,
             String submodulo,
-            Boolean publicar) {}
+            Boolean publicar,
+            String categoria) {}
 
     public record AulaAgendada(AulasServico.Resumo aula, String mensagem) {}
 
@@ -82,13 +83,15 @@ public class AulasComandos {
         var agora = Instant.now();
         var resumo = aulas.criar(ident, new AulasServico.Dados(pedido.titulo(), inicio, pedido.minutos(),
                 pedido.descricao(), pedido.gravar(), catalogo.resolverTurmas(turmas),
-                pedido.alunos() == null ? List.of() : pedido.alunos(), destino, null, null), agora);
+                pedido.alunos() == null ? List.of() : pedido.alunos(), destino, null, null, pedido.categoria()),
+                agora);
         if (!publicar) {
             return new AulaAgendada(resumo, "Aula criada em RASCUNHO, sem sala no Zoom. Para abrir a sala, "
                     + "publique em Admin › Aulas ao vivo. Não agende de novo com publicar: criaria outra aula.");
         }
         resumo = aulas.editar(ident, String.valueOf(resumo.aulaId()),
-                new AulasServico.Dados(null, null, null, null, null, null, null, null, null, "PUBLICADO"), agora);
+                new AulasServico.Dados(null, null, null, null, null, null, null, null, null, "PUBLICADO", null),
+                agora);
         return new AulaAgendada(resumo, "Aula publicada: a sala do Zoom foi criada e a turma já vê a aula"
                 + (destino == null ? "." : " no capítulo."));
     }

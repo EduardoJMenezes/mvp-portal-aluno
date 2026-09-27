@@ -81,7 +81,7 @@ export async function pedir<T>(caminho: string, opcoes: Opcoes = {}): Promise<T>
 }
 
 /** Carrega na montagem e quando as dependências mudam; `recarregar` para depois de uma ação. */
-export function useDados<T>(carregar: () => Promise<T>, dependencias: unknown[] = []) {
+export function useDados<T>(carregar: () => Promise<T>, dependencias: unknown[] = [], aCadaSegundos?: number) {
   const [dados, setDados] = useState<T | null>(null);
   const [erro, setErro] = useState("");
   const [carregando, setCarregando] = useState(true);
@@ -104,6 +104,13 @@ export function useDados<T>(carregar: () => Promise<T>, dependencias: unknown[] 
   useEffect(() => {
     void recarregar();
   }, [recarregar]);
+
+  // Recarga silenciosa: sem esqueleto de carregando, e erro de rede passageiro não apaga a tela.
+  useEffect(() => {
+    if (!aCadaSegundos) return;
+    const id = setInterval(() => void executar().then(setDados, () => {}), aCadaSegundos * 1000);
+    return () => clearInterval(id);
+  }, [executar, aCadaSegundos]);
 
   return { dados, erro, carregando, recarregar, setDados };
 }
@@ -154,8 +161,22 @@ export type ItemCurso = { id: number; nome: string; ordem: number; status: Statu
 /** Aula ao vivo agendada no sub-módulo, enquanto a gravação não chegou. ENCERRADA aqui é "processando". */
 export type AulaNoCurso = { aula_id: number; titulo: string; inicio_em: string; minutos: number; estado: Aula["estado"]; abre_em: string };
 export type SubModulo = { id: number; nome: string; tipo: string; ordem: number; itens: ItemCurso[]; aulas?: AulaNoCurso[] };
-export type Modulo = { id: number; nome: string; ordem: number; turma: string; submodulos: SubModulo[] };
+export type Modulo = { id: number; nome: string; ordem: number; categoria?: string | null; turma: string; submodulos: SubModulo[] };
 export type ConteudoDaTurma = { turma: string; turma_id: number; modulos: Modulo[] };
+
+/** A categoria livre de cada feature (decisão 0009): o botão do menu recorta a feature por ela. */
+export type ComCategoria = { categoria?: string | null };
+
+/** O filtro do botão casa com a categoria do item. Sem filtro, casa com tudo. */
+export function casaCategoria(filtro: string | null | undefined, categoria: string | null | undefined) {
+  return !filtro?.trim() || filtro.trim().toLowerCase() === (categoria ?? "").toLowerCase();
+}
+
+export type Funcionalidade = "CURSO" | "AULAS" | "SIMULADOS" | "MATERIAIS";
+export type BotaoDoMenu = { rotulo: string; funcionalidade: Funcionalidade; categoria?: string | null };
+/** AGORA: aula no ar dentro do destino do botão. EM_BREVE: a sala já abriu (15 min antes). */
+export type BotaoDoAluno = BotaoDoMenu & { ao_vivo?: "AGORA" | "EM_BREVE" | null };
+export type MenuDaTurma = { turma_id: number; turma: string; padrao: boolean; botoes: BotaoDoMenu[] };
 
 export type Turma = {
   id: number;
@@ -180,6 +201,7 @@ export type SimuladoResumo = {
   tentativas?: number;
   minha_prova?: { iniciada: boolean; entregue: boolean; prazo_em: string | null };
   resultado_disponivel?: boolean;
+  categoria?: string | null;
 };
 
 export type QuestaoDaProva = {
@@ -394,6 +416,7 @@ export type Aula = {
   presentes: { nome: string; entrou_em: string; saiu_em: string | null }[];
   /** A gravação no curso, já publicada. */
   assistir: { modulo_id: number; item_id: number } | null;
+  categoria?: string | null;
 };
 
 export type Material = {
@@ -407,6 +430,7 @@ export type Material = {
   criado_em: string | null;
   publicado_em: string | null;
   paginas_anotadas?: number;
+  categoria?: string | null;
 };
 
 /** Um traço do aluno, em coordenadas relativas à página (0 a 1). */
@@ -575,6 +599,7 @@ export const api = {
 
   // materiais
   materiais: () => pedir<Material[]>("/aluno/materiais"),
+  menu: () => pedir<BotaoDoAluno[]>("/aluno/menu"),
 
   // aulas ao vivo
   aulas: () => pedir<Aula[]>("/aluno/aulas"),
@@ -599,6 +624,11 @@ export const api = {
 
   // professor: consulta
   turmas: () => pedir<Turma[]>("/admin/turmas"),
+  menuDaTurma: (turma: number) => pedir<MenuDaTurma>(`/admin/turmas/${turma}/menu`),
+  definirMenu: (turma: number, botoes: BotaoDoMenu[]) =>
+    pedir<MenuDaTurma>(`/admin/turmas/${turma}/menu`, { method: "PUT", json: { botoes } }),
+  copiarMenu: (turma: number, de: number) =>
+    pedir<MenuDaTurma>(`/admin/turmas/${turma}/menu/copiar`, { method: "POST", json: { de: String(de) } }),
   modulos: (turma: string | number) => pedir<Modulo[]>(`/admin/modulos${q({ turma })}`),
   assuntos: () => pedir<Assunto[]>("/admin/assuntos"),
   questoes: (filtro: { assunto?: string; status?: string; dificuldade?: string; busca?: string; limite?: number; offset?: number }) =>
@@ -617,9 +647,9 @@ export const api = {
   redefinirSenha: (aluno: number) => pedir<{ aluno: Aluno; senha_temporaria: string }>(`/admin/alunos/${aluno}/senha`, { method: "POST" }),
 
   // curso
-  criarModulo: (turma: number, nome: string, submodulos?: string[]) =>
-    pedir<{ modulo_id: number }>(`/admin/turmas/${turma}/modulos`, { method: "POST", json: { nome, submodulos } }),
-  editarModulo: (turma: number, modulo: number, dados: { nome?: string; ordem?: number }) =>
+  criarModulo: (turma: number, nome: string, submodulos?: string[], categoria?: string) =>
+    pedir<{ modulo_id: number }>(`/admin/turmas/${turma}/modulos`, { method: "POST", json: { nome, submodulos, categoria } }),
+  editarModulo: (turma: number, modulo: number, dados: { nome?: string; ordem?: number; categoria?: string }) =>
     pedir(`/admin/turmas/${turma}/modulos/${modulo}`, { method: "PATCH", json: dados }),
   removerModulo: (turma: number, modulo: number) =>
     pedir<{ itens_publicados_que_somem_da_tela: number }>(`/admin/turmas/${turma}/modulos/${modulo}`, { method: "DELETE" }),
@@ -706,10 +736,11 @@ export const api = {
     turmas?: string[];
     alunos?: string[];
     submodulo_id?: number | null;
+    categoria?: string;
   }) => pedir<Aula>("/admin/aulas", { method: "POST", json: dados }),
   editarAula: (
     id: number,
-    dados: { titulo?: string; inicio_em?: string; minutos?: number; status?: string; turmas?: string[]; alunos?: string[] },
+    dados: { titulo?: string; inicio_em?: string; minutos?: number; status?: string; turmas?: string[]; alunos?: string[]; categoria?: string },
   ) => pedir<Aula>(`/admin/aulas/${id}`, { method: "PATCH", json: dados }),
   removerAula: (id: number) => pedir<{ aula_id: number; titulo: string }>(`/admin/aulas/${id}`, { method: "DELETE" }),
   colocarVideoNaAula: (id: number, video: string) => pedir<Aula>(`/admin/aulas/${id}/video`, { method: "POST", json: { video } }),
@@ -725,7 +756,7 @@ export const api = {
     // Apostila de 40 MB em rede de escola: o tempo padrão de 15 s não serve.
     return pedir<Material>("/admin/materiais", { method: "POST", body: corpo, signal: AbortSignal.timeout(600_000) });
   },
-  editarMaterial: (id: number, dados: { titulo?: string; status?: string; turmas?: string[]; alunos?: string[] }) =>
+  editarMaterial: (id: number, dados: { titulo?: string; status?: string; turmas?: string[]; alunos?: string[]; categoria?: string }) =>
     pedir<Material>(`/admin/materiais/${id}`, { method: "PATCH", json: dados }),
   removerMaterial: (id: number) => pedir<{ material_id: number; titulo: string }>(`/admin/materiais/${id}`, { method: "DELETE" }),
 

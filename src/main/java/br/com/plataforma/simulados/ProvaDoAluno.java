@@ -68,7 +68,7 @@ public class ProvaDoAluno {
     public record SimuladoDoAluno(
             Integer simuladoId, String titulo, Status status, Situacao situacao, List<String> turmas,
             String abreEm, String fechaEm, Integer duracaoMinutos, int totalQuestoes,
-            MinhaProva minhaProva, boolean resultadoDisponivel) {}
+            MinhaProva minhaProva, boolean resultadoDisponivel, String categoria) {}
 
     @Transactional
     public List<SimuladoDoAluno> listar(Identidade ident, Instant agora) {
@@ -85,7 +85,7 @@ public class ProvaDoAluno {
             saida.add(new SimuladoDoAluno(r.simuladoId(), r.titulo(), r.status(), r.situacao(),
                     r.turmas(), r.abreEm(), r.fechaEm(), r.duracaoMinutos(), r.totalQuestoes(),
                     new MinhaProva(t != null, entregue, t == null ? null : Relogio.iso(t.getPrazoEm())),
-                    r.situacao() == Situacao.ENCERRADO && t != null));
+                    r.situacao() == Situacao.ENCERRADO && t != null, r.categoria()));
         }
         return saida;
     }
