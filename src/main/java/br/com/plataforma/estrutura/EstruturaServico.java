@@ -20,12 +20,14 @@ public class EstruturaServico {
     private final ModuloRepositorio modulos;
     private final SubModuloRepositorio submodulos;
     private final ItemRepositorio itens;
+    private final br.com.plataforma.agenda.LiberacaoServico liberacao;
 
-    public EstruturaServico(
-            ModuloRepositorio modulos, SubModuloRepositorio submodulos, ItemRepositorio itens) {
+    public EstruturaServico(ModuloRepositorio modulos, SubModuloRepositorio submodulos, ItemRepositorio itens,
+            br.com.plataforma.agenda.LiberacaoServico liberacao) {
         this.modulos = modulos;
         this.submodulos = submodulos;
         this.itens = itens;
+        this.liberacao = liberacao;
     }
 
     // --- resolução por nome --------------------------------------------------
@@ -57,6 +59,12 @@ public class EstruturaServico {
     @Transactional(readOnly = true)
     public java.util.Optional<Item> item(Integer id) {
         return id == null ? java.util.Optional.empty() : itens.findById(id);
+    }
+
+    /** Módulo pelo id; removido é vazio. */
+    @Transactional(readOnly = true)
+    public java.util.Optional<Modulo> modulo(Integer id) {
+        return id == null ? java.util.Optional.empty() : modulos.findById(id);
     }
 
     /** Sub-módulo pelo id; removido é vazio. */
@@ -98,21 +106,26 @@ public class EstruturaServico {
      * Módulos › sub-módulos › itens como uma turma os enxerga: os módulos que ela recebe e os que
      * têm aula só dela (decisão 0011).
      *
-     * <p>{@code doAluno}: só o que o aluno vê — item publicado e visível para a turma. Módulo e
+     * <p>{@code doAluno}: só o que o aluno vê — item publicado, visível para a turma e já liberado
+     * pela agenda até {@code agora} (decisão 0012). Módulo e
      * sub-módulo não têm status próprio, então aparecem quando sobra item dentro, a não ser que
      * quem chama peça {@code manterVazios} (a tela do curso, que mostra ali a aula ao vivo).
      * Sem {@code doAluno}, o professor vê todos os itens, com a restrição de cada um.
      */
     @Transactional(readOnly = true)
-    public List<ModuloNaArvore> arvoreDaTurma(Turma turma, boolean doAluno, boolean manterVazios) {
+    public List<ModuloNaArvore> arvoreDaTurma(Turma turma, boolean doAluno, boolean manterVazios,
+            java.time.Instant agora) {
         var arvore = new java.util.ArrayList<ModuloNaArvore>();
+        var agenda = doAluno ? liberacao.das(List.of(turma.getId()))
+                : br.com.plataforma.agenda.LiberacaoServico.Liberacoes.NENHUMA;
 
         for (var modulo : modulos.daTurma(turma)) {
             var galhos = new java.util.ArrayList<SubModuloNaArvore>();
 
             for (var sub : submodulos.findByModuloOrderByOrdemAsc(modulo)) {
                 var lista = itens.findBySubmoduloOrderByOrdemAsc(sub).stream()
-                        .filter(i -> !doAluno || (i.getStatus() == Status.PUBLICADO && i.visivelPara(turma)))
+                        .filter(i -> !doAluno || (i.getStatus() == Status.PUBLICADO && i.visivelPara(turma)
+                                && agenda.liberado(turma.getId(), modulo.getId(), i.getId(), agora)))
                         .toList();
                 if (doAluno && !manterVazios && lista.isEmpty()) {
                     continue;

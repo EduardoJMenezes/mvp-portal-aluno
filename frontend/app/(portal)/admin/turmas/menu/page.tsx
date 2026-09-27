@@ -19,6 +19,7 @@ const FUNCIONALIDADES: { valor: Funcionalidade; rotulo: string }[] = [
   { valor: "AULAS", rotulo: "Aulas ao vivo" },
   { valor: "SIMULADOS", rotulo: "Simulados" },
   { valor: "MATERIAIS", rotulo: "Materiais" },
+  { valor: "AGENDA", rotulo: "Agenda" },
 ];
 
 /**
@@ -28,9 +29,9 @@ const FUNCIONALIDADES: { valor: Funcionalidade; rotulo: string }[] = [
 function MenuDaTurma() {
   const turmaId = Number(useSearchParams().get("turma"));
   const dados = useDados(async () => {
-    const [menu, turmas, modulos, aulas, simulados, materiais] = await Promise.all([
+    const [menu, turmas, modulos, aulas, simulados, materiais, agenda] = await Promise.all([
       api.menuDaTurma(turmaId), api.turmas(), api.modulos(turmaId), api.aulasDoProfessor(),
-      api.simuladosDoProfessor(String(turmaId)), api.materiaisDoProfessor(),
+      api.simuladosDoProfessor(String(turmaId)), api.materiaisDoProfessor(), api.agendaDoProfessor(String(turmaId)),
     ]);
     // As categorias que já existem em cada feature: viram sugestão e conferem se o botão abre vazio.
     const categorias: Record<Funcionalidade, string[]> = {
@@ -38,6 +39,7 @@ function MenuDaTurma() {
       AULAS: categoriasDe(aulas),
       SIMULADOS: categoriasDe(simulados),
       MATERIAIS: categoriasDe(materiais),
+      AGENDA: categoriasDe(agenda),
     };
     return { menu, turmas, categorias };
   }, [turmaId]);

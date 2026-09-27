@@ -175,7 +175,32 @@ export function casaCategoria(filtro: string | null | undefined, categoria: stri
   return !filtro?.trim() || filtro.trim().toLowerCase() === (categoria ?? "").toLowerCase();
 }
 
-export type Funcionalidade = "CURSO" | "AULAS" | "SIMULADOS" | "MATERIAIS";
+export type Funcionalidade = "CURSO" | "AULAS" | "SIMULADOS" | "MATERIAIS" | "AGENDA";
+
+/** O que um evento da agenda abre (decisão 0012). `modulo_id` vem junto da aula, que abre no módulo. */
+export type TipoDeLigacao = "AULA" | "MODULO" | "AULA_AO_VIVO" | "SIMULADO";
+export type DestinoDoEvento = { tipo: TipoDeLigacao; id: number; modulo_id?: number | null; nome: string };
+export type EventoDaAgenda = {
+  evento_id: number;
+  titulo: string;
+  descricao?: string | null;
+  inicio_em: string;
+  fim_em?: string | null;
+  categoria?: string | null;
+  turmas: string[];
+  destino?: DestinoDoEvento | null;
+  /** A hora do evento já passou: o conteúdo ligado já saiu. */
+  liberado: boolean;
+};
+export type DadosDoEvento = {
+  titulo?: string;
+  descricao?: string;
+  inicio_em?: string;
+  fim_em?: string | null;
+  categoria?: string;
+  turmas?: string[];
+  ligacao?: { tipo: TipoDeLigacao | "NENHUMA"; id?: number | null };
+};
 export type BotaoDoMenu = { rotulo: string; funcionalidade: Funcionalidade; categoria?: string | null };
 /** AGORA: aula no ar dentro do destino do botão. EM_BREVE: a sala já abriu (15 min antes). */
 export type BotaoDoAluno = BotaoDoMenu & { ao_vivo?: "AGORA" | "EM_BREVE" | null };
@@ -604,6 +629,7 @@ export const api = {
   // materiais
   materiais: () => pedir<Material[]>("/aluno/materiais"),
   menu: () => pedir<BotaoDoAluno[]>("/aluno/menu"),
+  agenda: () => pedir<EventoDaAgenda[]>("/aluno/agenda"),
 
   // aulas ao vivo
   aulas: () => pedir<Aula[]>("/aluno/aulas"),
@@ -628,6 +654,10 @@ export const api = {
 
   // professor: consulta
   turmas: () => pedir<Turma[]>("/admin/turmas"),
+  agendaDoProfessor: (turma?: string) => pedir<EventoDaAgenda[]>(`/admin/agenda${q({ turma })}`),
+  criarEvento: (dados: DadosDoEvento) => pedir<EventoDaAgenda>("/admin/agenda", { method: "POST", json: dados }),
+  editarEvento: (id: number, dados: DadosDoEvento) => pedir<EventoDaAgenda>(`/admin/agenda/${id}`, { method: "PATCH", json: dados }),
+  removerEvento: (id: number) => pedir<{ evento_id: number; titulo: string }>(`/admin/agenda/${id}`, { method: "DELETE" }),
   biblioteca: () => pedir<ModuloDaBiblioteca[]>("/admin/biblioteca"),
   bibliotecaArvore: () => pedir<Modulo[]>("/admin/biblioteca/arvore"),
   turmasDoModulo: (modulo: number, turmas: string[]) =>

@@ -19,7 +19,7 @@ import jakarta.persistence.Table;
 public class BotaoDoMenu {
 
     /** As features que viram botão. Início e Desempenho ficam fixos, fora do menu montado. */
-    public enum Funcionalidade { CURSO, AULAS, SIMULADOS, MATERIAIS }
+    public enum Funcionalidade { CURSO, AULAS, SIMULADOS, MATERIAIS, AGENDA }
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)

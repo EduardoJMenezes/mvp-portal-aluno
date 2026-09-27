@@ -2,23 +2,25 @@
 
 import Link from "next/link";
 import { BotaoLink, Cartao, Estado, Etiqueta, Pagina, TituloDeSecao, Vazio } from "@/components/ui";
-import { api, useDados, type ConteudoDaTurma, type SimuladoResumo } from "@/lib/api";
+import { LinhaDoEvento } from "@/components/Agenda";
+import { api, useDados, type ConteudoDaTurma, type EventoDaAgenda, type SimuladoResumo } from "@/lib/api";
 import { emBrasilia, plural } from "@/lib/formato";
 import { useUsuario } from "@/lib/sessao";
 
 export default function Inicio() {
   const usuario = useUsuario();
   const dados = useDados(async () => {
-    const [simulados, conteudo] = await Promise.all([api.simulados(), api.conteudo()]);
-    return { simulados, conteudo };
+    const [simulados, conteudo, agenda] = await Promise.all([api.simulados(), api.conteudo(), api.agenda()]);
+    return { simulados, conteudo, agenda };
   });
   const primeiroNome = usuario.nome.split(" ")[0];
 
   return (
     <Pagina titulo={`Olá, ${primeiroNome}`} legenda={usuario.turmas.length ? `Sua turma: ${usuario.turmas.join(", ")}` : undefined}>
       <Estado {...dados} linhas={4}>
-        {({ simulados, conteudo }) => (
+        {({ simulados, conteudo, agenda }) => (
           <>
+            <EstaSemana agenda={agenda} />
             <Simulados simulados={simulados} />
             <Curso conteudo={conteudo} />
           </>
@@ -109,6 +111,28 @@ function Curso({ conteudo }: { conteudo: ConteudoDaTurma[] }) {
           })}
         </ul>
       )}
+    </section>
+  );
+}
+
+/** Os eventos da semana até hoje (a agenda não mostra o futuro), com o link para estudar. */
+function EstaSemana({ agenda }: { agenda: EventoDaAgenda[] }) {
+  const hoje = new Date();
+  const segunda = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate() - ((hoje.getDay() + 6) % 7));
+  const daSemana = agenda.filter((e) => new Date(e.inicio_em) >= segunda);
+  if (daSemana.length === 0) return null;
+  return (
+    <section className="flex flex-col gap-3" aria-labelledby="titulo-semana">
+      <TituloDeSecao acao={<Link href="/agenda/" className="text-sm font-semibold text-acento hover:underline">Agenda completa</Link>}>
+        <span id="titulo-semana">Esta semana</span>
+      </TituloDeSecao>
+      <Cartao>
+        <ul className="divide-y divide-borda">
+          {daSemana.map((e) => (
+            <LinhaDoEvento key={e.evento_id} evento={e} />
+          ))}
+        </ul>
+      </Cartao>
     </section>
   );
 }

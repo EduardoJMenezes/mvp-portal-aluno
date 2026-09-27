@@ -9,7 +9,7 @@ import { ehOperador, useSessao, useUsuario } from "@/lib/sessao";
 /** `categoria` só nos botões montados pelo professor: é o que separa dois botões da mesma tela. */
 type Destino = { href: string; rotulo: string; exato?: boolean; categoria?: string | null; aoVivo?: BotaoDoAluno["ao_vivo"] };
 
-const ROTA: Record<Funcionalidade, string> = { CURSO: "/curso/", AULAS: "/aulas/", SIMULADOS: "/simulados/", MATERIAIS: "/materiais/" };
+const ROTA: Record<Funcionalidade, string> = { CURSO: "/curso/", AULAS: "/aulas/", SIMULADOS: "/simulados/", MATERIAIS: "/materiais/", AGENDA: "/agenda/" };
 
 /** Início e Desempenho são fixos; o meio é o menu que o professor montou para a turma (decisão 0009). */
 function doAluno(menu: BotaoDoAluno[]): Destino[] {
@@ -30,6 +30,7 @@ const DO_OPERADOR: Destino[] = [
   { href: "/admin/turmas/", rotulo: "Turmas" },
   { href: "/admin/biblioteca/", rotulo: "Aulas" },
   { href: "/admin/aulas/", rotulo: "Aulas ao vivo" },
+  { href: "/admin/agenda/", rotulo: "Agenda" },
   { href: "/admin/rascunhos/", rotulo: "Rascunhos" },
   { href: "/admin/questoes/", rotulo: "Questões" },
   { href: "/admin/simulados/", rotulo: "Simulados" },

@@ -31,6 +31,12 @@ public class AcessoServico {
     @PersistenceContext
     private EntityManager em;
 
+    private final br.com.plataforma.agenda.LiberacaoServico liberacao;
+
+    public AcessoServico(br.com.plataforma.agenda.LiberacaoServico liberacao) {
+        this.liberacao = liberacao;
+    }
+
     /**
      * Quais destes vídeos esta pessoa pode assistir.
      *
@@ -48,18 +54,27 @@ public class AcessoServico {
             return ids;
         }
 
+        // A turma vê o item (decisão 0011) e a agenda já o liberou para ela (decisão 0012).
+        var turmas = em.createQuery("select m.turma from Matricula m where m.usuarioId = :usuario",
+                br.com.plataforma.catalogo.Turma.class).setParameter("usuario", ident.usuarioId()).getResultList();
+        var agenda = liberacao.das(turmas.stream().map(br.com.plataforma.catalogo.Turma::getId).toList());
         var doCurso = em.createQuery("""
-                select i.video.id from Item i
+                select i from Item i
                  where i.video.id in :ids
                    and i.status = br.com.plataforma.comum.Status.PUBLICADO
                    and exists (select 1 from Matricula m
                                 where m.usuarioId = :usuario
                                   and (m.turma member of i.turmas
                                        or (i.turmas is empty
-                                           and m.turma member of i.submodulo.modulo.turmas)))""", Integer.class)
+                                           and m.turma member of i.submodulo.modulo.turmas)))""",
+                        br.com.plataforma.estrutura.Item.class)
                 .setParameter("ids", ids)
                 .setParameter("usuario", ident.usuarioId())
-                .getResultList();
+                .getResultList().stream()
+                .filter(i -> turmas.stream().anyMatch(t -> i.visivelPara(t) && agenda.liberado(t.getId(),
+                        i.getSubmodulo().getModulo() == null ? null : i.getSubmodulo().getModulo().getId(), i.getId(), agora)))
+                .map(i -> i.getVideo().getId())
+                .toList();
 
         // A resolução vem com o resultado: para quem fez a prova, depois que ela fecha. Antes
         // disso, o vídeo seria o gabarito com narração.

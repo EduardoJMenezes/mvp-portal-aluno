@@ -41,7 +41,7 @@ public class MenuServico {
                     .filter(f -> funcionalidade != null && f.name().equals(funcionalidade.strip().toUpperCase(Locale.ROOT)))
                     .findFirst()
                     .orElseThrow(() -> new RegraDeNegocio(("'%s' leva a quê? Use uma destas: CURSO (aulas gravadas), "
-                            + "AULAS (aulas ao vivo), SIMULADOS ou MATERIAIS.").formatted(nome)));
+                            + "AULAS (aulas ao vivo), SIMULADOS, MATERIAIS ou AGENDA.").formatted(nome)));
             return new Botao(nome, feature, Categoria.limpar(categoria));
         }
     }
@@ -49,12 +49,13 @@ public class MenuServico {
     /** {@code padrao}: a turma ainda não montou o menu, e vale o de sempre. */
     public record Menu(Integer turmaId, String turma, boolean padrao, List<Botao> botoes) {}
 
-    /** O menu de antes da 0009, para a turma que não montou o seu. */
+    /** O menu de antes da 0009 (mais a Agenda, da 0012), para a turma que não montou o seu. */
     public static final List<Botao> PADRAO = List.of(
             new Botao("Curso", Funcionalidade.CURSO, null),
             new Botao("Simulados", Funcionalidade.SIMULADOS, null),
             new Botao("Aulas ao vivo", Funcionalidade.AULAS, null),
-            new Botao("Materiais", Funcionalidade.MATERIAIS, null));
+            new Botao("Materiais", Funcionalidade.MATERIAIS, null),
+            new Botao("Agenda", Funcionalidade.AGENDA, null));
 
     private final BotaoDoMenuRepositorio botoes;
     private final ContasServico contas;

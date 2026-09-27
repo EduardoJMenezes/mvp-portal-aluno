@@ -28,7 +28,7 @@ class MenuTest extends BaseDoPortal {
     @Test
     void semMenuMontadoValeODeSempre() throws Exception {
         get("/api/aluno/menu", ALUNO)
-                .andExpect(jsonPath("$[*].rotulo").value(Matchers.contains("Curso", "Simulados", "Aulas ao vivo", "Materiais")))
+                .andExpect(jsonPath("$[*].rotulo").value(Matchers.contains("Curso", "Simulados", "Aulas ao vivo", "Materiais", "Agenda")))
                 .andExpect(jsonPath("$[0].ao_vivo").doesNotExist());
         get("/api/admin/turmas/Extensivo 2027/menu", ADMIN).andExpect(jsonPath("$.padrao").value(true));
     }
@@ -48,13 +48,13 @@ class MenuTest extends BaseDoPortal {
 
         put("/api/admin/turmas/Extensivo 2027/menu", "{\"botoes\": []}", ADMIN)
                 .andExpect(jsonPath("$.padrao").value(true));
-        get("/api/aluno/menu", ALUNO).andExpect(jsonPath("$.length()").value(4));
+        get("/api/aluno/menu", ALUNO).andExpect(jsonPath("$.length()").value(5));
     }
 
     @Test
     void botaoSemNomeOuSemDestinoERecusadoENadaMuda() throws Exception {
         put("/api/admin/turmas/Extensivo 2027/menu", """
-                {"botoes": [{"rotulo": "Agenda", "funcionalidade": "AGENDA"}]}""", ADMIN)
+                {"botoes": [{"rotulo": "Lives", "funcionalidade": "LIVES"}]}""", ADMIN)
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.detail").value(Matchers.containsString("CURSO (aulas gravadas), AULAS")));
         put("/api/admin/turmas/Extensivo 2027/menu", """
