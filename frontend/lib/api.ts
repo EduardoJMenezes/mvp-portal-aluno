@@ -108,6 +108,22 @@ export function useDados<T>(carregar: () => Promise<T>, dependencias: unknown[] 
   return { dados, erro, carregando, recarregar, setDados };
 }
 
+/**
+ * Abre o endereço numa aba nova. A aba abre agora, no clique, e recebe o endereço quando ele
+ * chega: se esperarmos a resposta para abrir, o navegador trata como pop-up e barra.
+ */
+export async function abrirEmNovaAba(pedirEndereco: () => Promise<{ url: string }>) {
+  const aba = window.open("", "_blank");
+  try {
+    const { url } = await pedirEndereco();
+    if (aba) aba.location.href = url;
+    else window.location.href = url;
+  } catch (ex) {
+    aba?.close();
+    throw ex;
+  }
+}
+
 // --- tipos -------------------------------------------------------------------
 
 export type Papel = "ADMIN" | "GERENCIADOR" | "ALUNO";
@@ -135,7 +151,9 @@ export type Video = {
 };
 
 export type ItemCurso = { id: number; nome: string; ordem: number; status: StatusConteudo; video_id: number; video?: Video | null };
-export type SubModulo = { id: number; nome: string; tipo: string; ordem: number; itens: ItemCurso[] };
+/** Aula ao vivo agendada no sub-módulo, enquanto a gravação não chegou. ENCERRADA aqui é "processando". */
+export type AulaNoCurso = { aula_id: number; titulo: string; inicio_em: string; minutos: number; estado: Aula["estado"]; abre_em: string };
+export type SubModulo = { id: number; nome: string; tipo: string; ordem: number; itens: ItemCurso[]; aulas?: AulaNoCurso[] };
 export type Modulo = { id: number; nome: string; ordem: number; turma: string; submodulos: SubModulo[] };
 export type ConteudoDaTurma = { turma: string; turma_id: number; modulos: Modulo[] };
 
@@ -374,7 +392,7 @@ export type Aula = {
   submodulo_id: number | null;
   gravacao: string | null;
   presentes: { nome: string; entrou_em: string; saiu_em: string | null }[];
-  /** A gravação no curso, depois de aprovada. */
+  /** A gravação no curso, já publicada. */
   assistir: { modulo_id: number; item_id: number } | null;
 };
 
@@ -694,6 +712,7 @@ export const api = {
     dados: { titulo?: string; inicio_em?: string; minutos?: number; status?: string; turmas?: string[]; alunos?: string[] },
   ) => pedir<Aula>(`/admin/aulas/${id}`, { method: "PATCH", json: dados }),
   removerAula: (id: number) => pedir<{ aula_id: number; titulo: string }>(`/admin/aulas/${id}`, { method: "DELETE" }),
+  colocarVideoNaAula: (id: number, video: string) => pedir<Aula>(`/admin/aulas/${id}/video`, { method: "POST", json: { video } }),
   iniciarAula: (id: number) => pedir<{ aula_id: number; url: string }>(`/admin/aulas/${id}/iniciar`, { method: "POST" }),
 
   materiaisDoProfessor: () => pedir<Material[]>("/admin/materiais"),

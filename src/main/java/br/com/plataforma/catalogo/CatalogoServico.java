@@ -20,15 +20,17 @@ public class CatalogoServico {
     private final br.com.plataforma.contas.ContasServico contas;
     private final br.com.plataforma.acervo.AcervoServico acervo;
     private final br.com.plataforma.acervo.AcessoServico acesso;
+    private final br.com.plataforma.aulas.AulasServico aulas;
 
     public CatalogoServico(TurmaRepositorio turmas, EstruturaServico estrutura,
             br.com.plataforma.contas.ContasServico contas, br.com.plataforma.acervo.AcervoServico acervo,
-            br.com.plataforma.acervo.AcessoServico acesso) {
+            br.com.plataforma.acervo.AcessoServico acesso, br.com.plataforma.aulas.AulasServico aulas) {
         this.turmas = turmas;
         this.estrutura = estrutura;
         this.contas = contas;
         this.acervo = acervo;
         this.acesso = acesso;
+        this.aulas = aulas;
     }
 
     /** As turmas que a identidade enxerga: operador, todas; aluno, as dele. */
@@ -131,7 +133,7 @@ public class CatalogoServico {
 
     public record SubModuloComVideos(
             Integer id, String nome, br.com.plataforma.estrutura.TipoSubModulo tipo, Integer ordem,
-            List<ItemComVideo> itens) {}
+            List<ItemComVideo> itens, List<br.com.plataforma.aulas.AulasServico.NoCurso> aulas) {}
 
     public record ModuloComVideos(
             Integer id, String nome, Integer ordem, String turma, List<SubModuloComVideos> submodulos) {}
@@ -144,12 +146,27 @@ public class CatalogoServico {
      * <p>O vídeo passa pelo {@link br.com.plataforma.acervo.AcessoServico} antes de sair: o que o
      * aluno pode assistir vem com {@code embed_url}; o que não pode vem com nome e aviso, e nada
      * mais.
+     *
+     * <p>A aula ao vivo agendada num sub-módulo aparece nele antes da gravação: é assim que o
+     * aluno vê como o curso vai acontecer. Por isso o sub-módulo sem vídeo publicado, mas com
+     * aula, continua na tela.
      */
     @Transactional(readOnly = true)
     public List<ConteudoDaTurma> conteudoDoAluno(Identidade ident, java.time.Instant agora) {
         var saida = new java.util.ArrayList<ConteudoDaTurma>();
+        var aoVivo = aulas.noCurso(ident, agora);
         for (var turma : turmasVisiveis(ident)) {
-            var modulos = estrutura.arvoreDaTurma(turma, ident.eAluno());
+            var modulos = estrutura.arvoreDaTurma(turma, false).stream()
+                    .map(m -> new EstruturaServico.ModuloNaArvore(m.id(), m.nome(), m.ordem(), m.turma(),
+                            m.submodulos().stream()
+                                    .map(s -> new EstruturaServico.SubModuloNaArvore(s.id(), s.nome(), s.tipo(),
+                                            s.ordem(), s.itens().stream()
+                                                    .filter(i -> !ident.eAluno() || i.status() == Status.PUBLICADO)
+                                                    .toList()))
+                                    .filter(s -> !ident.eAluno() || !s.itens().isEmpty() || aoVivo.containsKey(s.id()))
+                                    .toList()))
+                    .filter(m -> !ident.eAluno() || !m.submodulos().isEmpty())
+                    .toList();
             if (modulos.isEmpty()) {
                 continue;
             }
@@ -168,7 +185,8 @@ public class CatalogoServico {
                                                     br.com.plataforma.acervo.AcessoServico.descrever(
                                                             videos.get(i.videoId()),
                                                             liberados.contains(i.videoId()))))
-                                            .toList()))
+                                            .toList(),
+                                    aoVivo.getOrDefault(s.id(), List.of())))
                                     .toList()))
                     .toList()));
         }

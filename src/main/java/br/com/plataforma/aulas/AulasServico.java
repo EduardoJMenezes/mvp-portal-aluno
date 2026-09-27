@@ -1,5 +1,6 @@
 package br.com.plataforma.aulas;
 
+import br.com.plataforma.acervo.AcervoServico;
 import br.com.plataforma.catalogo.Turma;
 import br.com.plataforma.comum.Identidade;
 import br.com.plataforma.comum.NaoAutorizado;
@@ -10,11 +11,17 @@ import br.com.plataforma.contas.ContasServico;
 import br.com.plataforma.contas.Pessoa;
 import br.com.plataforma.contas.Usuario;
 import br.com.plataforma.estrutura.EstruturaServico;
+import br.com.plataforma.estrutura.Item;
+import br.com.plataforma.vimeo.ImportacaoVimeo;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
+import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -38,14 +45,18 @@ public class AulasServico {
     private final ContasServico contas;
     private final Zoom zoom;
     private final EstruturaServico estrutura;
+    private final AcervoServico acervo;
+    private final ImportacaoVimeo vimeo;
 
     public AulasServico(AulaRepositorio aulas, AulaPresencaRepositorio presencas, ContasServico contas,
-            Zoom zoom, EstruturaServico estrutura) {
+            Zoom zoom, EstruturaServico estrutura, AcervoServico acervo, ImportacaoVimeo vimeo) {
         this.aulas = aulas;
         this.presencas = presencas;
         this.contas = contas;
         this.zoom = zoom;
         this.estrutura = estrutura;
+        this.acervo = acervo;
+        this.vimeo = vimeo;
     }
 
     @Transactional(readOnly = true)
@@ -57,14 +68,17 @@ public class AulasServico {
     }
 
     private boolean alcanca(Identidade ident, Aula a) {
+        return alcanca(ident, a, contas.turmasDoAluno(ident.usuarioId()));
+    }
+
+    private static boolean alcanca(Identidade ident, Aula a, Collection<Integer> minhasTurmas) {
         if (a.getStatus() != Status.PUBLICADO) {
             return false;
         }
         if (a.getAlunos().stream().anyMatch(x -> x.getId().equals(ident.usuarioId()))) {
             return true;
         }
-        var minhas = contas.turmasDoAluno(ident.usuarioId());
-        return a.getTurmas().stream().anyMatch(t -> minhas.contains(t.getId()));
+        return a.getTurmas().stream().anyMatch(t -> minhasTurmas.contains(t.getId()));
     }
 
     private void exigirAcesso(Identidade ident, Aula a) {
@@ -145,6 +159,26 @@ public class AulasServico {
         return aulas.findAllByOrderByInicioEmDesc().stream()
                 .filter(a -> ident.eOperador() || alcanca(ident, a))
                 .map(a -> resumo(a, agora, ident.eOperador())).toList();
+    }
+
+    /** A aula no capítulo, enquanto a gravação não está lá: agendada, ao vivo ou processando. */
+    public record NoCurso(Integer aulaId, String titulo, String inicioEm, Integer minutos, Estado estado,
+            String abreEm) {}
+
+    /**
+     * As aulas publicadas de cada sub-módulo, que alcançam quem pergunta e ainda não têm gravação
+     * publicada no curso. Quando a gravação chega, ela vira um item comum e a aula sai daqui.
+     */
+    @Transactional(readOnly = true)
+    public Map<Integer, List<NoCurso>> noCurso(Identidade ident, Instant agora) {
+        var minhas = ident.eOperador() ? List.<Integer>of() : contas.turmasDoAluno(ident.usuarioId());
+        return aulas.findByStatusAndSubmoduloIdIsNotNullOrderByInicioEmAsc(Status.PUBLICADO).stream()
+                .filter(a -> ident.eOperador() || alcanca(ident, a, minhas))
+                .filter(a -> a.getGravacaoItemId() == null || assistir(a) == null)
+                .collect(Collectors.groupingBy(Aula::getSubmoduloId, LinkedHashMap::new,
+                        Collectors.mapping(a -> new NoCurso(a.getId(), a.getTitulo(), a.getInicioEm().toString(),
+                                a.getMinutos(), estado(a, agora), a.getInicioEm().minus(ABRE_ANTES).toString()),
+                                Collectors.toList())));
     }
 
     // --- o aluno entrando ----------------------------------------------------
@@ -243,6 +277,37 @@ public class AulasServico {
             // Sala já aberta: o Zoom precisa saber do novo horário.
             zoom.editarAula(a.getZoomMeetingId(), a.getTitulo(), a.getInicioEm(), a.getMinutos());
         }
+        a.tocar(ident);
+        return resumo(a, agora, true);
+    }
+
+    private static final Pattern ID_DO_VIMEO = Pattern.compile("(\\d{6,})");
+
+    /**
+     * Um vídeo qualquer no lugar da gravação: a que não chegou, ou a que chegou ruim. Vale o
+     * backup que a equipe grava por fora — a plataforma só recebe o link. Entra publicado, na
+     * posição da gravação anterior, que sai do curso.
+     */
+    @Transactional
+    public Resumo colocarVideo(Identidade ident, String referencia, String linkOuId, Instant agora) {
+        ident.exigirOperador();
+        var a = exigir(referencia);
+        var sub = estrutura.submodulo(a.getSubmoduloId()).filter(s -> s.getModulo() != null)
+                .orElseThrow(() -> new RegraDeNegocio(
+                        "'%s' não está em nenhum capítulo do curso.".formatted(a.getTitulo())));
+        var achado = ID_DO_VIMEO.matcher(linkOuId == null ? "" : linkOuId);
+        if (!achado.find()) {
+            throw new RegraDeNegocio("Cole o link do vídeo no Vimeo (ex.: https://vimeo.com/123456789).");
+        }
+        var dados = vimeo.resolucao(achado.group(1));
+        var video = acervo.registrar(ident, dados.vimeoId(),
+                dados.titulo() == null ? a.getTitulo() : dados.titulo(), dados.url(), dados.embedUrl(),
+                dados.thumbnailUrl(), dados.duracaoSegundos(), null);
+        var anterior = estrutura.item(a.getGravacaoItemId());
+        anterior.ifPresent(i -> estrutura.removerItem(ident, i));
+        var item = estrutura.criarItem(ident, sub, video, a.getTitulo(), anterior.map(Item::getOrdem).orElse(null),
+                Status.PUBLICADO, null);
+        a.gravacaoChegou(video.getVimeoId(), item.getId());
         a.tocar(ident);
         return resumo(a, agora, true);
     }

@@ -147,7 +147,6 @@ type Novo = {
   inicio_em: string;
   minutos: number;
   descricao: string;
-  gravar: boolean;
   turmas: string[];
   submodulo_id: number | null;
 };
@@ -157,7 +156,6 @@ function Agendar({ turmas, aoAgendar }: { turmas: string[]; aoAgendar: (d: Novo)
   const [quando, setQuando] = useState("");
   const [minutos, setMinutos] = useState(90);
   const [descricao, setDescricao] = useState("");
-  const [gravar, setGravar] = useState(true);
   const [escolhidas, setEscolhidas] = useState<string[]>([]);
   const [destino, setDestino] = useState<number | null>(null);
   const [salvando, setSalvando] = useState(false);
@@ -172,9 +170,8 @@ function Agendar({ turmas, aoAgendar }: { turmas: string[]; aoAgendar: (d: Novo)
       inicio_em: new Date(quando).toISOString(),
       minutos,
       descricao: descricao.trim(),
-      gravar,
       turmas: escolhidas,
-      submodulo_id: gravar ? destino : null,
+      submodulo_id: destino,
     });
     setSalvando(false);
     if (ok) {
@@ -242,16 +239,13 @@ function Agendar({ turmas, aoAgendar }: { turmas: string[]; aoAgendar: (d: Novo)
           )}
         </Campo>
         <Turmas turmas={turmas} escolhidas={escolhidas} aoMudar={setEscolhidas} />
-        <label className="flex w-fit cursor-pointer items-center gap-2 text-[15px] text-tinta">
-          <input type="checkbox" checked={gravar} onChange={(e) => setGravar(e.target.checked)} />
-          Gravar na nuvem, para virar aula gravada depois
-        </label>
-        {gravar && <DestinoDaGravacao turmas={escolhidas} valor={destino} aoMudar={setDestino} />}
+        <DestinoDaGravacao turmas={escolhidas} valor={destino} aoMudar={setDestino} />
         <Botao type="submit" variante="primario" disabled={salvando} className="w-fit">
           {salvando ? "Agendando…" : "Agendar em rascunho"}
         </Botao>
         <p className="text-[13px] text-apagado">
-          A sala do Zoom só é criada quando você publicar — rascunho não ocupa a agenda de ninguém.
+          A sala do Zoom só é criada quando você publicar — rascunho não ocupa a agenda de ninguém. Toda aula é gravada.
+          Para agendar direto num capítulo, use o botão "Aula ao vivo" no curso da turma.
         </p>
       </form>
     </Cartao>
@@ -279,8 +273,8 @@ function DestinoDaGravacao({
   );
   return (
     <Campo
-      rotulo="Onde a gravação entra"
-      dica="Ela chega em rascunho — você aprova em Rascunhos, como qualquer vídeo. Sem destino, fica só no Vimeo."
+      rotulo="Capítulo da aula"
+      dica="A aula aparece ali para a turma, e a gravação entra publicada no mesmo lugar. Sem capítulo, a gravação fica só no Vimeo."
     >
       {(id) => (
         <select
@@ -397,7 +391,7 @@ function QuemAlcanca({
       {aula.gravacao && aula.gravacao !== "enviando" && (
         <p className="text-[13px] text-suave">
           Gravação no Vimeo
-          {aula.gravacao_item_id ? " e no curso, em rascunho — aprove em Rascunhos para os alunos verem." : "."}
+          {aula.gravacao_item_id ? " e publicada no curso." : "."}
         </p>
       )}
       {aula.presentes.length > 0 && (

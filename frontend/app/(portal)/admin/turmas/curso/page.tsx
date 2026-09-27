@@ -4,8 +4,8 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useState, type FormEvent, type ReactNode } from "react";
 import { Aviso, Botao, BotaoLink, Campo, Cartao, Estado, Etiqueta, Pagina, Vazio, useConfirmar } from "@/components/ui";
-import { api, useDados, type Assunto, type Modulo, type SubModulo, type VideoVimeo } from "@/lib/api";
-import { duracao, plural } from "@/lib/formato";
+import { abrirEmNovaAba, api, useDados, type Assunto, type Aula, type Modulo, type SubModulo, type VideoVimeo } from "@/lib/api";
+import { duracao, emBrasilia, plural } from "@/lib/formato";
 
 export default function PaginaDoCurso() {
   return (
@@ -20,8 +20,8 @@ type Executar = (acao: () => Promise<unknown>, mensagem?: ReactNode | (() => Rea
 function CursoDaTurma() {
   const turmaId = Number(useSearchParams().get("turma"));
   const dados = useDados(async () => {
-    const [modulos, turmas, assuntos] = await Promise.all([api.modulos(turmaId), api.turmas(), api.assuntos()]);
-    return { modulos, turma: turmas.find((t) => t.id === turmaId), assuntos };
+    const [modulos, turmas, assuntos, aulas] = await Promise.all([api.modulos(turmaId), api.turmas(), api.assuntos(), api.aulasDoProfessor()]);
+    return { modulos, turma: turmas.find((t) => t.id === turmaId), assuntos, aulas };
   }, [turmaId]);
   const [erro, setErro] = useState("");
   const [aviso, setAviso] = useState<ReactNode>(null);
@@ -45,7 +45,7 @@ function CursoDaTurma() {
   return (
     <Pagina
       titulo={dados.dados?.turma ? `Curso · ${dados.dados.turma.nome}` : "Curso da turma"}
-      legenda="Criar, renomear, reordenar e remover vale na hora para os alunos. Vídeo novo entra como rascunho e só aparece depois de aprovado."
+      legenda="Criar, renomear, reordenar e remover vale na hora para os alunos. Vídeo novo entra como rascunho e só aparece depois de aprovado; a gravação de aula ao vivo entra publicada."
       voltar={{ href: "/admin/turmas/", rotulo: "Turmas" }}
       acoes={
         <>
@@ -59,7 +59,7 @@ function CursoDaTurma() {
       {aviso && <Aviso tom="sucesso">{aviso}</Aviso>}
       {novoModulo && <NovoModulo turma={turmaId} executar={executar} aoFechar={() => setNovoModulo(false)} />}
       <Estado {...dados} linhas={4}>
-        {({ modulos, assuntos }) =>
+        {({ modulos, assuntos, aulas, turma }) =>
           modulos.length === 0 ? (
             <Vazio titulo="Esta turma ainda não tem módulos">Crie o primeiro módulo ou importe uma pasta do Vimeo.</Vazio>
           ) : (
@@ -71,6 +71,8 @@ function CursoDaTurma() {
                   modulo={modulo}
                   vizinhos={{ acima: modulos[i - 1], abaixo: modulos[i + 1], posicao: i + 1 }}
                   assuntos={assuntos}
+                  aulas={aulas}
+                  nomeDaTurma={turma?.nome ?? ""}
                   executar={executar}
                   confirmar={confirmar}
                 />
@@ -121,6 +123,8 @@ function CartaoDoModulo({
   modulo,
   vizinhos,
   assuntos,
+  aulas,
+  nomeDaTurma,
   executar,
   confirmar,
 }: {
@@ -128,6 +132,8 @@ function CartaoDoModulo({
   modulo: Modulo;
   vizinhos: { acima?: Modulo; abaixo?: Modulo; posicao: number };
   assuntos: Assunto[];
+  aulas: Aula[];
+  nomeDaTurma: string;
   executar: Executar;
   confirmar: Confirmar;
 }) {
@@ -212,7 +218,17 @@ function CartaoDoModulo({
       ) : (
         <div className="divide-y divide-borda">
           {modulo.submodulos.map((sub) => (
-            <SecaoDoSubmodulo key={sub.id} turma={turma} modulo={modulo} sub={sub} assuntos={assuntos} executar={executar} confirmar={confirmar} />
+            <SecaoDoSubmodulo
+              key={sub.id}
+              turma={turma}
+              nomeDaTurma={nomeDaTurma}
+              modulo={modulo}
+              sub={sub}
+              assuntos={assuntos}
+              aulas={aulas.filter((a) => a.submodulo_id === sub.id).sort((a, b) => a.inicio_em.localeCompare(b.inicio_em))}
+              executar={executar}
+              confirmar={confirmar}
+            />
           ))}
         </div>
       )}
@@ -222,20 +238,24 @@ function CartaoDoModulo({
 
 function SecaoDoSubmodulo({
   turma,
+  nomeDaTurma,
   modulo,
   sub,
   assuntos,
+  aulas,
   executar,
   confirmar,
 }: {
   turma: number;
+  nomeDaTurma: string;
   modulo: Modulo;
   sub: SubModulo;
   assuntos: Assunto[];
+  aulas: Aula[];
   executar: Executar;
   confirmar: Confirmar;
 }) {
-  const [painel, setPainel] = useState<"videos" | "classificar" | null>(null);
+  const [painel, setPainel] = useState<"videos" | "classificar" | "aula" | null>(null);
   const [renomeando, setRenomeando] = useState<number | null>(null);
   const [nomeItem, setNomeItem] = useState("");
   const publicados = sub.itens.filter((i) => i.status === "PUBLICADO").length;
@@ -267,6 +287,7 @@ function SecaoDoSubmodulo({
           {sub.itens.length - publicados > 0 && <Etiqueta tom="atencao">{plural(sub.itens.length - publicados, "em rascunho", "em rascunho")}</Etiqueta>}
         </div>
         <div className="flex flex-wrap gap-1">
+          <Botao variante="texto" onClick={() => setPainel(painel === "aula" ? null : "aula")} aria-expanded={painel === "aula"}>Aula ao vivo</Botao>
           <Botao variante="texto" onClick={() => setPainel(painel === "videos" ? null : "videos")} aria-expanded={painel === "videos"}>Adicionar vídeos</Botao>
           <Botao variante="texto" onClick={() => setPainel(painel === "classificar" ? null : "classificar")} aria-expanded={painel === "classificar"}>Classificar</Botao>
           <Botao variante="texto" className="text-erro" onClick={() => void removerSub()}>Remover</Botao>
@@ -275,6 +296,8 @@ function SecaoDoSubmodulo({
 
       {painel === "videos" && <AdicionarVideos turma={turma} modulo={modulo} sub={sub} executar={executar} aoFechar={() => setPainel(null)} />}
       {painel === "classificar" && <Classificar turma={turma} modulo={modulo} sub={sub} assuntos={assuntos} executar={executar} aoFechar={() => setPainel(null)} />}
+      {painel === "aula" && <NovaAulaAoVivo nomeDaTurma={nomeDaTurma} sub={sub} executar={executar} aoFechar={() => setPainel(null)} />}
+      {aulas.length > 0 && <AulasDoSubmodulo aulas={aulas} executar={executar} />}
 
       {sub.itens.length > 0 && (
         <div className="mt-3 overflow-x-auto">
@@ -355,6 +378,144 @@ function SecaoDoSubmodulo({
         </div>
       )}
     </section>
+  );
+}
+
+// --- aula ao vivo no sub-módulo ----------------------------------------------
+
+/** Agenda e já publica: a sala do Zoom abre agora, e a aula aparece no capítulo para a turma. */
+function NovaAulaAoVivo({ nomeDaTurma, sub, executar, aoFechar }: { nomeDaTurma: string; sub: SubModulo; executar: Executar; aoFechar: () => void }) {
+  const [titulo, setTitulo] = useState("");
+  const [quando, setQuando] = useState("");
+  const [minutos, setMinutos] = useState(90);
+  const [descricao, setDescricao] = useState("");
+  const [salvando, setSalvando] = useState(false);
+
+  async function agendar(e: FormEvent) {
+    e.preventDefault();
+    setSalvando(true);
+    const ok = await executar(async () => {
+      // O campo é hora local; o backend guarda em UTC. A conversão é do navegador.
+      const aula = await api.agendarAula({
+        titulo: titulo.trim(),
+        inicio_em: new Date(quando).toISOString(),
+        minutos,
+        descricao: descricao.trim(),
+        turmas: [nomeDaTurma],
+        submodulo_id: sub.id,
+      });
+      await api.editarAula(aula.aula_id, { status: "PUBLICADO" });
+    }, `"${titulo.trim()}" agendada em ${sub.nome}. A turma já vê no capítulo.`);
+    setSalvando(false);
+    if (ok) aoFechar();
+  }
+
+  return (
+    <form onSubmit={agendar} className="mt-3 flex flex-col gap-3 rounded-cartao border border-borda bg-canvas p-4">
+      <div className="grid gap-3 sm:grid-cols-[2fr_1fr_auto]">
+        <Campo rotulo="Título">
+          {(id) => <input id={id} required maxLength={200} value={titulo} onChange={(e) => setTitulo(e.target.value)} placeholder="Estequiometria — aula 1" className="campo" />}
+        </Campo>
+        <Campo rotulo="Começa em">
+          {(id) => <input id={id} type="datetime-local" required value={quando} onChange={(e) => setQuando(e.target.value)} className="campo" />}
+        </Campo>
+        <Campo rotulo="Minutos">
+          {(id) => <input id={id} type="number" min={5} max={480} value={minutos} onChange={(e) => setMinutos(Number(e.target.value))} className="campo w-24" />}
+        </Campo>
+      </div>
+      <Campo rotulo="Descrição" dica="Opcional; aparece para o aluno.">
+        {(id) => <input id={id} maxLength={2000} value={descricao} onChange={(e) => setDescricao(e.target.value)} className="campo" />}
+      </Campo>
+      <p className="text-[13px] text-suave">
+        A sala do Zoom é criada agora, para a turma {nomeDaTurma}. A aula é gravada, e a gravação entra publicada aqui, em {sub.nome}.
+      </p>
+      <div className="flex gap-2">
+        <Botao type="submit" variante="primario" disabled={salvando || !titulo.trim() || !quando}>{salvando ? "Agendando…" : "Agendar aula"}</Botao>
+        <Botao onClick={aoFechar}>Cancelar</Botao>
+      </div>
+    </form>
+  );
+}
+
+const ESTADO_DA_AULA: Record<Aula["estado"], string> = {
+  RASCUNHO: "Rascunho, sem sala",
+  AGENDADA: "Agendada",
+  AGUARDANDO: "Sala aberta",
+  ABERTA: "Ao vivo agora",
+  ENCERRADA: "Encerrada",
+};
+
+function AulasDoSubmodulo({ aulas, executar }: { aulas: Aula[]; executar: Executar }) {
+  const [trocando, setTrocando] = useState<number | null>(null);
+  const [video, setVideo] = useState("");
+  const [erro, setErro] = useState("");
+
+  const iniciar = async (aula: Aula) => {
+    setErro("");
+    try {
+      await abrirEmNovaAba(() => api.iniciarAula(aula.aula_id));
+    } catch (ex) {
+      setErro((ex as Error).message);
+    }
+  };
+
+  return (
+    <div className="mt-3 flex flex-col gap-2">
+      <h4 className="text-sm font-semibold text-tinta-2">Aulas ao vivo</h4>
+      {erro && <Aviso tom="erro">{erro}</Aviso>}
+      <ul className="divide-y divide-borda rounded-cartao border border-borda">
+        {aulas.map((aula) => {
+          const semGravacao = aula.estado === "ENCERRADA" && !aula.gravacao_item_id && aula.gravacao !== "enviando";
+          return (
+            <li key={aula.aula_id} className="flex flex-col gap-2 px-3 py-2.5">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="truncate font-medium text-tinta">{aula.titulo}</p>
+                  <p className="text-[13px] text-suave">
+                    {emBrasilia(aula.inicio_em)} · {aula.minutos} min · {ESTADO_DA_AULA[aula.estado]}
+                    {aula.gravacao === "enviando" && " · gravação indo para o Vimeo"}
+                    {aula.gravacao_item_id ? " · gravação publicada no curso" : ""}
+                    {semGravacao && " · sem gravação"}
+                  </p>
+                </div>
+                <div className="flex flex-wrap items-center gap-1">
+                  {aula.tem_sala && aula.estado !== "ENCERRADA" && (
+                    <Botao tamanho="pequeno" variante="primario" onClick={() => void iniciar(aula)}>Iniciar</Botao>
+                  )}
+                  {aula.estado === "ENCERRADA" && (
+                    <Botao
+                      variante="texto"
+                      aria-expanded={trocando === aula.aula_id}
+                      onClick={() => {
+                        setTrocando(trocando === aula.aula_id ? null : aula.aula_id);
+                        setVideo("");
+                      }}
+                    >
+                      {aula.gravacao_item_id ? "Trocar vídeo" : "Colocar vídeo"}
+                    </Botao>
+                  )}
+                  <Link href="/admin/aulas/" className="px-1 text-sm text-acento hover:underline">Gerenciar</Link>
+                </div>
+              </div>
+              {trocando === aula.aula_id && (
+                <form
+                  className="flex flex-wrap items-end gap-2"
+                  onSubmit={async (e) => {
+                    e.preventDefault();
+                    if (await executar(() => api.colocarVideoNaAula(aula.aula_id, video.trim()), `Vídeo publicado no lugar da gravação de "${aula.titulo}".`)) setTrocando(null);
+                  }}
+                >
+                  <Campo rotulo="Link do vídeo no Vimeo" dica="Entra publicado, na posição da gravação." className="min-w-60 flex-1">
+                    {(id) => <input id={id} required value={video} onChange={(e) => setVideo(e.target.value)} placeholder="https://vimeo.com/123456789" className="campo" />}
+                  </Campo>
+                  <Botao type="submit" variante="primario" tamanho="pequeno" disabled={!video.trim()}>Publicar vídeo</Botao>
+                </form>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+    </div>
   );
 }
 

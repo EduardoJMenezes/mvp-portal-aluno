@@ -18,20 +18,24 @@ Tudo em Java, no pacote `br.com.plataforma.aulas`.
 |---|---|
 | Agendar, publicar (a sala nasce), entrar com link pessoal, iniciar | `AulasServico`, `ZoomReal` (allowlist de rotas), `ZoomDeMentira` |
 | Avisos do Zoom: assinatura, desafio de validação | `WebhookDoZoom` — `POST /api/zoom/webhook` |
-| Gravação → Vimeo (pull) → item em **rascunho** no sub-módulo escolhido | `EventosDoZoom`, `EnvioAoVimeo` |
+| Gravação → Vimeo (pull) → item **publicado** no sub-módulo da aula | `EventosDoZoom`, `EnvioAoVimeo` |
+| A aula no capítulo (agendada, ao vivo, processando) até a gravação tomar o lugar dela | `AulasServico.noCurso`, `CatalogoServico.conteudoDoAluno` |
+| Colocar outro vídeo no lugar da gravação (a que não chegou, ou chegou ruim) | `AulasServico.colocarVideo` — `POST /api/admin/aulas/{id}/video` |
 | Presença (entrou, saiu) de quem veio pelo link do portal | `EventosDoZoom`, `live_class_attendance` |
 | Sala no ar de verdade: `meeting.started`/`meeting.ended` (V3) — "Aguardando o professor", "Ao vivo agora", "Encerrada" | `AulasServico.estado`, `EventosDoZoom` |
-| "Assistir à gravação" para o aluno, depois de aprovada | `AulasServico.assistir` |
+| "Assistir à gravação" para o aluno | `AulasServico.assistir` |
 | Pelo chat: `agendar_aula` (rascunho, sem sala) e `listar_aulas` | `comandos/AulasComandos` + `mvp-portal-mcp/app/mcp_server/tools_aulas.py` |
-| Telas | `/admin/aulas` (destino da gravação, presença, estado da gravação) e `/aulas` |
+| Telas | "Aula ao vivo" em `/admin/turmas/curso` (agendar no capítulo, colocar vídeo), `/admin/aulas` (presença, estado da gravação), `/curso/aula` e `/aulas` |
 | Testes | `AulasTest`, `WebhookDoZoomTest`, `AulasComandosTest`; `tests/test_aulas.py` no mcp |
 
 Decisões que o código já toma:
 
-* **A gravação chega em rascunho**, sempre, no nome de quem agendou (origem
-  `ZOOM`). O professor aprova em Admin › Rascunhos. Publicar sozinha abriria um
-  caminho de conteúdo até o aluno sem aprovação gravada — a regra da casa não
-  deixa. A coluna `publicar_gravacao` ficou sem uso.
+* **A aula mora no capítulo e a gravação entra publicada**, no nome de quem
+  agendou (decisão 0006 do cofre, que substituiu a antiga "chega em rascunho").
+  Quem agenda a aula gravada naquele capítulo já decidiu que ela vai para lá.
+  Toda aula é gravada; se a gravação não chegar, o professor põe qualquer vídeo
+  do Vimeo no lugar, e a gravação que chegar depois é ignorada. A coluna
+  `publicar_gravacao` ficou sem uso.
 * **Sem destino, a gravação só sobe ao Vimeo** e fica no acervo.
 * **O aviso repetido não sobe duas vezes**: `gravacao_vimeo_id` é a trava (V2).
 * **O desafio de validação também exige assinatura**: sem isso, o endpoint

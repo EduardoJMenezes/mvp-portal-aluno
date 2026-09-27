@@ -2,9 +2,10 @@ package br.com.plataforma.aulas;
 
 import br.com.plataforma.comum.Canal;
 import br.com.plataforma.comum.Identidade;
+import br.com.plataforma.acervo.AcervoServico;
+import br.com.plataforma.comum.Status;
 import br.com.plataforma.contas.ContasServico;
 import br.com.plataforma.estrutura.EstruturaServico;
-import br.com.plataforma.rascunhos.RascunhosServico;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
@@ -22,9 +23,9 @@ import org.springframework.transaction.support.TransactionTemplate;
  * <p>A conta é dividida com outra plataforma, e o webhook escuta a conta toda: a primeira coisa é
  * achar a reunião na nossa tabela. Não achou, não é nossa — nada se baixa, nada se apaga.
  *
- * <p>A gravação chega como <b>rascunho</b> no sub-módulo escolhido ao agendar: o professor aprova
- * em Admin › Rascunhos, como qualquer conteúdo. Sem sub-módulo, ela só sobe ao Vimeo e fica no
- * acervo, para entrar no curso quando ele quiser.
+ * <p>A gravação entra <b>publicada</b> no sub-módulo onde a aula foi agendada (decisão 0006 do
+ * cofre): quem agendou a aula gravada naquele capítulo já decidiu que ela vai para lá. Sem
+ * sub-módulo, ela só sobe ao Vimeo e fica no acervo.
  */
 @Service
 public class EventosDoZoom {
@@ -41,18 +42,18 @@ public class EventosDoZoom {
     private final AulaPresencaRepositorio presencas;
     private final Zoom zoom;
     private final EnvioAoVimeo vimeo;
-    private final RascunhosServico rascunhos;
+    private final AcervoServico acervo;
     private final EstruturaServico estrutura;
     private final ContasServico contas;
     private final TransactionTemplate tx;
 
     public EventosDoZoom(AulaRepositorio aulas, AulaPresencaRepositorio presencas, Zoom zoom, EnvioAoVimeo vimeo,
-            RascunhosServico rascunhos, EstruturaServico estrutura, ContasServico contas, TransactionTemplate tx) {
+            AcervoServico acervo, EstruturaServico estrutura, ContasServico contas, TransactionTemplate tx) {
         this.aulas = aulas;
         this.presencas = presencas;
         this.zoom = zoom;
         this.vimeo = vimeo;
-        this.rascunhos = rascunhos;
+        this.acervo = acervo;
         this.estrutura = estrutura;
         this.contas = contas;
         this.tx = tx;
@@ -101,7 +102,7 @@ public class EventosDoZoom {
             throw e;
         }
         tx.executeWithoutResult(s -> {
-            var itemId = propor(aula, enviado);
+            var itemId = publicar(aula, enviado);
             aulas.findById(aula.getId()).orElseThrow().gravacaoChegou(enviado.vimeoId(), itemId);
         });
         log.info("gravação da aula {} no Vimeo: {}", aula.getId(), enviado.vimeoId());
@@ -119,8 +120,8 @@ public class EventosDoZoom {
                 .orElse(null);
     }
 
-    /** O item em rascunho, no nome de quem agendou a aula. Sem destino vivo, não há item. */
-    private Integer propor(Aula aula, EnvioAoVimeo.Enviado enviado) {
+    /** O item publicado, no nome de quem agendou a aula. Sem destino vivo, não há item. */
+    private Integer publicar(Aula aula, EnvioAoVimeo.Enviado enviado) {
         var sub = estrutura.submodulo(aula.getSubmoduloId()).orElse(null);
         if (sub == null || sub.getModulo() == null) {
             return null;
@@ -131,11 +132,9 @@ public class EventosDoZoom {
             return null;
         }
         var ident = new Identidade(dono.getId(), dono.getNome(), dono.getEmail(), dono.getPapel(), Canal.ZOOM);
-        var modulo = sub.getModulo();
-        var importados = rascunhos.importarVideosComoItens(ident, modulo.getTurma(), modulo.getNome(), sub.getNome(),
-                List.of(new RascunhosServico.VideoParaImportar(enviado.vimeoId(), aula.getTitulo(), aula.getTitulo(),
-                        enviado.url(), enviado.embedUrl(), null, null, null, null, null)));
-        return estrutura.itensDoRascunho(importados.rascunho().getId(), false).getFirst().getId();
+        var video = acervo.registrar(ident, enviado.vimeoId(), aula.getTitulo(), enviado.url(), enviado.embedUrl(),
+                null, null, null);
+        return estrutura.criarItem(ident, sub, video, aula.getTitulo(), null, Status.PUBLICADO, null).getId();
     }
 
     // --- a sala abrindo e fechando ---------------------------------------------

@@ -10,6 +10,8 @@ interface AulaRepositorio extends JpaRepository<Aula, Integer> {
 
     List<Aula> findAllByOrderByInicioEmDesc();
 
+    List<Aula> findByStatusAndSubmoduloIdIsNotNullOrderByInicioEmAsc(br.com.plataforma.comum.Status status);
+
     Optional<Aula> findFirstByZoomMeetingId(String zoomMeetingId);
 
     /** Só um aviso sobe a gravação: quem marca primeiro leva. O Zoom reenvia avisos. */

@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Aviso, Botao, BotaoLink, Cartao, Estado, Etiqueta, Pagina, Vazio } from "@/components/ui";
-import { api, useDados, type Aula } from "@/lib/api";
+import { abrirEmNovaAba, api, useDados, type Aula } from "@/lib/api";
 import { emBrasilia } from "@/lib/formato";
 
 const TOM: Record<Aula["estado"], { rotulo: string; tom: "info" | "sucesso" | "neutro" }> = {
@@ -21,15 +21,9 @@ export default function AulasDoAluno() {
   const entrar = async (aula: Aula) => {
     setErro("");
     setEntrando(aula.aula_id);
-    // A aba abre agora, no clique, e recebe o endereço quando ele chega: se
-    // esperarmos a resposta para abrir, o navegador trata como pop-up e barra.
-    const aba = window.open("", "_blank");
     try {
-      const { url } = await api.entrarNaAula(aula.aula_id);
-      if (aba) aba.location.href = url;
-      else window.location.href = url;
+      await abrirEmNovaAba(() => api.entrarNaAula(aula.aula_id));
     } catch (ex) {
-      aba?.close();
       setErro(ex instanceof Error ? ex.message : "Não foi possível entrar na aula.");
     } finally {
       setEntrando(0);

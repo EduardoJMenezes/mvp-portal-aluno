@@ -2,8 +2,8 @@
 
 import Link from "next/link";
 import { Estado, Pagina, TituloDeSecao, Vazio } from "@/components/ui";
-import { api, useDados } from "@/lib/api";
-import { plural } from "@/lib/formato";
+import { api, useDados, type AulaNoCurso } from "@/lib/api";
+import { emBrasilia, plural } from "@/lib/formato";
 
 export default function MeuCurso() {
   const conteudo = useDados(() => api.conteudo());
@@ -30,8 +30,9 @@ export default function MeuCurso() {
                             </span>
                           ))}
                         </span>
+                        <ProximaAula aulas={modulo.submodulos.flatMap((s) => s.aulas ?? [])} />
                         <span className="text-sm font-semibold text-acento">
-                          Assistir · {plural(modulo.submodulos.reduce((n, s) => n + s.itens.length, 0), "vídeo")}
+                          {modulo.submodulos.some((s) => s.itens.length) ? `Assistir · ${plural(modulo.submodulos.reduce((n, s) => n + s.itens.length, 0), "vídeo")}` : "Ver capítulo"}
                         </span>
                       </Link>
                     </li>
@@ -44,4 +45,13 @@ export default function MeuCurso() {
       </Estado>
     </Pagina>
   );
+}
+
+/** O aviso da aula ao vivo no cartão do capítulo: a que está acontecendo ou a próxima. */
+function ProximaAula({ aulas }: { aulas: AulaNoCurso[] }) {
+  const agora = aulas.find((a) => a.estado === "ABERTA" || a.estado === "AGUARDANDO");
+  const proxima = aulas.find((a) => a.estado === "AGENDADA");
+  if (agora) return <span className="text-sm font-semibold text-erro">{agora.estado === "ABERTA" ? "Ao vivo agora" : "Sala aberta"}: {agora.titulo}</span>;
+  if (proxima) return <span className="text-sm text-suave">Ao vivo em {emBrasilia(proxima.inicio_em)}: {proxima.titulo}</span>;
+  return null;
 }

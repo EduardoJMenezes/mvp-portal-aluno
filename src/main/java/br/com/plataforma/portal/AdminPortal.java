@@ -704,6 +704,15 @@ public class AdminPortal {
         return aulas.remover(ident, aula);
     }
 
+    public record VideoDaAulaIn(@NotBlank @Size(max = 300) String video) {}
+
+    /** Um vídeo do Vimeo no lugar da gravação — a que não chegou, ou a que chegou ruim. */
+    @PostMapping("/aulas/{aula}/video")
+    public AulasServico.Resumo colocarVideoNaAula(@AuthenticationPrincipal Identidade ident, @PathVariable String aula,
+            @Valid @RequestBody VideoDaAulaIn d) {
+        return aulas.colocarVideo(ident, aula, d.video(), Instant.now());
+    }
+
     /** O link de iniciar, buscado na hora: o do Zoom expira em duas horas. */
     @PostMapping("/aulas/{aula}/iniciar")
     public AulasServico.LinkDoProfessor iniciarAula(@AuthenticationPrincipal Identidade ident, @PathVariable String aula) {

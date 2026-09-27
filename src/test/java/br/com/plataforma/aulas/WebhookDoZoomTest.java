@@ -102,18 +102,17 @@ class WebhookDoZoomTest extends BaseDoPortal {
     }
 
     @Test
-    void aGravacaoVaiAoVimeoEViraRascunhoNoSubModulo() throws Exception {
+    void aGravacaoVaiAoVimeoEEntraPublicadaNoSubModulo() throws Exception {
         var aula = aulaPublicadaComDestino();
 
         avisar(gravacao(reuniao(aula), "tk-24h")).andExpect(status().isOk());
 
         // O Vimeo buscou o arquivo da tela, com o token do aviso.
         assertThat(vimeoDeMentira().links).containsExactly("https://zoom.us/rec/tela?access_token=tk-24h");
-        // Chegou como rascunho, no nome de quem agendou: o professor aprova como qualquer conteúdo.
-        assertThat(jdbc.queryForObject("SELECT count(*) FROM drafts WHERE origem = 'ZOOM' AND tipo = 'ITENS' "
-                + "AND status = 'RASCUNHO' AND criado_por_id = ?", Integer.class, ADMIN)).isEqualTo(1);
+        // Entra publicada, sem rascunho: quem agendou no capítulo já decidiu (decisão 0006).
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM drafts WHERE origem = 'ZOOM'", Integer.class)).isZero();
         assertThat(jdbc.queryForObject("SELECT status FROM items WHERE id = "
-                + "(SELECT gravacao_item_id FROM live_classes WHERE id = ?)", String.class, aula)).isEqualTo("RASCUNHO");
+                + "(SELECT gravacao_item_id FROM live_classes WHERE id = ?)", String.class, aula)).isEqualTo("PUBLICADO");
         get("/api/admin/aulas", ADMIN)
                 .andExpect(jsonPath("$[0].gravacao").value("990000001"))
                 .andExpect(jsonPath("$[0].gravacao_item_id").isNumber());
@@ -210,24 +209,60 @@ class WebhookDoZoomTest extends BaseDoPortal {
         get("/api/aluno/aulas", ALUNO).andExpect(jsonPath("$[0].estado").value("AGUARDANDO"));
     }
 
-    /** O botão de assistir só aparece depois que o professor aprova a gravação. */
+    /** A aula mora no capítulo: o aluno a vê ali antes de acontecer, e a gravação toma o lugar dela. */
     @Test
-    void assistirAGravacaoSoDepoisDeAprovada() throws Exception {
+    void aAulaApareceNoCapituloEAGravacaoTomaOLugarDela() throws Exception {
         var aula = aulaPublicadaComDestino();
-        avisar(gravacao(reuniao(aula), "tk")).andExpect(status().isOk());
+        var aulas = "$[0].modulos[0].submodulos[0]";
+        get("/api/aluno/conteudo", ALUNO)
+                .andExpect(jsonPath("$[0].modulos[0].nome").value("K01"))
+                .andExpect(jsonPath(aulas + ".nome").value("Aulas"))
+                .andExpect(jsonPath(aulas + ".itens").isEmpty())
+                .andExpect(jsonPath(aulas + ".aulas[0].aula_id").value(aula))
+                .andExpect(jsonPath(aulas + ".aulas[0].estado").value("AGUARDANDO"));
         get("/api/aluno/aulas", ALUNO).andExpect(jsonPath("$[0].assistir").doesNotExist());
 
-        var rascunho = jdbc.queryForObject("SELECT id FROM drafts WHERE origem = 'ZOOM'", Integer.class);
-        comando("publicar_rascunho", """
-                {"rascunho": %d, "confirmado_pelo_professor": true}""".formatted(rascunho))
-                .andExpect(status().isOk());
+        avisar(gravacao(reuniao(aula), "tk")).andExpect(status().isOk());
 
         var item = jdbc.queryForObject("SELECT gravacao_item_id FROM live_classes WHERE id = ?", Integer.class, aula);
         var modulo = jdbc.queryForObject(
                 "SELECT s.modulo_id FROM items i JOIN submodules s ON s.id = i.submodulo_id WHERE i.id = ?",
                 Integer.class, item);
+        get("/api/aluno/conteudo", ALUNO)
+                .andExpect(jsonPath(aulas + ".aulas").isEmpty())
+                .andExpect(jsonPath(aulas + ".itens[0].id").value(item));
         get("/api/aluno/aulas", ALUNO)
                 .andExpect(jsonPath("$[0].assistir.item_id").value(item))
                 .andExpect(jsonPath("$[0].assistir.modulo_id").value(modulo));
+    }
+
+    /** Gravação que não chegou (ou chegou ruim): qualquer vídeo do Vimeo entra no lugar dela. */
+    @Test
+    void oProfessorColocaOutroVideoNoLugarDaGravacao() throws Exception {
+        var aula = aulaPublicadaComDestino();
+        post("/api/admin/aulas/" + aula + "/video", "{\"video\": \"sem numero\"}", ADMIN)
+                .andExpect(status().isBadRequest());
+
+        post("/api/admin/aulas/" + aula + "/video", "{\"video\": \"https://vimeo.com/123456789\"}", ADMIN)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.gravacao").value("123456789"));
+        var primeiro = jdbc.queryForObject("SELECT gravacao_item_id FROM live_classes WHERE id = ?", Integer.class, aula);
+        get("/api/aluno/conteudo", ALUNO)
+                .andExpect(jsonPath("$[0].modulos[0].submodulos[0].aulas").isEmpty())
+                .andExpect(jsonPath("$[0].modulos[0].submodulos[0].itens[0].id").value(primeiro));
+
+        // Trocar de novo: o vídeo anterior sai, o novo fica na mesma posição.
+        post("/api/admin/aulas/" + aula + "/video", "{\"video\": \"987654321\"}", ADMIN)
+                .andExpect(status().isOk());
+        var segundo = jdbc.queryForObject("SELECT gravacao_item_id FROM live_classes WHERE id = ?", Integer.class, aula);
+        assertThat(segundo).isNotEqualTo(primeiro);
+        assertThat(jdbc.queryForObject("SELECT removido_em IS NOT NULL FROM items WHERE id = ?", Boolean.class, primeiro))
+                .isTrue();
+        assertThat(jdbc.queryForObject("SELECT ordem FROM items WHERE id = ?", Integer.class, segundo))
+                .isEqualTo(jdbc.queryForObject("SELECT ordem FROM items WHERE id = ?", Integer.class, primeiro));
+
+        // A gravação do Zoom que chegar depois não passa por cima do que o professor escolheu.
+        avisar(gravacao(reuniao(aula), "tk")).andExpect(status().isOk());
+        assertThat(vimeoDeMentira().links).isEmpty();
     }
 }
