@@ -47,6 +47,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -716,6 +717,18 @@ public class AdminPortal {
     public AulasServico.Resumo colocarVideoNaAula(@AuthenticationPrincipal Identidade ident, @PathVariable String aula,
             @Valid @RequestBody VideoDaAulaIn d) {
         return aulas.colocarVideo(ident, aula, d.video(), Instant.now());
+    }
+
+    /** {@code material} null tira o PDF; {@code soNoDia} null mantém como estava. */
+    public record MaterialDaAulaIn(Integer material, Boolean soNoDia) {}
+
+    /** O PDF da aula (decisão 0013): vai junto para a gravação. */
+    @PutMapping("/aulas/{aula}/material")
+    @Transactional
+    public AulasServico.Resumo materialDaAula(@AuthenticationPrincipal Identidade ident, @PathVariable String aula,
+            @RequestBody MaterialDaAulaIn d) {
+        return aulas.anexarMaterial(ident, aula, d.material() == null ? null : materiais.exigir(String.valueOf(d.material())),
+                d.soNoDia(), Instant.now());
     }
 
     /** O link de iniciar, buscado na hora: o do Zoom expira em duas horas. */

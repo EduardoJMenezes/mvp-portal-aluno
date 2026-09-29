@@ -86,7 +86,8 @@ public class TaxonomiaComandos {
         var turma = catalogo.resolverTurmaOuBiblioteca(pedido.turma());
         var alvos = estrutura.alvos(turma, pedido.modulo(), pedido.submodulo(), null);
 
-        List<Item> escolhidos = estrutura.itensDo(alvos.submodulo());
+        // A linha só de PDF não tem vídeo para etiquetar (decisão 0013).
+        List<Item> escolhidos = estrutura.itensDo(alvos.submodulo()).stream().filter(i -> i.getVideo() != null).toList();
         if (pedido.itens() != null && !pedido.itens().isBlank()) {
             var numeros = Faixa.interpretar(pedido.itens());
             escolhidos = escolhidos.stream().filter(i -> numeros.contains(Faixa.doNome(i.getNome()))).toList();

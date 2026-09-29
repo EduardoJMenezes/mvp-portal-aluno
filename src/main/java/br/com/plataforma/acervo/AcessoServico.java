@@ -54,27 +54,7 @@ public class AcessoServico {
             return ids;
         }
 
-        // A turma vê o item (decisão 0011) e a agenda já o liberou para ela (decisão 0012).
-        var turmas = em.createQuery("select m.turma from Matricula m where m.usuarioId = :usuario",
-                br.com.plataforma.catalogo.Turma.class).setParameter("usuario", ident.usuarioId()).getResultList();
-        var agenda = liberacao.das(turmas.stream().map(br.com.plataforma.catalogo.Turma::getId).toList());
-        var doCurso = em.createQuery("""
-                select i from Item i
-                 where i.video.id in :ids
-                   and i.status = br.com.plataforma.comum.Status.PUBLICADO
-                   and exists (select 1 from Matricula m
-                                where m.usuarioId = :usuario
-                                  and (m.turma member of i.turmas
-                                       or (i.turmas is empty
-                                           and m.turma member of i.submodulo.modulo.turmas)))""",
-                        br.com.plataforma.estrutura.Item.class)
-                .setParameter("ids", ids)
-                .setParameter("usuario", ident.usuarioId())
-                .getResultList().stream()
-                .filter(i -> turmas.stream().anyMatch(t -> i.visivelPara(t) && agenda.liberado(t.getId(),
-                        i.getSubmodulo().getModulo() == null ? null : i.getSubmodulo().getModulo().getId(), i.getId(), agora)))
-                .map(i -> i.getVideo().getId())
-                .toList();
+        var doCurso = doCurso(ident, "i.video.id", ids, agora).stream().map(i -> i.getVideo().getId()).toList();
 
         // A resolução vem com o resultado: para quem fez a prova, depois que ela fecha. Antes
         // disso, o vídeo seria o gabarito com narração.
@@ -94,6 +74,41 @@ public class AcessoServico {
         var liberados = new LinkedHashSet<Integer>(doCurso);
         liberados.addAll(deProvaFeita);
         return liberados;
+    }
+
+    /** Quais destes itens do curso o aluno vê — é por eles que chega o PDF da aula (decisão 0013). */
+    @Transactional(readOnly = true)
+    public Set<Integer> itensLiberados(Identidade ident, Collection<Integer> itemIds, Instant agora) {
+        var ids = new LinkedHashSet<>(itemIds);
+        if (ids.isEmpty() || ident.eOperador()) {
+            return ids;
+        }
+        return doCurso(ident, "i.id", ids, agora).stream().map(br.com.plataforma.estrutura.Item::getId)
+                .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
+    }
+
+    /** Os itens publicados que a turma do aluno vê (decisão 0011) e a agenda já liberou (0012). */
+    private java.util.List<br.com.plataforma.estrutura.Item> doCurso(Identidade ident, String campo,
+            Collection<Integer> ids, Instant agora) {
+        var turmas = em.createQuery("select m.turma from Matricula m where m.usuarioId = :usuario",
+                br.com.plataforma.catalogo.Turma.class).setParameter("usuario", ident.usuarioId()).getResultList();
+        var agenda = liberacao.das(turmas.stream().map(br.com.plataforma.catalogo.Turma::getId).toList());
+        return em.createQuery("""
+                select i from Item i
+                 where %s in :ids
+                   and i.status = br.com.plataforma.comum.Status.PUBLICADO
+                   and exists (select 1 from Matricula m
+                                where m.usuarioId = :usuario
+                                  and (m.turma member of i.turmas
+                                       or (i.turmas is empty
+                                           and m.turma member of i.submodulo.modulo.turmas)))""".formatted(campo),
+                        br.com.plataforma.estrutura.Item.class)
+                .setParameter("ids", ids)
+                .setParameter("usuario", ident.usuarioId())
+                .getResultList().stream()
+                .filter(i -> turmas.stream().anyMatch(t -> i.visivelPara(t) && agenda.liberado(t.getId(),
+                        i.getSubmodulo().getModulo() == null ? null : i.getSubmodulo().getModulo().getId(), i.getId(), agora)))
+                .toList();
     }
 
     /** O vídeo como ele sai do backend. Bloqueado: nome e aviso, nada que permita assistir. */

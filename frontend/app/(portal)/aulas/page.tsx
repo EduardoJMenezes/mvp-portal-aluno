@@ -2,6 +2,7 @@
 
 import { Suspense, useState } from "react";
 import { useCategoria } from "@/components/Categoria";
+import { LinkDoPdf } from "@/components/Pdf";
 import { Player } from "@/components/Player";
 import { Aviso, Botao, BotaoLink, Cartao, Estado, Etiqueta, Pagina, TituloDeSecao, Vazio } from "@/components/ui";
 import { abrirEmNovaAba, api, casaCategoria, useDados, type Aula } from "@/lib/api";
@@ -78,6 +79,7 @@ function Lives() {
                             {emBrasilia(aula.inicio_em)} · {aula.minutos} min
                           </p>
                           {aula.descricao && <p className="mt-1 text-sm text-suave">{aula.descricao}</p>}
+                          {aula.material && <LinkDoPdf material={aula.material} className="mt-2" />}
                         </div>
                         <Botao variante="primario" onClick={() => void entrar(aula)} disabled={entrando === aula.aula_id}>
                           {entrando === aula.aula_id ? "Abrindo…" : "Entrar na aula"}
@@ -98,6 +100,7 @@ function Lives() {
                           Ao vivo em {emBrasilia(aula.inicio_em)} · {aula.minutos} min · a sala abre 15 minutos antes
                         </p>
                         {aula.descricao && <p className="mt-1 text-sm text-suave">{aula.descricao}</p>}
+                        {aula.material && <LinkDoPdf material={aula.material} className="mt-2" />}
                       </Cartao>
                     ))}
                   </ul>
@@ -115,6 +118,7 @@ function Lives() {
                             <p className="text-[13px] text-suave">
                               {emBrasilia(aula.inicio_em)} · {aula.minutos} min
                             </p>
+                            {aula.material && <LinkDoPdf material={aula.material} className="mt-1" />}
                           </div>
                           {aula.assistir ? (
                             <BotaoLink variante="secundario" href={`/curso/aula/?modulo=${aula.assistir.modulo_id}&item=${aula.assistir.item_id}`}>

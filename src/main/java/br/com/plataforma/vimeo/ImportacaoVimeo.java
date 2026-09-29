@@ -248,7 +248,7 @@ public class ImportacaoVimeo {
             var destino = grupo.destino();
             var modulo = estrutura.resolverModulo(turma, destino.modulo());
             var sub = estrutura.resolverSubmodulo(modulo, destino.submodulo());
-            var jaNoSub = estrutura.itensDo(sub).stream().map(i -> i.getVideo().getVimeoId()).collect(
+            var jaNoSub = estrutura.itensDo(sub).stream().filter(i -> i.getVideo() != null).map(i -> i.getVideo().getVimeoId()).collect(
                     java.util.stream.Collectors.toSet());
             saida.add(new DestinoAvaliado(modulo.getNome(), sub.getNome(),
                     destino.faixa() == null || destino.faixa().isBlank() ? "(o que sobrar)" : destino.faixa(),

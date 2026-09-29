@@ -14,6 +14,8 @@ import br.com.plataforma.contas.Pessoa;
 import br.com.plataforma.contas.Usuario;
 import br.com.plataforma.estrutura.EstruturaServico;
 import br.com.plataforma.estrutura.Item;
+import br.com.plataforma.materiais.Material;
+import br.com.plataforma.materiais.MaterialLigado;
 import br.com.plataforma.vimeo.ImportacaoVimeo;
 import java.time.Duration;
 import java.time.Instant;
@@ -93,6 +95,22 @@ public class AulasServico {
         throw new NaoAutorizado("'%s' não está liberada para %s.".formatted(a.getTitulo(), ident.nome()));
     }
 
+    private static final java.time.ZoneId BRASILIA = java.time.ZoneId.of("America/Sao_Paulo");
+
+    /** O PDF sai desde o agendamento, ou a partir de 00h do dia da aula (decisão 0013). */
+    static boolean pdfLiberado(Aula a, Instant agora) {
+        return !a.isMaterialNoDia()
+                || !agora.isBefore(a.getInicioEm().atZone(BRASILIA).toLocalDate().atStartOfDay(BRASILIA).toInstant());
+    }
+
+    /**
+     * O aluno abre o PDF por esta aula? A aula o alcança e o PDF já saiu. É a regra que o leitor de
+     * materiais consulta: o material da aula não precisa estar publicado para a turma.
+     */
+    public static boolean materialLiberado(Identidade ident, Aula a, Collection<Integer> minhasTurmas, Instant agora) {
+        return ident.eOperador() || (alcanca(ident, a, minhasTurmas) && pdfLiberado(a, agora));
+    }
+
     private static Instant fim(Aula a) {
         return a.getInicioEm().plus(Duration.ofMinutes(a.getMinutos()));
     }
@@ -134,7 +152,7 @@ public class AulasServico {
             Estado estado, String abreEm, boolean grava, boolean temSala, List<String> turmas,
             List<Pessoa> alunos, Integer gravacaoItemId, Integer submoduloId, String gravacao,
             List<Presente> presentes, Assistir assistir, String categoria,
-            AcessoServico.VideoDescrito video) {}
+            AcessoServico.VideoDescrito video, MaterialLigado material, boolean materialNoDia) {}
 
     private Assistir assistir(Aula a) {
         return estrutura.item(a.getGravacaoItemId())
@@ -166,7 +184,8 @@ public class AulasServico {
                 a.getZoomMeetingId() != null, a.getTurmas().stream().map(Turma::getNome).toList(),
                 a.getAlunos().stream().map(Pessoa::de).toList(), a.getGravacaoItemId(),
                 operador ? a.getSubmoduloId() : null, operador ? a.getGravacaoVimeoId() : null, presentes,
-                assistir, a.getCategoria(), gravacaoSolta(a, assistir));
+                assistir, a.getCategoria(), gravacaoSolta(a, assistir),
+                operador || pdfLiberado(a, agora) ? MaterialLigado.de(a.getMaterial()) : null, a.isMaterialNoDia());
     }
 
     /**
@@ -193,7 +212,7 @@ public class AulasServico {
 
     /** A aula no capítulo, enquanto a gravação não está lá: agendada, ao vivo ou processando. */
     public record NoCurso(Integer aulaId, String titulo, String inicioEm, Integer minutos, Estado estado,
-            String abreEm) {}
+            String abreEm, MaterialLigado material) {}
 
     /**
      * As aulas publicadas de cada sub-módulo, que alcançam quem pergunta e ainda não têm gravação
@@ -207,7 +226,8 @@ public class AulasServico {
                 .filter(a -> a.getGravacaoItemId() == null || assistir(a) == null)
                 .collect(Collectors.groupingBy(Aula::getSubmoduloId, LinkedHashMap::new,
                         Collectors.mapping(a -> new NoCurso(a.getId(), a.getTitulo(), a.getInicioEm().toString(),
-                                a.getMinutos(), estado(a, agora), a.getInicioEm().minus(ABRE_ANTES).toString()),
+                                a.getMinutos(), estado(a, agora), a.getInicioEm().minus(ABRE_ANTES).toString(),
+                                ident.eOperador() || pdfLiberado(a, agora) ? MaterialLigado.de(a.getMaterial()) : null),
                                 Collectors.toList())));
     }
 
@@ -360,9 +380,28 @@ public class AulasServico {
         anterior.ifPresent(i -> estrutura.removerItem(ident, i));
         // Sem capítulo, não há item: a gravação toca na tela de Lives.
         var sub = estrutura.submodulo(a.getSubmoduloId()).filter(s -> s.getModulo() != null);
-        var item = sub.map(s -> estrutura.criarItem(ident, s, video, a.getTitulo(),
-                anterior.map(Item::getOrdem).orElse(null), Status.PUBLICADO, null).getId()).orElse(null);
+        var item = sub.map(s -> {
+            var novo = estrutura.criarItem(ident, s, video, a.getTitulo(),
+                    anterior.map(Item::getOrdem).orElse(null), Status.PUBLICADO, null);
+            estrutura.anexarMaterial(ident, novo, a.getMaterial());
+            return novo.getId();
+        }).orElse(null);
         a.gravacaoChegou(video.getVimeoId(), item);
+        a.tocar(ident);
+        return resumo(a, agora, true);
+    }
+
+    /**
+     * O PDF da aula (decisão 0013): {@code material} null tira. Vai junto para a gravação que já
+     * está no curso; a que chegar depois nasce com ele.
+     */
+    @Transactional
+    public Resumo anexarMaterial(Identidade ident, String referencia, Material material, Boolean noDia,
+            Instant agora) {
+        ident.exigirOperador();
+        var a = exigir(referencia);
+        a.anexarMaterial(material, noDia);
+        estrutura.item(a.getGravacaoItemId()).ifPresent(i -> estrutura.anexarMaterial(ident, i, material));
         a.tocar(ident);
         return resumo(a, agora, true);
     }

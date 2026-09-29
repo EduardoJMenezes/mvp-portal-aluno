@@ -135,7 +135,10 @@ public class EventosDoZoom {
         if (sub == null || sub.getModulo() == null) {
             return null;
         }
-        return estrutura.criarItem(ident, sub, video, aula.getTitulo(), null, Status.PUBLICADO, null).getId();
+        var item = estrutura.criarItem(ident, sub, video, aula.getTitulo(), null, Status.PUBLICADO, null);
+        // A gravação leva o PDF da aula junto (decisão 0013).
+        estrutura.anexarMaterial(ident, item, aula.getMaterial());
+        return item.getId();
     }
 
     // --- a sala abrindo e fechando ---------------------------------------------

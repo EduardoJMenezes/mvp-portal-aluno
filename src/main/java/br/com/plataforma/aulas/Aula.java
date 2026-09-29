@@ -20,6 +20,10 @@ import jakarta.persistence.Table;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import br.com.plataforma.materiais.Material;
+import jakarta.persistence.ManyToOne;
+import org.hibernate.annotations.NotFound;
+import org.hibernate.annotations.NotFoundAction;
 import org.hibernate.annotations.SQLRestriction;
 
 /**
@@ -90,6 +94,16 @@ public class Aula extends Rastreavel {
     private Instant publicadoEm;
 
     private String categoria;
+
+    /** O PDF da aula (decisão 0013). Material removido chega como null. */
+    @ManyToOne
+    @NotFound(action = NotFoundAction.IGNORE)
+    @JoinColumn(name = "material_id")
+    private Material material;
+
+    /** Ligado: o aluno só vê o PDF a partir de 00h do dia da aula, em Brasília. */
+    @Column(name = "material_no_dia", nullable = false)
+    private boolean materialNoDia;
 
     @ManyToMany(fetch = FetchType.LAZY)
     @JoinTable(name = "live_class_classes",
@@ -204,6 +218,21 @@ public class Aula extends Rastreavel {
 
     void mudarCategoria(String categoria) {
         this.categoria = categoria;
+    }
+
+    public Material getMaterial() {
+        return material;
+    }
+
+    public boolean isMaterialNoDia() {
+        return materialNoDia;
+    }
+
+    void anexarMaterial(Material material, Boolean noDia) {
+        this.material = material;
+        if (noDia != null) {
+            this.materialNoDia = noDia;
+        }
     }
 
     void mudarHorario(Instant inicioEm, Integer minutos) {

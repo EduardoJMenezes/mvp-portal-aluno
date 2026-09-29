@@ -137,9 +137,11 @@ public class CatalogoServico {
 
     // --- a tela do aluno -----------------------------------------------------
 
+    /** {@code video} null: a linha é só o PDF de {@code material} (decisão 0013). */
     public record ItemComVideo(
             Integer id, String nome, Integer ordem, Status status, Integer videoId,
-            br.com.plataforma.acervo.AcessoServico.VideoDescrito video) {}
+            br.com.plataforma.acervo.AcessoServico.VideoDescrito video,
+            br.com.plataforma.materiais.MaterialLigado material) {}
 
     public record SubModuloComVideos(
             Integer id, String nome, br.com.plataforma.estrutura.TipoSubModulo tipo, Integer ordem,
@@ -180,6 +182,7 @@ public class CatalogoServico {
             }
             var ids = modulos.stream().flatMap(m -> m.submodulos().stream())
                     .flatMap(s -> s.itens().stream()).map(EstruturaServico.ItemNaArvore::videoId)
+                    .filter(java.util.Objects::nonNull)
                     .collect(java.util.stream.Collectors.toCollection(java.util.LinkedHashSet::new));
             var videos = acervo.porIds(ids);
             var liberados = acesso.videosLiberados(ident, ids, agora);
@@ -190,9 +193,11 @@ public class CatalogoServico {
                                     s.tipo(), s.ordem(), s.itens().stream()
                                             .map(i -> new ItemComVideo(i.id(), i.nome(), i.ordem(),
                                                     i.status(), i.videoId(),
-                                                    br.com.plataforma.acervo.AcessoServico.descrever(
+                                                    // Linha só de PDF: sem vídeo para descrever.
+                                                    i.videoId() == null ? null : br.com.plataforma.acervo.AcessoServico.descrever(
                                                             videos.get(i.videoId()),
-                                                            liberados.contains(i.videoId()))))
+                                                            liberados.contains(i.videoId())),
+                                                    i.material()))
                                             .toList(),
                                     aoVivo.getOrDefault(s.id(), List.of())))
                                     .toList()))

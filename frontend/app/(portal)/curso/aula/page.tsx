@@ -4,7 +4,8 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useMemo, useState } from "react";
 import { Player } from "@/components/Player";
-import { Aviso, Botao, Estado, Pagina } from "@/components/ui";
+import { LinkDoPdf } from "@/components/Pdf";
+import { Aviso, Botao, BotaoLink, Estado, Pagina } from "@/components/ui";
 import { abrirEmNovaAba, api, useDados, type AulaNoCurso, type ConteudoDaTurma } from "@/lib/api";
 import { duracao, emBrasilia } from "@/lib/formato";
 
@@ -57,6 +58,13 @@ function Modulo({ turmas }: { turmas: ConteudoDaTurma[] }) {
             </Aviso>
           ) : atual.video ? (
             <Player video={atual.video} />
+          ) : atual.material ? (
+            <Aviso tom="info" titulo="Esta aula é um PDF">
+              Abra no leitor: dá para riscar por cima, e o que você marcar fica salvo.
+              <div className="mt-3">
+                <BotaoLink variante="primario" href={`/materiais/ler/?id=${atual.material.material_id}`}>Abrir o PDF</BotaoLink>
+              </div>
+            </Aviso>
           ) : (
             <Aviso tom="atencao">Este item está sem vídeo.</Aviso>
           )}
@@ -66,6 +74,7 @@ function Modulo({ turmas }: { turmas: ConteudoDaTurma[] }) {
               {atual?.video && !atual.video.bloqueado && atual.video.duracao_segundos ? (
                 <p className="text-sm text-suave">{duracao(atual.video.duracao_segundos)}</p>
               ) : null}
+              {atual.video && atual.material && <LinkDoPdf material={atual.material} className="mt-1" />}
             </div>
             <div className="flex gap-2">
               <Botao disabled={indice === 0} onClick={() => ir(indice - 1)}>Anterior</Botao>
@@ -84,7 +93,7 @@ function Modulo({ turmas }: { turmas: ConteudoDaTurma[] }) {
               <ol className="border-t border-borda py-1">
                 {sub.itens.map((item) => {
                   const selecionado = item.id === atual?.id;
-                  const bloqueado = !item.video || item.video.bloqueado;
+                  const bloqueado = item.video ? item.video.bloqueado : !item.material;
                   return (
                     <li key={item.id}>
                       <Link
@@ -98,6 +107,8 @@ function Modulo({ turmas }: { turmas: ConteudoDaTurma[] }) {
                             <svg width="12" height="12" viewBox="0 0 24 24"><path d="M7 10V7a5 5 0 0 1 10 0v3" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" /><rect x="4.5" y="10" width="15" height="11" rx="2.5" fill="currentColor" /></svg>
                           ) : selecionado ? (
                             "▶"
+                          ) : !item.video ? (
+                            <span className="text-[10px] font-bold">PDF</span>
                           ) : null}
                         </span>
                         <span className="truncate">{item.nome}</span>
@@ -157,6 +168,7 @@ function AulaAoVivo({ aula }: { aula: AulaNoCurso }) {
         {aula.estado === "ABERTA" && "Ao vivo agora"}
         {aula.estado === "ENCERRADA" && "Gravação processando: aparece aqui em breve"}
       </span>
+      {aula.material && <LinkDoPdf material={aula.material} className="ml-6" />}
       {salaAberta && (
         <Botao tamanho="pequeno" variante="primario" className="ml-6 w-fit" disabled={abrindo} onClick={() => void entrar()}>
           {abrindo ? "Abrindo…" : "Entrar na aula"}

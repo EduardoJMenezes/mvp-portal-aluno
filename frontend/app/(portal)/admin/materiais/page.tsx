@@ -55,7 +55,13 @@ export default function MateriaisDoProfessor() {
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div className="min-w-0">
                       <div className="mb-1 flex flex-wrap items-center gap-2">
-                        {m.status === "PUBLICADO" ? <Etiqueta tom="sucesso">Publicado</Etiqueta> : <Etiqueta tom="atencao">Rascunho</Etiqueta>}
+                        {m.status === "PUBLICADO" ? (
+                          <Etiqueta tom="sucesso">Publicado</Etiqueta>
+                        ) : m.usos?.length ? (
+                          <Etiqueta tom="info">Nas aulas</Etiqueta>
+                        ) : (
+                          <Etiqueta tom="atencao">Rascunho</Etiqueta>
+                        )}
                         <EditarCategoria
                           valor={m.categoria}
                           sugestoes={categoriasDe(materiais)}
@@ -68,6 +74,11 @@ export default function MateriaisDoProfessor() {
                         {m.turmas.length ? m.turmas.join(", ") : "Nenhuma turma"}
                         {m.alunos.length > 0 && ` · ${m.alunos.map((a) => a.nome).join(", ")}`}
                       </p>
+                      {m.usos?.length ? (
+                        <p className="text-[13px] text-suave">
+                          Anexado em {m.usos.join(" · ")}. Quem vê essas aulas abre o PDF, mesmo sem publicar aqui.
+                        </p>
+                      ) : null}
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
                       <Link href={`/materiais/ler/?id=${m.material_id}`} className="text-sm font-semibold text-acento hover:underline">

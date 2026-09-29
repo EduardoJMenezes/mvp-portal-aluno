@@ -2,7 +2,10 @@ package br.com.plataforma.materiais;
 
 import static java.util.stream.Collectors.joining;
 
+import br.com.plataforma.aulas.Aula;
+import br.com.plataforma.aulas.AulasServico;
 import br.com.plataforma.catalogo.Turma;
+import br.com.plataforma.estrutura.Item;
 import br.com.plataforma.comum.Identidade;
 import br.com.plataforma.comum.NaoAutorizado;
 import br.com.plataforma.comum.NaoEncontrado;
@@ -38,16 +41,19 @@ public class MateriaisServico {
     private final MaterialRepositorio materiais;
     private final MaterialAnotacaoRepositorio anotacoes;
     private final ContasServico contas;
+    private final br.com.plataforma.acervo.AcessoServico acesso;
     private final tools.jackson.databind.ObjectMapper json;
 
     @PersistenceContext
     private EntityManager em;
 
     public MateriaisServico(MaterialRepositorio materiais, MaterialAnotacaoRepositorio anotacoes,
-            ContasServico contas, tools.jackson.databind.ObjectMapper json) {
+            ContasServico contas, br.com.plataforma.acervo.AcessoServico acesso,
+            tools.jackson.databind.ObjectMapper json) {
         this.materiais = materiais;
         this.anotacoes = anotacoes;
         this.contas = contas;
+        this.acesso = acesso;
         this.json = json;
     }
 
@@ -76,8 +82,41 @@ public class MateriaisServico {
         return m.getTurmas().stream().anyMatch(t -> minhas.contains(t.getId()));
     }
 
+    /**
+     * Os materiais que chegam a quem pergunta por uma aula (decisão 0013): a aula ao vivo que o
+     * alcança, com o PDF já liberado, e a linha do módulo que ele vê. Por aqui o material não
+     * precisa estar publicado para a turma — anexar à aula já é a decisão do professor.
+     */
+    private java.util.Set<Integer> pelasAulas(Identidade ident, Instant agora) {
+        var ids = new java.util.HashSet<Integer>();
+        var minhas = contas.turmasDoAluno(ident.usuarioId());
+        em.createQuery("select a from Aula a where a.material is not null", Aula.class).getResultList().stream()
+                .filter(a -> a.getMaterial() != null && AulasServico.materialLiberado(ident, a, minhas, agora))
+                .forEach(a -> ids.add(a.getMaterial().getId()));
+        var itens = em.createQuery("select i from Item i where i.material is not null", Item.class).getResultList()
+                .stream().filter(i -> i.getMaterial() != null).toList();
+        var liberados = acesso.itensLiberados(ident, itens.stream().map(Item::getId).toList(), agora);
+        itens.stream().filter(i -> liberados.contains(i.getId())).forEach(i -> ids.add(i.getMaterial().getId()));
+        return ids;
+    }
+
+    /** Onde cada material está anexado, para o professor não apagar achando que sobrou. */
+    private Map<Integer, List<String>> usos() {
+        var usos = new LinkedHashMap<Integer, List<String>>();
+        em.createQuery("select a from Aula a where a.material is not null", Aula.class).getResultList().stream()
+                .filter(a -> a.getMaterial() != null)
+                .forEach(a -> usos.computeIfAbsent(a.getMaterial().getId(), k -> new java.util.ArrayList<>())
+                        .add("Aula ao vivo: " + a.getTitulo()));
+        em.createQuery("select i from Item i where i.material is not null", Item.class).getResultList().stream()
+                .filter(i -> i.getMaterial() != null)
+                .forEach(i -> usos.computeIfAbsent(i.getMaterial().getId(), k -> new java.util.ArrayList<>())
+                        .add((i.getSubmodulo().getModulo() == null ? "" : i.getSubmodulo().getModulo().getNome() + " › ")
+                                + i.getSubmodulo().getNome() + " › " + i.getNome()));
+        return usos;
+    }
+
     private void exigirAcesso(Identidade ident, Material m) {
-        if (ident.eOperador() || alcanca(ident, m)) {
+        if (ident.eOperador() || alcanca(ident, m) || pelasAulas(ident, Instant.now()).contains(m.getId())) {
             return;
         }
         throw new NaoAutorizado("'%s' não está liberado para %s.".formatted(m.getTitulo(), ident.nome()));
@@ -86,27 +125,37 @@ public class MateriaisServico {
     public record Resumo(
             Integer materialId, String titulo, String arquivo, Integer tamanho, Status status,
             List<String> turmas, List<Pessoa> alunos, String criadoEm, String publicadoEm,
-            Integer paginasAnotadas, String categoria) {}
+            Integer paginasAnotadas, String categoria, List<String> usos) {}
 
     private static Resumo resumo(Material m, Integer anotadas) {
+        return resumo(m, anotadas, List.of());
+    }
+
+    private static Resumo resumo(Material m, Integer anotadas, List<String> usos) {
         return new Resumo(m.getId(), m.getTitulo(), m.getArquivoNome(), m.getTamanho(), m.getStatus(),
                 m.getTurmas().stream().map(Turma::getNome).toList(),
                 m.getAlunos().stream().map(Pessoa::de).toList(),
                 m.getCriadoEm() == null ? null : m.getCriadoEm().toString(),
-                m.getPublicadoEm() == null ? null : m.getPublicadoEm().toString(), anotadas, m.getCategoria());
+                m.getPublicadoEm() == null ? null : m.getPublicadoEm().toString(), anotadas, m.getCategoria(),
+                usos);
     }
 
     // --- leitura -------------------------------------------------------------
 
-    /** Operador vê todos, inclusive os rascunhos; aluno, só o que o alcança. */
+    /**
+     * Operador vê todos, inclusive os rascunhos, e onde cada um está anexado; aluno, o que o
+     * alcança — publicado para ele ou anexado a uma aula que ele vê.
+     */
     @Transactional(readOnly = true)
     public List<Resumo> listar(Identidade ident) {
         var anotadas = new LinkedHashMap<Integer, Integer>();
         anotacoes.paginasPorMaterial(ident.usuarioId())
                 .forEach(l -> anotadas.put((Integer) l[0], ((Number) l[1]).intValue()));
+        var pelasAulas = ident.eOperador() ? java.util.Set.<Integer>of() : pelasAulas(ident, Instant.now());
+        var usos = ident.eOperador() ? usos() : Map.<Integer, List<String>>of();
         return materiais.findAllByOrderByCriadoEmDesc().stream()
-                .filter(m -> ident.eOperador() || alcanca(ident, m))
-                .map(m -> resumo(m, anotadas.getOrDefault(m.getId(), 0)))
+                .filter(m -> ident.eOperador() || alcanca(ident, m) || pelasAulas.contains(m.getId()))
+                .map(m -> resumo(m, anotadas.getOrDefault(m.getId(), 0), usos.getOrDefault(m.getId(), List.of())))
                 .toList();
     }
 

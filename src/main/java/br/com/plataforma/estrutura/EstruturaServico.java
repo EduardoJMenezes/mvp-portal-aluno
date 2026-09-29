@@ -6,6 +6,8 @@ import br.com.plataforma.comum.Identidade;
 import br.com.plataforma.comum.Referencias;
 import br.com.plataforma.comum.RegraDeNegocio;
 import br.com.plataforma.comum.Status;
+import br.com.plataforma.materiais.Material;
+import br.com.plataforma.materiais.MaterialLigado;
 import java.util.List;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -85,10 +87,21 @@ public class EstruturaServico {
 
     // --- leitura -------------------------------------------------------------
 
-    /** {@code turmas}: vazia é "toda turma que tem o módulo"; com nomes, só elas. */
+    /**
+     * {@code turmas}: vazia é "toda turma que tem o módulo"; com nomes, só elas. Sem vídeo, a linha é
+     * só o PDF de {@code material} (decisão 0013).
+     */
     public record ItemNaArvore(
             Integer id, String nome, Integer ordem, Status status, Integer videoId,
-            String vimeoId, List<String> turmas) {}
+            String vimeoId, List<String> turmas, MaterialLigado material) {
+
+        static ItemNaArvore de(Item i) {
+            return new ItemNaArvore(i.getId(), i.getNome(), i.getOrdem(), i.getStatus(),
+                    i.getVideo() == null ? null : i.getVideo().getId(),
+                    i.getVideo() == null ? null : i.getVideo().getVimeoId(), nomes(i.getTurmas()),
+                    MaterialLigado.de(i.getMaterial()));
+        }
+    }
 
     public record SubModuloNaArvore(
             Integer id, String nome, TipoSubModulo tipo, Integer ordem, List<ItemNaArvore> itens) {}
@@ -126,16 +139,14 @@ public class EstruturaServico {
                 var lista = itens.findBySubmoduloOrderByOrdemAsc(sub).stream()
                         .filter(i -> !doAluno || (i.getStatus() == Status.PUBLICADO && i.visivelPara(turma)
                                 && agenda.liberado(turma.getId(), modulo.getId(), i.getId(), agora)))
+                        // A linha só de PDF cujo material foi removido não tem o que mostrar.
+                        .filter(i -> i.getVideo() != null || i.getMaterial() != null)
                         .toList();
                 if (doAluno && !manterVazios && lista.isEmpty()) {
                     continue;
                 }
                 galhos.add(new SubModuloNaArvore(sub.getId(), sub.getNome(), sub.getTipo(), sub.getOrdem(),
-                        lista.stream()
-                                .map(i -> new ItemNaArvore(
-                                        i.getId(), i.getNome(), i.getOrdem(), i.getStatus(), i.getVideo().getId(),
-                                        i.getVideo().getVimeoId(), nomes(i.getTurmas())))
-                                .toList()));
+                        lista.stream().map(ItemNaArvore::de).toList()));
             }
 
             if (doAluno && !manterVazios && galhos.isEmpty()) {
@@ -156,10 +167,7 @@ public class EstruturaServico {
                         submodulos.findByModuloOrderByOrdemAsc(modulo).stream()
                                 .map(sub -> new SubModuloNaArvore(sub.getId(), sub.getNome(), sub.getTipo(),
                                         sub.getOrdem(), itens.findBySubmoduloOrderByOrdemAsc(sub).stream()
-                                                .map(i -> new ItemNaArvore(i.getId(), i.getNome(), i.getOrdem(),
-                                                        i.getStatus(), i.getVideo().getId(), i.getVideo().getVimeoId(),
-                                                        nomes(i.getTurmas())))
-                                                .toList()))
+                                                .map(ItemNaArvore::de).toList()))
                                 .toList()))
                 .toList();
     }
@@ -388,6 +396,29 @@ public class EstruturaServico {
         return itens.save(item);
     }
 
+    /** Uma linha só de PDF no sub-módulo (decisão 0013). Quem cria é o professor no portal: nasce publicada. */
+    @Transactional
+    public Item criarItemPdf(Identidade ident, SubModulo submodulo, Material material, String nome) {
+        ident.exigirOperador();
+        var escolhido = nome == null || nome.isBlank() ? material.getTitulo() : nome.strip();
+        var item = new Item(submodulo, null, escolhido, itens.maiorOrdem(submodulo) + 1, Status.PUBLICADO, null);
+        item.anexarMaterial(material);
+        item.tocar(ident);
+        return itens.save(item);
+    }
+
+    /** O PDF da linha; {@code material} null tira — menos da linha que é só o PDF. */
+    @Transactional
+    public Item anexarMaterial(Identidade ident, Item item, Material material) {
+        ident.exigirOperador();
+        if (material == null && item.getVideo() == null) {
+            throw new RegraDeNegocio("'%s' é só o PDF: para tirar, remova a linha.".formatted(item.getNome()));
+        }
+        item.anexarMaterial(material);
+        item.tocar(ident);
+        return itens.save(item);
+    }
+
     @Transactional
     public Item editarItem(Identidade ident, Item item, String nome, Integer ordem) {
         ident.exigirOperador();
@@ -408,10 +439,12 @@ public class EstruturaServico {
         if (destino.getId().equals(item.getSubmodulo().getId())) {
             return item;
         }
-        itens.findFirstBySubmoduloAndVideo(destino, item.getVideo()).ifPresent(repetido -> {
-            throw new RegraDeNegocio("'%s' já tem este vídeo, como '%s'."
-                    .formatted(destino.getNome(), repetido.getNome()));
-        });
+        if (item.getVideo() != null) {
+            itens.findFirstBySubmoduloAndVideo(destino, item.getVideo()).ifPresent(repetido -> {
+                throw new RegraDeNegocio("'%s' já tem este vídeo, como '%s'."
+                        .formatted(destino.getNome(), repetido.getNome()));
+            });
+        }
         item.mudarDeSubmodulo(destino, itens.maiorOrdem(destino) + 1);
         item.tocar(ident);
         return itens.save(item);

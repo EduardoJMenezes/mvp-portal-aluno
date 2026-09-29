@@ -158,9 +158,12 @@ export type Video = {
 };
 
 /** `turmas`: vazia é "toda turma do módulo"; com nomes, a aula é só delas (decisão 0011). */
-export type ItemCurso = { id: number; nome: string; ordem: number; status: StatusConteudo; video_id: number; video?: Video | null; turmas?: string[] };
+/** O PDF que uma aula leva (decisão 0013); abre no leitor de materiais. */
+export type MaterialLigado = { material_id: number; titulo: string };
+/** Sem `video_id`, a linha é só o PDF de `material`. */
+export type ItemCurso = { id: number; nome: string; ordem: number; status: StatusConteudo; video_id: number | null; video?: Video | null; turmas?: string[]; material?: MaterialLigado | null };
 /** Aula ao vivo agendada no sub-módulo, enquanto a gravação não chegou. ENCERRADA aqui é "processando". */
-export type AulaNoCurso = { aula_id: number; titulo: string; inicio_em: string; minutos: number; estado: Aula["estado"]; abre_em: string };
+export type AulaNoCurso = { aula_id: number; titulo: string; inicio_em: string; minutos: number; estado: Aula["estado"]; abre_em: string; material?: MaterialLigado | null };
 export type SubModulo = { id: number; nome: string; tipo: string; ordem: number; itens: ItemCurso[]; aulas?: AulaNoCurso[] };
 /** `turmas`: as que recebem o módulo, que mora numa biblioteca (decisão 0011). Só o professor recebe. */
 export type Modulo = { id: number; nome: string; ordem: number; categoria?: string | null; turma: string; turmas?: string[]; submodulos: SubModulo[] };
@@ -446,6 +449,10 @@ export type Aula = {
   categoria?: string | null;
   /** A gravação da aula sem capítulo: toca na própria tela de Lives. */
   video?: Video | null;
+  /** O PDF da aula; para o aluno, só depois de liberado. */
+  material?: MaterialLigado | null;
+  /** O PDF só aparece a partir de 00h do dia da aula. */
+  material_no_dia?: boolean;
 };
 
 export type Material = {
@@ -460,6 +467,8 @@ export type Material = {
   publicado_em: string | null;
   paginas_anotadas?: number;
   categoria?: string | null;
+  /** Só para o professor: as aulas onde o PDF está anexado. */
+  usos?: string[];
 };
 
 /** Um traço do aluno, em coordenadas relativas à página (0 a 1). */
@@ -786,6 +795,12 @@ export const api = {
   ) => pedir<Aula>(`/admin/aulas/${id}`, { method: "PATCH", json: dados }),
   removerAula: (id: number) => pedir<{ aula_id: number; titulo: string }>(`/admin/aulas/${id}`, { method: "DELETE" }),
   colocarVideoNaAula: (id: number, video: string) => pedir<Aula>(`/admin/aulas/${id}/video`, { method: "POST", json: { video } }),
+  materialDaAula: (id: number, material: number | null, so_no_dia?: boolean) =>
+    pedir<Aula>(`/admin/aulas/${id}/material`, { method: "PUT", json: { material, so_no_dia } }),
+  materialDoItem: (item: number, material: number | null) =>
+    pedir<{ item_id: number; nome: string; material: MaterialLigado | null }>(`/admin/itens/${item}/material`, { method: "PUT", json: { material } }),
+  pdfNoSubmodulo: (submodulo: number, material: number) =>
+    pedir<{ item_id: number; nome: string; material: MaterialLigado }>(`/admin/submodulos/${submodulo}/pdf`, { method: "POST", json: { material } }),
   iniciarAula: (id: number) => pedir<{ aula_id: number; url: string }>(`/admin/aulas/${id}/iniciar`, { method: "POST" }),
 
   materiaisDoProfessor: () => pedir<Material[]>("/admin/materiais"),

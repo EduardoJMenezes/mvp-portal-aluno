@@ -7,6 +7,7 @@ import { Aviso, Botao, Campo, Cartao, Estado, Etiqueta, Pagina, TituloDeSecao, V
 import { CampoCategoria, EditarCategoria, categoriasDe } from "@/components/Categoria";
 import { ColocarVideo } from "@/components/ColocarVideo";
 import { EscolherTurmas } from "@/components/EscolherTurmas";
+import { EscolherPdf, PdfDaAula, PdfDaAulaAoVivo } from "@/components/Pdf";
 import { abrirEmNovaAba, api, useDados, type Assunto, type Aula, type Modulo, type SubModulo, type Turma, type VideoVimeo } from "@/lib/api";
 import { duracao, emBrasilia, plural } from "@/lib/formato";
 
@@ -410,7 +411,7 @@ function SecaoDoSubmodulo({
   executar: Executar;
   confirmar: Confirmar;
 }) {
-  const [painel, setPainel] = useState<"videos" | "classificar" | "aula" | null>(null);
+  const [painel, setPainel] = useState<"videos" | "classificar" | "aula" | "pdf" | null>(null);
   const [renomeando, setRenomeando] = useState<number | null>(null);
   const [nomeItem, setNomeItem] = useState("");
   const publicados = sub.itens.filter((i) => i.status === "PUBLICADO").length;
@@ -437,19 +438,29 @@ function SecaoDoSubmodulo({
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap items-center gap-2">
           <h3 className="font-semibold text-tinta">{sub.nome}</h3>
-          <Etiqueta>{plural(sub.itens.length, "vídeo")}</Etiqueta>
+          <Etiqueta>{plural(sub.itens.length, "aula")}</Etiqueta>
           {publicados > 0 && <Etiqueta tom="sucesso">{plural(publicados, "publicado")}</Etiqueta>}
           {sub.itens.length - publicados > 0 && <Etiqueta tom="atencao">{plural(sub.itens.length - publicados, "em rascunho", "em rascunho")}</Etiqueta>}
         </div>
         <div className="flex flex-wrap gap-1">
           <Botao variante="texto" onClick={() => setPainel(painel === "aula" ? null : "aula")} aria-expanded={painel === "aula"}>Aula ao vivo</Botao>
           <Botao variante="texto" onClick={() => setPainel(painel === "videos" ? null : "videos")} aria-expanded={painel === "videos"}>Adicionar vídeos</Botao>
+          <Botao variante="texto" onClick={() => setPainel(painel === "pdf" ? null : "pdf")} aria-expanded={painel === "pdf"}>Adicionar PDF</Botao>
           <Botao variante="texto" onClick={() => setPainel(painel === "classificar" ? null : "classificar")} aria-expanded={painel === "classificar"}>Classificar</Botao>
           <Botao variante="texto" className="text-erro" onClick={() => void removerSub()}>Remover</Botao>
         </div>
       </div>
 
       {painel === "videos" && <AdicionarVideos turma={turma} modulo={modulo} sub={sub} executar={executar} aoFechar={() => setPainel(null)} />}
+      {painel === "pdf" && (
+        <div className="mt-3">
+          <EscolherPdf
+            abertoDeInicio
+            aoEscolher={(id) => executar(() => api.pdfNoSubmodulo(sub.id, id), `PDF adicionado em ${sub.nome}. Entra publicado, com as regras das aulas do módulo.`)}
+            aoFechar={() => setPainel(null)}
+          />
+        </div>
+      )}
       {painel === "classificar" && <Classificar turma={turma} modulo={modulo} sub={sub} assuntos={assuntos} executar={executar} aoFechar={() => setPainel(null)} />}
       {painel === "aula" && <NovaAulaAoVivo turmas={modulo.turmas?.length ? modulo.turmas : [nomeDaTurma]} sub={sub} categorias={categoriasDeAula} executar={executar} aoFechar={() => setPainel(null)} />}
       {aulas.length > 0 && <AulasDoSubmodulo aulas={aulas} executar={executar} />}
@@ -485,8 +496,16 @@ function SecaoDoSubmodulo({
                         <Botao tamanho="pequeno" onClick={() => setRenomeando(null)}>Cancelar</Botao>
                       </form>
                     ) : (
-                      <span className="font-medium">{item.nome}</span>
+                      <span className="flex flex-wrap items-center gap-2">
+                        <span className="font-medium">{item.nome}</span>
+                        {!item.video_id && <Etiqueta tom="info">Só PDF</Etiqueta>}
+                      </span>
                     )}
+                    <PdfDaAula
+                      material={item.material}
+                      aoTrocar={(id) => executar(() => api.materialDoItem(item.id, id), `PDF de "${item.nome}" salvo.`)}
+                      aoTirar={item.video_id ? () => executar(() => api.materialDoItem(item.id, null), `"${item.nome}" ficou sem PDF.`) : undefined}
+                    />
                   </td>
                   <td>{item.status === "PUBLICADO" ? <Etiqueta tom="sucesso">Publicado</Etiqueta> : <Etiqueta tom="atencao">Rascunho</Etiqueta>}</td>
                   <td>
@@ -527,8 +546,8 @@ function SecaoDoSubmodulo({
                         onClick={async () => {
                           const sim = await confirmar({
                             titulo: `Remover "${item.nome}"?`,
-                            texto: item.status === "PUBLICADO" ? "O vídeo sai da tela dos alunos na hora." : "O vídeo ainda estava em rascunho; os alunos não notam.",
-                            confirmar: "Remover vídeo",
+                            texto: item.status === "PUBLICADO" ? "A aula sai da tela dos alunos na hora." : "A aula ainda estava em rascunho; os alunos não notam.",
+                            confirmar: "Remover aula",
                             perigo: true,
                           });
                           if (sim) await executar(() => api.removerItem(turma, modulo.id, sub.id, item.id), `"${item.nome}" removido.`);
@@ -657,6 +676,7 @@ function AulasDoSubmodulo({ aulas, executar }: { aulas: Aula[]; executar: Execut
                   <Link href="/admin/aulas/" className="px-1 text-sm text-acento hover:underline">Gerenciar</Link>
                 </div>
               </div>
+              <PdfDaAulaAoVivo aula={aula} executar={executar} />
               {aula.estado === "ENCERRADA" && (
                 <ColocarVideo
                   aula={aula}

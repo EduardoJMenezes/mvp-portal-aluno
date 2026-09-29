@@ -21,10 +21,14 @@ import jakarta.persistence.OrderBy;
 import java.util.ArrayList;
 import java.util.List;
 import jakarta.persistence.Table;
+import br.com.plataforma.materiais.Material;
+import org.hibernate.annotations.NotFound;
+import org.hibernate.annotations.NotFoundAction;
 import org.hibernate.annotations.SQLRestriction;
 
 /**
- * Uma linha na lista do aluno — hoje, sempre um vídeo.
+ * Uma linha na lista do aluno: um vídeo, um PDF, ou os dois — a gravação da aula ao vivo leva o
+ * material da aula junto (decisão 0013).
  *
  * <p>{@code nome} é a identidade editorial ("Q04", "Aula 1 — cadeias carbônicas") e {@code ordem}
  * é a posição na tela. São coisas diferentes de propósito: juntas, impediriam exibir a Q52 antes
@@ -45,9 +49,15 @@ public class Item extends Rastreavel implements Nomeavel {
     @JoinColumn(name = "submodulo_id", nullable = false)
     private SubModulo submodulo;
 
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "video_id", nullable = false)
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "video_id")
     private Video video;
+
+    // Material removido chega como null: a linha perde o PDF, e a de só PDF some da tela.
+    @ManyToOne
+    @NotFound(action = NotFoundAction.IGNORE)
+    @JoinColumn(name = "material_id")
+    private Material material;
 
     @Column(nullable = false)
     private String nome;
@@ -97,6 +107,14 @@ public class Item extends Rastreavel implements Nomeavel {
 
     public Video getVideo() {
         return video;
+    }
+
+    public Material getMaterial() {
+        return material;
+    }
+
+    void anexarMaterial(Material material) {
+        this.material = material;
     }
 
     public Integer getOrdem() {

@@ -15,6 +15,7 @@ import {
 } from "@/components/ui";
 import { CampoCategoria, EditarCategoria, categoriasDe } from "@/components/Categoria";
 import { ColocarVideo } from "@/components/ColocarVideo";
+import { PdfDaAulaAoVivo } from "@/components/Pdf";
 import { api, useDados, type Aula } from "@/lib/api";
 import { emBrasilia } from "@/lib/formato";
 
@@ -133,6 +134,7 @@ export default function AulasDoProfessor() {
                       </Botao>
                     </div>
                   </div>
+                  <PdfDaAulaAoVivo aula={aula} executar={executar} />
                   {aula.estado === "ENCERRADA" && (
                     <ColocarVideo aula={aula} aoColocar={(link) => executar(() => api.colocarVideoNaAula(aula.aula_id, link))} />
                   )}
