@@ -44,6 +44,7 @@ src/main/java/br/com/plataforma/
   comandos/     a borda do MCP: /comandos/<tool>, /interno/*
   portal/       a borda do navegador: /api/*, sessão, portal estático
   seguranca/    as quatro portas
+  demo/         o seed da demonstração, só em banco vazio (SEED_DEMO)
 ```
 
 ## A regra que sustenta a POC (§6)
@@ -115,7 +116,7 @@ mostrar ao professor um resumo coerente do que ele está aprovando.
 | 4  | ADMIN / GERENCIADOR / ALUNO; aluno fora do MCP | `models.Papel`, `mcp_server/auth.py` |
 | 5  | autenticação do MCP, sem execução anônima | `mcp_server/auth.py` (simplificação documentada) |
 | 6  | IA não publica direto | `services/publicacao.py` + `tools.publicar_rascunho` |
-| 7  | dados de demonstração | `seed.py` |
+| 7  | dados de demonstração | `demo/SeedDeDemonstracao.java` |
 | 8  | consulta ao Vimeo | `vimeo/client.py`, tool `listar_videos_vimeo` |
 | 10 | frontend admin | `frontend/app/(portal)/admin/` (Next.js, exportado estático) |
 | 11 | frontend aluno e segregação | `frontend/app/(portal)/`, `catalogo.py` |

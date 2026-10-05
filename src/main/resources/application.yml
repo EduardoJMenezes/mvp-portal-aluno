@@ -41,6 +41,9 @@ spring:
 
 plataforma:
   token-de-servico: ${SERVICO_TOKEN:}
+  # Grava a demonstração (contas .demo, duas turmas, questões, simulados) num banco vazio.
+  # Com qualquer usuário ou turma já gravados, não faz nada — ver demo/SeedDeDemonstracao.
+  semear-demo: ${SEED_DEMO:false}
 
 portal:
   jwt-secret: ${JWT_SECRET:dev-only-trocar-antes-de-qualquer-coisa-real}

@@ -8,9 +8,16 @@ uma **interface segura** para o professor operar o próprio ecossistema.
 
 ```bash
 brew services start postgresql@17
-.venv/bin/python -m app.seed --reset          # anote os tokens impressos
-.venv/bin/python -m uvicorn app.main:app --port 8000
+createdb plataforma_mvp                       # o seed só grava em banco vazio
+export DATABASE_URL=postgresql://localhost:5432/plataforma_mvp
+export SERVICO_TOKEN=$(python3 -c "import secrets; print(secrets.token_urlsafe(32))")
+SEED_DEMO=true MODO_DEMO=true SESSAO_COOKIE_SEGURO=false ./mvnw spring-boot:run
 ```
+
+`SEED_DEMO=true` grava as contas e o conteúdo das tabelas do fim desta página
+na primeira partida, e não faz nada quando o banco já tem algum usuário ou
+turma — para recomeçar, `dropdb plataforma_mvp` e crie de novo. O token do MCP
+se emite no portal, em **Conectar ao Claude**.
 
 Ensaio geral automatizado, que percorre os quatro fluxos sozinho:
 
@@ -19,7 +26,7 @@ Ensaio geral automatizado, que percorre os quatro fluxos sozinho:
 ```
 
 Deixe abertos: o Claude com o MCP conectado, e duas janelas do navegador em
-`http://127.0.0.1:8000` — uma logada como professor, outra anônima para os
+`http://127.0.0.1:8080` — uma logada como professor, outra anônima para os
 alunos.
 
 > **Rede:** `api.vimeo.com` precisa estar liberado. Em rede corporativa com
@@ -103,10 +110,10 @@ toda tool de escrita, cria em rascunho e espera sua aprovação.
 
 ## Contas
 
-No banco local, a senha é a que o `seed` imprime ao criar os dados. Em
-produção essas contas usam senha própria. Com `MODO_DEMO=true` a tela de
-entrada lista as contas `@escola.demo`/`@aluno.demo` e entra nelas sem senha,
-então nunca ligue essa variável num ambiente real.
+O seed não dá a ninguém uma senha conhecida: no banco local as contas entram
+pelo `MODO_DEMO=true`, que lista as contas `@escola.demo`/`@aluno.demo` na tela
+de entrada e entra nelas sem senha — por isso nunca ligue essa variável num
+ambiente real. Em produção essas contas usam senha própria.
 
 | conta | papel | turma |
 |---|---|---|
@@ -123,6 +130,12 @@ propósito**, porque é o buraco que o passo 2 preenche ao vivo:
 |---|---|
 | Extensivo 2027 | Estequiometria (Q01–Q05), Atomística (Q01–Q03) |
 | Extensivo 2026 | Atomística (as mesmas questões, reaproveitadas), Cinética |
+
+Para o simulado ele grava 15 questões completas (cinco de cada assunto) e duas
+provas: o **Simulado diagnóstico — Atomística**, já encerrado no Extensivo
+2027, com João (4 de 5) e Maria (2 de 5) — as perguntas do passo 10 têm
+resposta antes de alguém fazer prova —, e o **Simulado 1 — Cinética**, aberto
+por 30 dias para as duas turmas.
 
 ## Se algo der errado
 

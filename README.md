@@ -58,6 +58,10 @@ cd frontend && npm install && npm run build && cd ..
 ./mvnw spring-boot:run          # http://127.0.0.1:8080 — o Flyway cria o schema num banco vazio
 ```
 
+O banco nasce sem ninguém. Para as contas e o conteúdo da demonstração, suba
+uma vez com `SEED_DEMO=true MODO_DEMO=true SESSAO_COOKIE_SEGURO=false`: o seed
+só grava em banco vazio (ver [docs/DEMO.md](docs/DEMO.md)).
+
 Tudo em `http://127.0.0.1:8080`: portal na raiz, API em `/api`, comandos do
 MCP em `/comandos`. Para mexer no frontend com recarregamento automático:
 `npm run dev` em `frontend/` (Next.js na porta 3000, com `/api` reescrito
@@ -111,6 +115,7 @@ src/main/java/br/com/plataforma/
   comandos/    a borda do MCP: /comandos/<tool> e /interno/*
   portal/      a borda do navegador: /api/*, sessão, portal estático
   seguranca/   as quatro portas
+  demo/        o seed da demonstração (SEED_DEMO)
 src/main/resources/db/migration/   o schema (Flyway)
 src/test/java/                     comandos e portal, contra Postgres real
 frontend/                          Next.js + Tailwind: portal do professor e do aluno
