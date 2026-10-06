@@ -1,6 +1,7 @@
 package br.com.plataforma.estrutura;
 
 import br.com.plataforma.acervo.Video;
+import br.com.plataforma.questoes.Questao;
 import br.com.plataforma.catalogo.Turma;
 import br.com.plataforma.comum.Status;
 import java.util.List;
@@ -15,6 +16,14 @@ interface ItemRepositorio extends JpaRepository<Item, Integer> {
     List<Item> findBySubmoduloAndStatusOrderByOrdemAsc(SubModulo submodulo, Status status);
 
     Optional<Item> findFirstBySubmoduloAndVideo(SubModulo submodulo, Video video);
+
+    Optional<Item> findFirstBySubmoduloAndQuestao(SubModulo submodulo, Questao questao);
+
+    @Query("select count(i) from Item i where i.submodulo = :submodulo and i.questao is not null")
+    int contarQuestoes(SubModulo submodulo);
+
+    @Query("select i from Item i where i.questao.id in :questoes order by i.id")
+    List<Item> comAsQuestoes(java.util.Collection<Integer> questoes);
 
     int countBySubmoduloAndStatus(SubModulo submodulo, Status status);
 

@@ -34,15 +34,17 @@ public class SimuladosServico {
     private final SimuladoRepositorio simulados;
     private final SimuladoQuestaoRepositorio vinculos;
     private final TentativaRepositorio tentativas;
+    private final br.com.plataforma.estrutura.EstruturaServico estrutura;
 
     @jakarta.persistence.PersistenceContext
     private jakarta.persistence.EntityManager em;
 
     public SimuladosServico(SimuladoRepositorio simulados, SimuladoQuestaoRepositorio vinculos,
-            TentativaRepositorio tentativas) {
+            TentativaRepositorio tentativas, br.com.plataforma.estrutura.EstruturaServico estrutura) {
         this.simulados = simulados;
         this.vinculos = vinculos;
         this.tentativas = tentativas;
+        this.estrutura = estrutura;
     }
 
     // --- tempo ---------------------------------------------------------------
@@ -184,10 +186,10 @@ public class SimuladosServico {
         }
 
         var incompletas = s.getQuestoes().stream()
-                .filter(sq -> sq.getQuestao().getAlternativas().size() < Letra.values().length)
+                .filter(sq -> !sq.getQuestao().completa())
                 .map(SimuladoQuestao::getOrdem).toList();
         if (!incompletas.isEmpty()) {
-            pendencias.add("questões sem as alternativas A–E: " + incompletas);
+            pendencias.add("questões sem as alternativas A–D: " + incompletas);
         }
         var semImagem = s.getQuestoes().stream()
                 .filter(sq -> sq.getQuestao().isImagemPendente())
@@ -236,10 +238,11 @@ public class SimuladosServico {
                 .toList();
     }
 
+    /** {@code aulas}: onde a questão também está no curso — lá o gabarito sai para quem responde. */
     public record QuestaoDaProva(
             Integer ordem, Integer questaoId, String enunciado,
             java.util.Map<Letra, String> alternativas, Letra gabarito, Boolean imagemPendente,
-            String resolucaoComentada, String resolucao) {}
+            String resolucaoComentada, String resolucao, List<String> aulas) {}
 
     public record SimuladoDetalhado(
             Integer simuladoId, String titulo, Status status, Situacao situacao, List<String> turmas,
@@ -253,13 +256,16 @@ public class SimuladosServico {
         var s = resolver(referencia);
         var base = resumo(s, agora, tentativas.countBySimulado(s));
 
+        var aulas = estrutura.aulasDasQuestoes(
+                s.getQuestoes().stream().map(sq -> sq.getQuestao().getId()).toList());
         var questoes = s.getQuestoes().stream().map(sq -> {
             var q = sq.getQuestao();
             var alternativas = new LinkedHashMap<Letra, String>();
             q.getAlternativas().forEach(a -> alternativas.put(a.getLetra(), a.getTexto()));
             return new QuestaoDaProva(sq.getOrdem(), q.getId(), q.getEnunciado(), alternativas,
                     q.getGabarito(), q.isImagemPendente(), q.getResolucaoComentada(),
-                    q.getVideo() == null ? null : q.getVideo().getTitulo());
+                    q.getVideo() == null ? null : q.getVideo().getTitulo(),
+                    aulas.getOrDefault(q.getId(), List.of()));
         }).toList();
 
         return new SimuladoDetalhado(base.simuladoId(), base.titulo(), base.status(), base.situacao(),

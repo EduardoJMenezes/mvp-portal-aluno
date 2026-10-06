@@ -35,12 +35,14 @@ public class ImportacoesComandos {
     private final ImportacoesServico importacoes;
     private final CatalogoServico catalogo;
     private final QuestoesServico questoes;
+    private final br.com.plataforma.estrutura.EstruturaServico estrutura;
 
     public ImportacoesComandos(ImportacoesServico importacoes, CatalogoServico catalogo,
-            QuestoesServico questoes) {
+            QuestoesServico questoes, br.com.plataforma.estrutura.EstruturaServico estrutura) {
         this.importacoes = importacoes;
         this.catalogo = catalogo;
         this.questoes = questoes;
+        this.estrutura = estrutura;
     }
 
     // --- importar_simulado_docx ----------------------------------------------
@@ -79,6 +81,37 @@ public class ImportacoesComandos {
         parametros.put("abre_em", pedido.abreEm());
         parametros.put("fecha_em", pedido.fechaEm());
         parametros.put("duracao_minutos", pedido.duracaoMinutos());
+        parametros.put("pasta_resolucao", pedido.pastaResolucao());
+
+        return importacoes.criarLink(ident, parametros, Instant.now());
+    }
+
+    // --- importar_questoes_docx ----------------------------------------------
+
+    public record ImportarQuestoesDocx(
+            String turma,
+            @NotBlank(message = "é obrigatório: o módulo, ex.: 'K01'") String modulo,
+            @NotBlank(message = "é obrigatório: o sub-módulo, ex.: 'Questões da apostila'") String submodulo,
+            String pastaResolucao) {}
+
+    /**
+     * O link de envio do .docx da apostila: as questões dele viram linhas do sub-módulo, que o
+     * aluno responde na aula. Módulo e sub-módulo são conferidos <b>já aqui</b>.
+     */
+    @PostMapping("/importar_questoes_docx")
+    @Transactional
+    public ImportacoesServico.LinkDeEnvio importarQuestoesDocx(
+            @AuthenticationPrincipal Identidade ident,
+            @Valid @RequestBody ImportarQuestoesDocx pedido) {
+        var turma = catalogo.resolverTurmaOuBiblioteca(pedido.turma());
+        var alvos = estrutura.alvos(turma, pedido.modulo(), pedido.submodulo(), null);
+
+        var parametros = new LinkedHashMap<String, Object>();
+        parametros.put("formato", "DOCX");
+        parametros.put("turma", turma == null ? null : turma.getNome());
+        parametros.put("turmas", turma == null ? List.of() : List.of(turma.getNome()));
+        parametros.put("submodulo_id", alvos.submodulo().getId());
+        parametros.put("titulo", "%s › %s".formatted(alvos.modulo().getNome(), alvos.submodulo().getNome()));
         parametros.put("pasta_resolucao", pedido.pastaResolucao());
 
         return importacoes.criarLink(ident, parametros, Instant.now());

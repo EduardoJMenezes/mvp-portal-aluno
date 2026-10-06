@@ -97,7 +97,19 @@ function BotaoIcone({ rotulo, children, ...resto }: { rotulo: string; children: 
   );
 }
 
-function BuscaNoBanco({ jaNaProva, aoEscolher }: { jaNaProva: Set<number | undefined>; aoEscolher: (q: Questao) => void }) {
+/** A busca no acervo. Serve à prova e à aula: muda só o que o botão diz. */
+export function BuscaNoBanco({
+  jaNaProva,
+  aoEscolher,
+  rotuloJaEsta = "Na prova",
+  avisarReuso = true,
+}: {
+  jaNaProva: Set<number | undefined>;
+  aoEscolher: (q: Questao) => void;
+  rotuloJaEsta?: string;
+  /** Na prova, a questão que está em aula merece o aviso: lá o gabarito sai na hora. */
+  avisarReuso?: boolean;
+}) {
   const [busca, setBusca] = useState("");
   const [resultados, setResultados] = useState<Questao[] | null>(null);
   const [erro, setErro] = useState("");
@@ -148,12 +160,13 @@ function BuscaNoBanco({ jaNaProva, aoEscolher }: { jaNaProva: Set<number | undef
                     <Etiqueta>#{q.questao_id}</Etiqueta>
                     <Etiqueta>{DIFICULDADE[q.dificuldade] ?? q.dificuldade}</Etiqueta>
                     {q.classificacao[0] && <Etiqueta tom="info">{q.classificacao[0].assunto}</Etiqueta>}
+                    {avisarReuso && !!q.aulas?.length && <span title={`Lá o aluno vê o gabarito ao responder: ${q.aulas.join("; ")}`}><Etiqueta tom="atencao">Também em aula</Etiqueta></span>}
                   </div>
                   <div className="line-clamp-2 text-[15px]">
                     <TextoFormatado texto={q.enunciado} compacto />
                   </div>
                 </div>
-                <Botao tamanho="pequeno" disabled={esta} onClick={() => aoEscolher(q)}>{esta ? "Na prova" : "Adicionar"}</Botao>
+                <Botao tamanho="pequeno" disabled={esta} onClick={() => aoEscolher(q)}>{esta ? rotuloJaEsta : "Adicionar"}</Botao>
               </li>
             );
           })}
@@ -172,9 +185,11 @@ function QuestaoNova({ aoCriar }: { aoCriar: (q: { enunciado: string; alternativ
 
   function adicionar() {
     if (!enunciado.trim()) return setErro("Escreva o enunciado.");
-    if (LETRAS.some((l) => !alternativas[l].trim())) return setErro("Preencha as cinco alternativas.");
+    if (LETRAS.some((l) => l !== "E" && !alternativas[l].trim())) return setErro("Preencha de A a D; a E é opcional.");
     if (!gabarito) return setErro("Marque o gabarito.");
-    aoCriar({ enunciado, alternativas, gabarito, dificuldade });
+    if (gabarito === "E" && !alternativas.E.trim()) return setErro("O gabarito é a E, mas a alternativa E está em branco.");
+    // Sem a E, a questão vai de A a D.
+    aoCriar({ enunciado, alternativas: Object.fromEntries(Object.entries(alternativas).filter(([l, t]) => l !== "E" || t.trim())), gabarito, dificuldade });
   }
 
   return (
@@ -192,7 +207,7 @@ function QuestaoNova({ aoCriar }: { aoCriar: (q: { enunciado: string; alternativ
               <span aria-hidden="true">{letra}</span>
               <span className="sr-only">Gabarito {letra}</span>
             </label>
-            <input aria-label={`Alternativa ${letra}`} value={alternativas[letra]} onChange={(e) => setAlternativas((a) => ({ ...a, [letra]: e.target.value }))} className="campo" />
+            <input aria-label={letra === "E" ? "Alternativa E (opcional)" : `Alternativa ${letra}`} placeholder={letra === "E" ? "Opcional" : undefined} value={alternativas[letra]} onChange={(e) => setAlternativas((a) => ({ ...a, [letra]: e.target.value }))} className="campo" />
           </div>
         ))}
       </fieldset>

@@ -56,9 +56,18 @@ function doDetalhe(q: QuestaoDetalhada, assuntos: Assunto[]): Formulario {
   };
 }
 
+// A E é opcional: vazia, a questão vai de A a D.
+const alternativasPreenchidas = (alternativas: Record<string, string>) =>
+  Object.fromEntries(Object.entries(alternativas).filter(([letra, texto]) => letra !== "E" || texto.trim()));
+
 function Editor() {
   const router = useRouter();
-  const id = Number(useSearchParams().get("id")) || null;
+  const parametros = useSearchParams();
+  const id = Number(parametros.get("id")) || null;
+  // Vindo de Admin › Biblioteca: a questão nasce já como linha deste sub-módulo.
+  const submodulo = (!id && Number(parametros.get("submodulo"))) || null;
+  const destino = parametros.get("destino") ?? "";
+  const [nomeDaLinha, setNomeDaLinha] = useState("");
   const assuntos = useDados(() => api.assuntos());
   const questao = useDados(() => (id ? api.questao(id) : Promise.resolve(null)), [id]);
   const [form, setForm] = useState<Formulario>(VAZIO);
@@ -90,25 +99,33 @@ function Editor() {
     setErro("");
     setAviso("");
     if (!form.gabarito) return setErro("Marque o gabarito.");
+    if (form.gabarito === "E" && !form.alternativas.E?.trim()) return setErro("O gabarito é a E, mas a alternativa E está em branco.");
     setSalvando(true);
     try {
       if (!id) {
-        const rascunho = await api.criarQuestao({
+        const nova = {
           enunciado: form.enunciado,
-          alternativas: form.alternativas,
+          alternativas: alternativasPreenchidas(form.alternativas),
           gabarito: form.gabarito,
           dificuldade: form.dificuldade,
           assunto: nomeDoAssunto || undefined,
           subassunto: nomeDoSubassunto || undefined,
           vimeo_id: form.vimeo_id.trim() || undefined,
           resolucao_comentada: form.resolucao_comentada || undefined,
-          imagem_pendente: form.imagem_pendente,
-        });
-        router.replace(`/admin/rascunhos/revisar/?id=${rascunho.rascunho_id}`);
+        };
+        if (submodulo) {
+          await api.questaoNoSubmodulo(submodulo, { nome: nomeDaLinha.trim() || undefined, nova });
+          router.replace("/admin/biblioteca/");
+          return;
+        }
+        const criada = await api.criarQuestao({ ...nova, imagem_pendente: form.imagem_pendente });
+        // Já está no banco: segue para o editor dela, onde entram as figuras.
+        router.replace(`/admin/questoes/editar/?id=${criada.questoes[0].questao_id}`);
         return;
       }
       const mudancas: Record<string, unknown> = {};
       if (form.enunciado !== original.enunciado) mudancas.enunciado = form.enunciado;
+      // A E apagada vai vazia de propósito: é assim que o backend a tira da questão.
       if (LETRAS.some((l) => form.alternativas[l] !== original.alternativas[l])) mudancas.alternativas = form.alternativas;
       if (form.gabarito !== original.gabarito) mudancas.gabarito = form.gabarito;
       if (form.dificuldade !== original.dificuldade) mudancas.dificuldade = form.dificuldade;
@@ -160,9 +177,9 @@ function Editor() {
 
   return (
     <Pagina
-      titulo={id ? `Questão #${id}` : "Nova questão"}
-      legenda={id ? undefined : "Nasce em rascunho: só entra no banco depois de aprovada."}
-      voltar={{ href: "/admin/questoes/", rotulo: "Banco de questões" }}
+      titulo={id ? `Questão #${id}` : submodulo ? "Nova questão na aula" : "Nova questão"}
+      legenda={id ? undefined : submodulo ? `Entra no banco e vira uma linha de ${destino || "o sub-módulo"}, já publicada: o aluno responde ali e vê o gabarito na hora.` : "Entra no banco já publicada: fica disponível para simulados e para as aulas."}
+      voltar={submodulo ? { href: "/admin/biblioteca/", rotulo: "Aulas" } : { href: "/admin/questoes/", rotulo: "Banco de questões" }}
       acoes={id && <Botao variante="perigo" onClick={() => void remover()}>Remover</Botao>}
     >
       {dialogo}
@@ -173,8 +190,21 @@ function Editor() {
         </Aviso>
       )}
 
+      {!!questao.dados?.aulas?.length && (
+        <Aviso tom="info" titulo="Esta questão está em aula">
+          {questao.dados.aulas.join("; ")}. Lá o aluno vê o gabarito assim que responde — leve isso em conta antes de pôr a questão num simulado.
+        </Aviso>
+      )}
+
       <form onSubmit={salvar} className="grid gap-5 lg:grid-cols-2">
         <div className="flex flex-col gap-4">
+          {submodulo && (
+            <Cartao className="p-5">
+              <Campo rotulo="Nome da linha na aula" dica='Como a questão aparece na lista do aluno, ex.: "Q04". Em branco, vira "Questão N".'>
+                {(cid) => <input id={cid} value={nomeDaLinha} onChange={(e) => setNomeDaLinha(e.target.value)} maxLength={120} className="campo max-w-xs" />}
+              </Campo>
+            </Cartao>
+          )}
           <Cartao className="flex flex-col gap-4 p-5">
             <Campo rotulo="Enunciado" dica={<>Markdown. Fórmula entre $…$ (química em \ce&#123;…&#125;). Figura que ainda vai entrar: ![](figura:pendente).</>}>
               {(cid) => <textarea id={cid} required rows={8} disabled={travada} value={form.enunciado} onChange={(e) => muda("enunciado", e.target.value)} className="campo" />}
@@ -189,8 +219,9 @@ function Editor() {
                     <span className="sr-only">Gabarito {letra}</span>
                   </label>
                   <textarea
-                    aria-label={`Alternativa ${letra}`}
-                    required
+                    aria-label={letra === "E" ? "Alternativa E (opcional)" : `Alternativa ${letra}`}
+                    placeholder={letra === "E" ? "Opcional: em branco, a questão vai de A a D" : undefined}
+                    required={letra !== "E"}
                     rows={2}
                     value={form.alternativas[letra]}
                     onChange={(e) => setForm((f) => ({ ...f, alternativas: { ...f.alternativas, [letra]: e.target.value } }))}
@@ -240,7 +271,7 @@ function Editor() {
 
           <Cartao className="flex flex-col gap-4 p-5">
             <VideoDaResolucao vimeoId={form.vimeo_id} aoEscolher={(v) => muda("vimeo_id", v)} />
-            <Campo rotulo="Resolução comentada" dica="O aluno vê depois que o simulado fecha.">
+            <Campo rotulo="Resolução comentada" dica="O aluno vê depois que o simulado fecha — ou, na aula, assim que responde.">
               {(cid) => <textarea id={cid} rows={5} value={form.resolucao_comentada} onChange={(e) => muda("resolucao_comentada", e.target.value)} className="campo" />}
             </Campo>
           </Cartao>
@@ -248,7 +279,7 @@ function Editor() {
           {erro && <Aviso tom="erro">{erro}</Aviso>}
           {aviso && <Aviso tom="sucesso">{aviso}</Aviso>}
           <div className="flex gap-2">
-            <Botao type="submit" variante="primario" disabled={salvando}>{salvando ? "Salvando…" : id ? "Salvar questão" : "Criar em rascunho"}</Botao>
+            <Botao type="submit" variante="primario" disabled={salvando}>{salvando ? "Salvando…" : id ? "Salvar questão" : submodulo ? "Criar e pôr na aula" : "Criar questão"}</Botao>
           </div>
         </div>
 
@@ -271,7 +302,7 @@ function Previa({ form }: { form: Formulario }) {
       </div>
       {vazia ? <p className="text-[15px] text-suave">A prévia aparece enquanto você escreve.</p> : <TextoFormatado texto={form.enunciado} />}
       <ul className="flex flex-col gap-2">
-        {LETRAS.map((letra) => (
+        {LETRAS.filter((letra) => letra !== "E" || form.alternativas.E?.trim()).map((letra) => (
           <li key={letra} className={`flex items-start gap-3 rounded-cartao border px-3 py-2 ${form.gabarito === letra ? "border-sucesso-borda bg-sucesso-fundo" : "border-borda"}`}>
             <span className="mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-full border border-borda-campo text-xs font-semibold">{letra}</span>
             <TextoFormatado texto={form.alternativas[letra] || " "} compacto className="min-w-0 flex-1" />

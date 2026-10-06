@@ -29,20 +29,23 @@ public class RascunhosComandos {
     private final PublicacaoServico publicacao;
     private final CatalogoServico catalogo;
     private final EntradasDaProva entradas;
+    private final br.com.plataforma.estrutura.EstruturaServico estrutura;
 
     public RascunhosComandos(RascunhosServico rascunhos, PublicacaoServico publicacao,
-            CatalogoServico catalogo, EntradasDaProva entradas) {
+            CatalogoServico catalogo, EntradasDaProva entradas,
+            br.com.plataforma.estrutura.EstruturaServico estrutura) {
         this.rascunhos = rascunhos;
         this.publicacao = publicacao;
         this.catalogo = catalogo;
         this.entradas = entradas;
+        this.estrutura = estrutura;
     }
 
     // --- criar_questao_rascunho ----------------------------------------------
 
     public record CriarQuestaoRascunho(
             @NotBlank(message = "é obrigatório (Markdown e LaTeX)") String enunciado,
-            @NotNull(message = "são obrigatórias: A a E") Map<String, String> alternativas,
+            @NotNull(message = "são obrigatórias: de A a D, e a E se houver") Map<String, String> alternativas,
             @NotBlank(message = "é obrigatório: a letra correta") String gabarito,
             String assunto,
             String subassunto,
@@ -93,6 +96,37 @@ public class RascunhosComandos {
                 pedido.duracaoMinutos(),
                 entradas.resolucoes(pedido.resolucoes()));
         return rascunhos.detalhar(ident, r.getId(), Instant.now());
+    }
+
+    // --- criar_questoes_como_itens --------------------------------------
+
+    public record CriarQuestoesNaAula(
+            String turma,
+            @NotBlank(message = "é obrigatório: o módulo, ex.: 'K01'") String modulo,
+            @NotBlank(message = "é obrigatório: o sub-módulo, ex.: 'Questões da apostila'") String submodulo,
+            @NotEmpty(message = "é obrigatória: ao menos uma questão") List<Object> questoes,
+            Map<String, Object> resolucoes) {}
+
+    public record QuestoesNaAula(RascunhosServico.RascunhoDetalhado rascunho, String aviso) {}
+
+    /**
+     * Põe questões num sub-módulo, em rascunho: cada uma vira uma linha que o aluno responde na
+     * aula. A questão vem do acervo, pelo id, ou inteira — e aí nasce no mesmo rascunho.
+     */
+    @PostMapping("/criar_questoes_como_itens")
+    @Transactional
+    public QuestoesNaAula criarQuestoesNaAula(
+            @AuthenticationPrincipal Identidade ident, @Valid @RequestBody CriarQuestoesNaAula pedido) {
+        var turma = catalogo.resolverTurmaOuBiblioteca(pedido.turma());
+        var alvos = estrutura.alvos(turma, pedido.modulo(), pedido.submodulo(), null);
+        if (pedido.questoes().stream().anyMatch(java.util.Objects::isNull)) {
+            throw new br.com.plataforma.comum.RegraDeNegocio(
+                    "Questão vazia na lista. Use o id de uma questão do acervo ou a questão inteira.");
+        }
+        var r = rascunhos.criarQuestoesNaAula(ident, turma, alvos.submodulo(),
+                entradas.paraAula(pedido.questoes()), entradas.resolucoes(pedido.resolucoes()));
+        return new QuestoesNaAula(rascunhos.detalhar(ident, r.getId(), Instant.now()),
+                "Nada foi publicado. O rascunho precisa da aprovação do professor.");
     }
 
     // --- listar_rascunhos ----------------------------------------------------

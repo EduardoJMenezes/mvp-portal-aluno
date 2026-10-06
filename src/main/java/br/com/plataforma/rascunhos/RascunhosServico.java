@@ -127,6 +127,63 @@ public class RascunhosServico {
         return rascunho;
     }
 
+    /** Uma questão a caminho da aula: do acervo (pelo id) ou nova, e o nome da linha ("Q04"). */
+    public record QuestaoParaAula(MontagemDaProva.Entrada entrada, String nome) {}
+
+    /**
+     * Põe questões num sub-módulo, em rascunho: uma linha por questão, e as questões novas nascem
+     * no mesmo rascunho — a apostila de um capítulo é um preview e um ok.
+     *
+     * <p>Questão do acervo precisa estar publicada: a linha não pode depender de outro rascunho.
+     * Sem nome, a linha de uma questão numerada vira "Q04"; sem número, "Questão N".
+     */
+    @Transactional
+    public Rascunho criarQuestoesNaAula(Identidade ident, Turma turma, SubModulo submodulo,
+            List<QuestaoParaAula> entradas, Map<Integer, QuestoesServico.DadosDoVideo> resolucoes) {
+        ident.exigirOperador();
+        if (entradas == null || entradas.isEmpty()) {
+            throw new RegraDeNegocio("Informe ao menos uma questão para a aula.");
+        }
+        var rascunho = abrir(ident, TipoRascunho.ITENS, turma, submodulo);
+        em.flush();
+
+        var novas = 0;
+        for (int n = 0; n < entradas.size(); n++) {
+            var entrada = entradas.get(n);
+            try {
+                Questao questao;
+                String numerada = null;
+                switch (entrada.entrada()) {
+                    case MontagemDaProva.Nova nova -> {
+                        var numero = nova.dados().numero();
+                        questao = questoes.criarNova(ident, rascunho.getId(), nova.dados(),
+                                numero == null || resolucoes == null ? null : resolucoes.get(numero));
+                        numerada = numero == null ? null : "Q%02d".formatted(numero);
+                        novas++;
+                    }
+                    case MontagemDaProva.PorId porId -> {
+                        questao = questoes.resolver(porId.questaoId());
+                        if (questao.getStatus() != Status.PUBLICADO) {
+                            throw new RegraDeNegocio(
+                                    "a questão %d ainda é rascunho; publique o rascunho dela antes."
+                                            .formatted(questao.getId()));
+                        }
+                    }
+                }
+                estrutura.criarItemDeQuestao(ident, submodulo, questao,
+                        entrada.nome() == null || entrada.nome().isBlank() ? numerada : entrada.nome(),
+                        Status.RASCUNHO, rascunho.getId());
+            } catch (RegraDeNegocio | NaoEncontrado e) {
+                throw new RegraDeNegocio("Questão %d da lista: %s".formatted(n + 1, e.getMessage()));
+            }
+        }
+
+        var modulo = submodulo.getModulo() == null ? "?" : submodulo.getModulo().getNome();
+        rascunho.mudarResumo("%d questão(ões) (%d novas) para %s / %s › %s".formatted(entradas.size(), novas,
+                turma == null ? "biblioteca" : turma.getNome(), modulo, submodulo.getNome()));
+        return rascunho;
+    }
+
     /** Apaga o rascunho e tudo que nasceu nele. Só a publicação sabe se pode. */
     @Transactional
     public void apagar(Rascunho r) {
@@ -256,9 +313,10 @@ public class RascunhosServico {
         return lista.stream().map(this::resumo).toList();
     }
 
+    /** {@code video} null: a linha é de questão, e {@code questaoId} diz qual. */
     public record ItemDoRascunho(
             Integer itemId, String nome, Integer ordem, Status status, VideoDoItem video,
-            List<Etiqueta> assuntos) {}
+            List<Etiqueta> assuntos, Integer questaoId) {}
 
     public record VideoDoItem(String vimeoId, String titulo) {}
 
@@ -268,14 +326,19 @@ public class RascunhosServico {
             br.com.plataforma.questoes.Dificuldade dificuldade, List<Etiqueta> classificacao,
             boolean imagemPendente, VideoDoItem video) {}
 
+    /** {@code aulas}: onde a questão também está no curso. */
     public record QuestaoNaProva(
             Integer ordem, Integer questaoId, boolean nova, String enunciado, Letra gabarito,
-            boolean imagemPendente, String resolucao) {}
+            boolean imagemPendente, String resolucao, List<String> aulas) {}
 
+    /**
+     * {@code avisos} não impedem publicar: são o que o professor precisa saber antes do ok — hoje,
+     * as questões da prova que também estão em aula.
+     */
     public record SimuladoDoRascunho(
             Integer simuladoId, String titulo, List<String> turmas, String abreEm, String fechaEm,
             Integer duracaoMinutos, List<QuestaoNaProva> questoes,
-            List<String> pendenciasParaPublicar) {}
+            List<String> pendenciasParaPublicar, List<String> avisos) {}
 
     public record RascunhoDetalhado(
             Integer rascunhoId, TipoRascunho tipo, Status status, String resumo, String turma,
@@ -292,8 +355,11 @@ public class RascunhosServico {
 
         var itens = estrutura.itensDoRascunho(r.getId(), false).stream()
                 .map(i -> new ItemDoRascunho(i.getId(), i.getNome(), i.getOrdem(), i.getStatus(),
-                        new VideoDoItem(i.getVideo().getVimeoId(), i.getVideo().getTitulo()),
-                        taxonomia.etiquetasDoVideo(i.getVideo())))
+                        i.getVideo() == null ? null
+                                : new VideoDoItem(i.getVideo().getVimeoId(), i.getVideo().getTitulo()),
+                        i.getVideo() != null ? taxonomia.etiquetasDoVideo(i.getVideo())
+                                : i.getQuestao() != null ? questoes.etiquetasDa(i.getQuestao()) : List.of(),
+                        i.getQuestao() == null ? null : i.getQuestao().getId()))
                 .toList();
 
         var daProposta = questoesDoRascunho(r.getId());
@@ -302,7 +368,7 @@ public class RascunhosServico {
             q.getAlternativas().forEach(a -> alternativas.put(a.getLetra(), a.getTexto()));
             return new QuestaoDoRascunho(q.getId(), q.getEnunciado(), alternativas,
                     q.getAlternativas().isEmpty() ? null : q.getGabarito(),
-                    q.getAlternativas().size() == Letra.values().length,
+                    q.completa(),
                     q.getResolucaoComentada(), q.getDificuldade(), questoes.etiquetasDa(q),
                     q.isImagemPendente(),
                     q.getVideo() == null
@@ -311,6 +377,8 @@ public class RascunhosServico {
         }).toList();
 
         var s = simuladoDoRascunho(r.getId());
+        var aulas = s == null ? Map.<Integer, List<String>>of() : estrutura.aulasDasQuestoes(
+                s.getQuestoes().stream().map(sq -> sq.getQuestao().getId()).toList());
         var simulado = s == null ? null : new SimuladoDoRascunho(
                 s.getId(), s.getTitulo(), s.getTurmas().stream().map(Turma::getNome).toList(),
                 br.com.plataforma.comum.Relogio.emBrasilia(s.getAbreEm()),
@@ -321,14 +389,25 @@ public class RascunhosServico {
                         r.getId().equals(sq.getQuestao().getRascunhoId()),
                         sq.getQuestao().getEnunciado(), sq.getQuestao().getGabarito(),
                         sq.getQuestao().isImagemPendente(),
-                        sq.getQuestao().getVideo() == null ? null : sq.getQuestao().getVideo().getTitulo()))
+                        sq.getQuestao().getVideo() == null ? null : sq.getQuestao().getVideo().getTitulo(),
+                        aulas.getOrDefault(sq.getQuestao().getId(), List.of())))
                         .toList(),
-                simulados.pendenciasParaPublicar(s, agora));
+                simulados.pendenciasParaPublicar(s, agora),
+                avisosDeReuso(s, aulas));
 
         return new RascunhoDetalhado(base.rascunhoId(), base.tipo(), base.status(), base.resumo(),
                 base.turma(), base.modulo(), base.submodulo(), base.criadoPor(), base.origem(),
                 base.criadoEm(), base.aprovadoPor(), base.aprovadoVia(), base.publicadoEm(),
                 itens, descritas, simulado, r.getStatus() == Status.PUBLICADO);
+    }
+
+    /** Não bloqueia: só conta ao professor que o gabarito destas questões já aparece numa aula. */
+    static List<String> avisosDeReuso(Simulado s, Map<Integer, List<String>> aulas) {
+        return s.getQuestoes().stream()
+                .filter(sq -> aulas.containsKey(sq.getQuestao().getId()))
+                .map(sq -> "A questão %d da prova também está em aula (%s): lá o aluno vê o gabarito ao responder."
+                        .formatted(sq.getOrdem(), String.join("; ", aulas.get(sq.getQuestao().getId()))))
+                .toList();
     }
 
     // --- o que a proposta trouxe ---------------------------------------------

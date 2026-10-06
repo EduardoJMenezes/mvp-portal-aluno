@@ -11,7 +11,6 @@ import br.com.plataforma.comum.Status;
 import br.com.plataforma.contas.ContasServico;
 import br.com.plataforma.estrutura.EstruturaServico;
 import br.com.plataforma.estrutura.Item;
-import br.com.plataforma.questoes.Letra;
 import br.com.plataforma.questoes.QuestoesServico;
 import br.com.plataforma.simulados.SimuladosServico;
 import java.time.Instant;
@@ -64,6 +63,19 @@ public class PublicacaoServico {
     }
 
     /**
+     * O que o professor monta no portal já sai publicado: quem cria é o humano que aprovaria.
+     *
+     * <p>Não é atalho por fora da regra. A proposta nasce, é aprovada por ele e publicada no mesmo
+     * ato, e a aprovação fica gravada como qualquer outra — só não há uma segunda tela para
+     * clicar. O canal MCP não passa daqui ({@link #aprovarPeloPortal}).
+     */
+    @Transactional
+    public Publicacao publicarPeloPortal(Identidade ident, Integer rascunhoId, Instant agora) {
+        aprovarPeloPortal(ident, rascunhoId);
+        return publicar(ident, rascunhoId, null, agora);
+    }
+
+    /**
      * Grava a aprovação obtida pela confirmação do cliente MCP.
      *
      * <p>Chamada só depois de o usuário aceitar o formulário — nunca por uma tool. O modelo não
@@ -106,7 +118,7 @@ public class PublicacaoServico {
 
         d.questoes().forEach(q -> linhas.add("  %s%s".formatted(
                 QuestoesServico.resumo(q.enunciado(), 70),
-                q.completa() ? "" : "  (sem alternativas A-E)")));
+                q.completa() ? "" : "  (sem alternativas A-D)")));
 
         var simulado = d.simulado();
         if (simulado != null) {
@@ -117,6 +129,10 @@ public class PublicacaoServico {
                     simulado.duracaoMinutos() == null ? "?" : simulado.duracaoMinutos()));
             simulado.questoes().forEach(q -> linhas.add("  %d. %s".formatted(
                     q.ordem(), QuestoesServico.resumo(q.enunciado(), 70))));
+            if (!simulado.avisos().isEmpty()) {
+                linhas.add("");
+                linhas.addAll(simulado.avisos());
+            }
         }
 
         linhas.add("");
@@ -221,7 +237,16 @@ public class PublicacaoServico {
             }
         }
 
-        escolhidos.forEach(item -> estrutura.publicarItem(ident, item));
+        escolhidos.forEach(item -> {
+            estrutura.publicarItem(ident, item);
+            // A linha publicada sem a questão dela não mostraria nada: as duas vão juntas, mesmo
+            // quando o professor libera só alguns itens.
+            var questao = item.getQuestao();
+            if (questao != null && questao.getStatus() == Status.RASCUNHO
+                    && r.getId().equals(questao.getRascunhoId())) {
+                questoes.publicar(questao);
+            }
+        });
 
         // Questão e simulado continuam sendo tudo ou nada: uma prova pela metade não é uma prova.
         if (publicouResto) {
@@ -239,7 +264,7 @@ public class PublicacaoServico {
         }
 
         var incompletas = (int) daProposta.stream()
-                .filter(q -> q.getAlternativas().size() < Letra.values().length).count();
+                .filter(q -> !q.completa()).count();
         var turma = r.getTurma() == null ? null : r.getTurma().getNome();
 
         String mensagem;

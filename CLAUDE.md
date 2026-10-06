@@ -137,10 +137,13 @@ Ensaio geral dos quatro fluxos do §21, contra o servidor no ar:
   implícita em JPQL (`qa.subassunto.id`) passa a gerar **inner join**, que
   apaga as linhas sem valor — nesses casos escreva `left join` explícito. Ver
   `Rascunho.java` e `AnalyticsServico.etiquetaDaQuestao`.
-* **Conteúdo do curso é vídeo; `Questao` é só do simulado.** A questão da
-  apostila mora na apostila — o que a plataforma guarda dela é o vídeo da
-  resolução, como item de sub-módulo. Ver
-  [docs/MODELO-CONTEUDO.md](docs/MODELO-CONTEUDO.md).
+* **A linha do sub-módulo é vídeo, PDF ou questão.** A questão do acervo entra
+  em simulado (`exam_questions`) ou vira linha de aula (`items.questao_id`,
+  V10), onde o aluno responde **uma vez** e só então recebe gabarito, resolução
+  e vídeo — antes disso eles nem saem do backend (`exercicios/`). A resposta
+  fica em `item_answers`, com a alternativa marcada. A questão tem de A a D, e
+  a E é opcional: nunca conte "cinco alternativas", use `Questao.completa()`.
+  Ver [docs/MODELO-CONTEUDO.md](docs/MODELO-CONTEUDO.md).
 * **Módulo é endereço, assunto é etiqueta.** `Modulo` carrega o "K01" e mora
   numa biblioteca: as turmas o **recebem** (`module_classes`), e uma aula pode
   ser só de algumas turmas (`item_classes`) — decisão 0011 do cofre, ver

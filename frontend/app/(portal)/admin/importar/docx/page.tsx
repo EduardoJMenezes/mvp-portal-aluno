@@ -165,7 +165,7 @@ function ConteudoDaRevisao({ revisao: r, id, aoCompletar }: { revisao: RevisaoDo
               </div>
               <TextoFormatado texto={q.enunciado} compacto />
               <ul className="mt-2 flex flex-col gap-1">
-                {LETRAS.map((l) => (
+                {LETRAS.filter((l) => l in q.alternativas).map((l) => (
                   <li key={l} className={`flex gap-2 rounded-md px-2 py-1 text-[15px] ${q.gabarito === l ? "bg-sucesso-fundo" : ""}`}>
                     <span className="font-semibold">{l})</span>
                     <TextoFormatado texto={q.alternativas[l] ?? ""} compacto className="min-w-0 flex-1" />

@@ -7,6 +7,7 @@ import br.com.plataforma.comum.RegraDeNegocio;
 import br.com.plataforma.comum.Relogio;
 import br.com.plataforma.catalogo.CatalogoServico;
 import br.com.plataforma.contas.ContasServico;
+import br.com.plataforma.estrutura.EstruturaServico;
 import br.com.plataforma.questoes.FigurasServico;
 import br.com.plataforma.questoes.Letra;
 import br.com.plataforma.questoes.Questao;
@@ -56,11 +57,13 @@ public class ImportacoesServico {
     private final RascunhosServico rascunhos;
     private final SimuladosServico simulados;
     private final MontagemDaProva montagem;
+    private final QuestoesServico questoes;
+    private final EstruturaServico estrutura;
 
     public ImportacoesServico(ImportacaoRepositorio importacoes, ContasServico contas,
             CatalogoServico catalogo,
             FigurasServico figuras, RascunhosServico rascunhos, SimuladosServico simulados,
-            MontagemDaProva montagem) {
+            MontagemDaProva montagem, QuestoesServico questoes, EstruturaServico estrutura) {
         this.importacoes = importacoes;
         this.contas = contas;
         this.catalogo = catalogo;
@@ -68,6 +71,8 @@ public class ImportacoesServico {
         this.rascunhos = rascunhos;
         this.simulados = simulados;
         this.montagem = montagem;
+        this.questoes = questoes;
+        this.estrutura = estrutura;
     }
 
     // --- o link --------------------------------------------------------------
@@ -262,7 +267,7 @@ public class ImportacoesServico {
         var importacao = aguardando(token, "DOCX", agora);
         if (lido.questoes() == null || lido.questoes().isEmpty()) {
             throw new RegraDeNegocio(
-                    "Não reconheci nenhuma questão completa neste arquivo (número, alternativas a) a e) "
+                    "Não reconheci nenhuma questão completa neste arquivo (número, alternativas a) a d) ou e) "
                             + "e gabarito). Se ele não segue esse formato, monte o simulado pelo chat.");
         }
 
@@ -275,19 +280,34 @@ public class ImportacoesServico {
                 lido.titulo(), semExtensao(lido.arquivoNome()), "Simulado");
 
         var comIds = trocarChavesPorIds(lido.figuras());
-        var entradas = lido.questoes().stream()
-                .map(q -> (MontagemDaProva.Entrada) new MontagemDaProva.Nova(comIds(q.dados(), comIds)))
-                .toList();
+        var resolucoes = lido.resolucoes() == null
+                ? Map.<Integer, QuestoesServico.DadosDoVideo>of() : lido.resolucoes();
 
-        var rascunho = rascunhos.criarSimuladoRascunho(ident, titulo,
-                turmasDosParametros(parametros), entradas,
-                SimuladosServico.lerDataHora(texto(parametros.get("abre_em"))),
-                SimuladosServico.lerDataHora(texto(parametros.get("fecha_em"))),
-                inteiro(parametros.get("duracao_minutos")),
-                lido.resolucoes() == null ? Map.of() : lido.resolucoes());
-
-        var simulado = rascunhos.simuladoDoRascunho(rascunho.getId());
-        var criadas = simulado.getQuestoes().stream().map(SimuladoQuestao::getQuestao).toList();
+        br.com.plataforma.rascunhos.Rascunho rascunho;
+        List<Questao> criadas;
+        var destino = submoduloDeDestino(importacao);
+        if (destino != null) {
+            // Para a aula: uma linha por questão, com o número do documento no nome ("Q04").
+            var linhasDaAula = lido.questoes().stream()
+                    .map(q -> new RascunhosServico.QuestaoParaAula(
+                            new MontagemDaProva.Nova(comNumero(comIds(q.dados(), comIds), q.numero())), null))
+                    .toList();
+            rascunho = rascunhos.criarQuestoesNaAula(ident,
+                    catalogo.resolverTurmaOuBiblioteca(texto(parametros.get("turma"))), destino,
+                    linhasDaAula, resolucoes);
+            criadas = questoesDaAula(rascunho.getId());
+        } else {
+            var entradas = lido.questoes().stream()
+                    .map(q -> (MontagemDaProva.Entrada) new MontagemDaProva.Nova(comIds(q.dados(), comIds)))
+                    .toList();
+            rascunho = rascunhos.criarSimuladoRascunho(ident, titulo,
+                    turmasDosParametros(parametros), entradas,
+                    SimuladosServico.lerDataHora(texto(parametros.get("abre_em"))),
+                    SimuladosServico.lerDataHora(texto(parametros.get("fecha_em"))),
+                    inteiro(parametros.get("duracao_minutos")), resolucoes);
+            criadas = rascunhos.simuladoDoRascunho(rascunho.getId()).getQuestoes().stream()
+                    .map(SimuladoQuestao::getQuestao).toList();
+        }
         criadas.forEach(figuras::ligarAs);
 
         var porNumero = new LinkedHashMap<Integer, Integer>();
@@ -315,6 +335,29 @@ public class ImportacoesServico {
         return new DocxRegistrado(importacao.getId(), titulo, linhas.size(), criadas.size(),
                 rascunho.getId(),
                 "Recebido! Volte ao chat e avise que enviou — o Claude mostra o que foi lido.");
+    }
+
+    /** O sub-módulo que recebe as questões, quando o .docx é de apostila e não de simulado. */
+    private br.com.plataforma.estrutura.SubModulo submoduloDeDestino(Importacao importacao) {
+        var id = importacao.getParametros().get("submodulo_id");
+        if (id == null) {
+            return null;
+        }
+        return estrutura.submodulo(inteiro(id)).orElseThrow(() -> new RegraDeNegocio(
+                "O sub-módulo de destino desta importação foi removido. Peça outro link no chat."));
+    }
+
+    /** As questões das linhas que o rascunho trouxe, na ordem da aula. */
+    private List<Questao> questoesDaAula(Integer rascunhoId) {
+        return estrutura.itensDoRascunho(rascunhoId, false).stream()
+                .map(br.com.plataforma.estrutura.Item::getQuestao)
+                .filter(java.util.Objects::nonNull).toList();
+    }
+
+    private static QuestoesServico.DadosDaQuestaoNova comNumero(QuestoesServico.DadosDaQuestaoNova d, Integer numero) {
+        return new QuestoesServico.DadosDaQuestaoNova(d.enunciado(), d.alternativas(), d.gabarito(),
+                d.assunto(), d.subassunto(), d.dificuldade(), d.resolucao(), d.imagemPendente(),
+                d.resolucaoComentada(), d.numero() != null ? d.numero() : numero);
     }
 
     private static QuestoesServico.DadosDaQuestaoNova comIds(
@@ -458,6 +501,39 @@ public class ImportacoesServico {
         return simulado;
     }
 
+    /**
+     * O que a importação produziu, seja prova ou aula: as questões na ordem e o que falta para
+     * publicar. {@code simuladoId} null é o .docx que foi para um sub-módulo.
+     */
+    private record Conjunto(Integer simuladoId, String titulo, List<Questao> questoes, List<String> pendencias) {}
+
+    private Conjunto conjuntoDa(Importacao importacao, Instant agora) {
+        var destino = submoduloDeDestino(importacao);
+        if (destino == null) {
+            var simulado = simuladoDa(importacao);
+            return new Conjunto(simulado.getId(), simulado.getTitulo(),
+                    simulado.getQuestoes().stream().map(SimuladoQuestao::getQuestao).toList(),
+                    simulados.pendenciasParaPublicar(simulado, agora));
+        }
+        var pendencias = new ArrayList<String>();
+        var doRascunho = new ArrayList<Questao>();
+        for (var item : estrutura.itensDoRascunho(importacao.getRascunhoId(), false)) {
+            var q = item.getQuestao();
+            if (q == null) {
+                continue;
+            }
+            doRascunho.add(q);
+            if (!q.completa()) {
+                pendencias.add("'%s' sem as alternativas A–D".formatted(item.getNome()));
+            }
+            if (q.isImagemPendente()) {
+                pendencias.add("'%s' com figura pendente".formatted(item.getNome()));
+            }
+        }
+        var modulo = destino.getModulo() == null ? "?" : destino.getModulo().getNome();
+        return new Conjunto(null, "%s › %s".formatted(modulo, destino.getNome()), doRascunho, pendencias);
+    }
+
     public record QuestaoRevisada(
             Integer ordem, Integer numeroNoDocumento, Integer questaoId, String enunciado,
             Map<Letra, String> alternativas, Letra gabarito, String resolucaoComentada,
@@ -480,21 +556,23 @@ public class ImportacoesServico {
             java.util.function.Function<Questao, List<br.com.plataforma.taxonomia.Etiqueta>> etiquetas,
             Instant agora) {
         var importacao = processada(ident, importacaoId);
-        var simulado = simuladoDa(importacao);
+        var conjunto = conjuntoDa(importacao, agora);
         var relatorio = importacao.getRelatorio() == null ? Map.<String, Object>of() : importacao.getRelatorio();
         var linhas = linhasDoRelatorio(relatorio);
-        var ultimo = ate == null ? simulado.getQuestoes().size() : ate;
+        var total = conjunto.questoes().size();
+        var ultimo = ate == null ? total : ate;
 
         var porQuestao = new LinkedHashMap<Integer, Map<String, Object>>();
         linhas.stream().filter(l -> l.get("questao_id") != null)
                 .forEach(l -> porQuestao.put(inteiro(l.get("questao_id")), l));
 
         var questoes = new ArrayList<QuestaoRevisada>();
-        for (var sq : simulado.getQuestoes()) {
-            if (sq.getOrdem() < de || sq.getOrdem() > ultimo) {
+        for (int n = 0; n < total; n++) {
+            var ordem = n + 1;
+            if (ordem < de || ordem > ultimo) {
                 continue;
             }
-            var q = sq.getQuestao();
+            var q = conjunto.questoes().get(n);
             var alternativas = new LinkedHashMap<Letra, String>();
             q.getAlternativas().forEach(a -> alternativas.put(a.getLetra(), a.getTexto()));
             var leitura = porQuestao.getOrDefault(q.getId(), Map.of());
@@ -503,7 +581,7 @@ public class ImportacoesServico {
             textos.add(q.getEnunciado());
             textos.add(q.getResolucaoComentada());
 
-            questoes.add(new QuestaoRevisada(sq.getOrdem(), inteiro(leitura.get("numero")), q.getId(),
+            questoes.add(new QuestaoRevisada(ordem, inteiro(leitura.get("numero")), q.getId(),
                     q.getEnunciado(), alternativas, q.getGabarito(), q.getResolucaoComentada(),
                     q.isImagemPendente(), etiquetas.apply(q),
                     avisosUteis(leitura), FigurasServico.citadas(textos.toArray(String[]::new))));
@@ -517,11 +595,11 @@ public class ImportacoesServico {
                                 .toList()))
                 .toList();
 
-        return new Revisao(importacao.getId(), importacao.getRascunhoId(), simulado.getId(),
-                simulado.getTitulo(), importacao.getArquivoNome(), simulado.getQuestoes().size(),
-                "%d a %d".formatted(de, Math.min(ultimo, simulado.getQuestoes().size())),
+        return new Revisao(importacao.getId(), importacao.getRascunhoId(), conjunto.simuladoId(),
+                conjunto.titulo(), importacao.getArquivoNome(), total,
+                "%d a %d".formatted(de, Math.min(ultimo, total)),
                 textos(relatorio.get("avisos")), questoes, incompletas,
-                simulados.pendenciasParaPublicar(simulado, agora));
+                conjunto.pendencias());
     }
 
     /** O texto do documento, montado a partir das faixas de blocos que o Claude apontou. */
@@ -576,7 +654,7 @@ public class ImportacoesServico {
     public QuestaoCompletada completarQuestao(Identidade ident, Integer importacaoId, int numero,
             String enunciado, Object alternativas, String gabarito, String resolucao, Instant agora) {
         var importacao = processada(ident, importacaoId);
-        var simulado = simuladoDa(importacao);
+        var destino = submoduloDeDestino(importacao);
         var linhas = linhasDoRelatorio(importacao.getRelatorio());
 
         var linha = linhas.stream()
@@ -609,6 +687,11 @@ public class ImportacoesServico {
         linhas.stream().filter(l -> l.get("questao_id") != null)
                 .forEach(l -> numeroPorQuestao.put(inteiro(l.get("questao_id")), inteiro(l.get("numero"))));
 
+        if (destino != null) {
+            return completarNaAula(ident, importacao, destino, numero, dados, numeroPorQuestao);
+        }
+
+        var simulado = simuladoDa(importacao);
         var atuais = simulado.getQuestoes().stream().map(SimuladoQuestao::getQuestao).toList();
         var posicao = posicaoDe(simulado, numeroPorQuestao, numero);
 
@@ -636,7 +719,7 @@ public class ImportacoesServico {
         return new QuestaoCompletada(numero, nova.getId(), posicao + 1, prova.size());
     }
 
-    /** Uma faixa de cinco blocos, ou uma faixa por letra. */
+    /** Uma faixa de quatro ou cinco blocos (de A a D, ou até a E), ou uma faixa por letra. */
     @SuppressWarnings("unchecked")
     static Map<String, String> faixasDasAlternativas(Object alternativas) {
         var faixas = new LinkedHashMap<String, String>();
@@ -646,9 +729,9 @@ public class ImportacoesServico {
             return faixas;
         }
         var indices = Faixa.interpretar(String.valueOf(alternativas)).stream().sorted().toList();
-        if (indices.size() != Letra.values().length) {
+        if (indices.size() != Questao.OBRIGATORIAS.size() && indices.size() != Letra.values().length) {
             throw new RegraDeNegocio(
-                    "Uma faixa só de alternativas precisa ter exatamente cinco blocos, de A a E.");
+                    "Uma faixa só de alternativas precisa ter quatro blocos (A a D) ou cinco (A a E).");
         }
         for (int n = 0; n < indices.size(); n++) {
             faixas.put(Letra.values()[n].name(), String.valueOf(indices.get(n)));
@@ -700,6 +783,38 @@ public class ImportacoesServico {
 
     static Letra letraDe(String texto) {
         return Letra.valueOf(String.valueOf(texto).strip().toUpperCase(Locale.ROOT));
+    }
+
+    /**
+     * A questão completada vira mais uma linha do rascunho da aula, e as linhas dele voltam à ordem
+     * dos números do documento — trocando só entre as posições que já eram delas.
+     */
+    private QuestaoCompletada completarNaAula(Identidade ident, Importacao importacao,
+            br.com.plataforma.estrutura.SubModulo destino, int numero,
+            QuestoesServico.DadosDaQuestaoNova dados, Map<Integer, Integer> numeroPorQuestao) {
+        var rascunhoId = importacao.getRascunhoId();
+        var nova = questoes.criarNova(ident, rascunhoId, dados, null);
+        estrutura.criarItemDeQuestao(ident, destino, nova, "Q%02d".formatted(numero),
+                br.com.plataforma.comum.Status.RASCUNHO, rascunhoId);
+        figuras.ligarAs(nova);
+        numeroPorQuestao.put(nova.getId(), numero);
+
+        var doRascunho = estrutura.itensDoRascunho(rascunhoId, false).stream()
+                .filter(i -> i.getQuestao() != null).toList();
+        var posicoes = doRascunho.stream().map(br.com.plataforma.estrutura.Item::getOrdem).sorted().toList();
+        var porNumero = doRascunho.stream()
+                .sorted(java.util.Comparator.comparingInt(
+                        i -> numeroPorQuestao.getOrDefault(i.getQuestao().getId(), Integer.MAX_VALUE)))
+                .toList();
+        var ordem = 0;
+        for (int n = 0; n < porNumero.size(); n++) {
+            estrutura.editarItem(ident, porNumero.get(n), null, posicoes.get(n));
+            if (porNumero.get(n).getQuestao().getId().equals(nova.getId())) {
+                ordem = n + 1;
+            }
+        }
+        registrarQuestaoCompletada(importacao, numero, nova.getId());
+        return new QuestaoCompletada(numero, nova.getId(), ordem, porNumero.size());
     }
 
     static int posicaoDe(Simulado simulado, Map<Integer, Integer> numeroPorQuestao, int numero) {

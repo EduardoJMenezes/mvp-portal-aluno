@@ -228,7 +228,7 @@ class ImportacoesComandosTest extends BaseDeComando {
                  "alternativas": "5-7", "gabarito": "c"}""")
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.detail").value(
-                        "Uma faixa só de alternativas precisa ter exatamente cinco blocos, de A a E."));
+                        "Uma faixa só de alternativas precisa ter quatro blocos (A a D) ou cinco (A a E)."));
     }
 
     @Test
@@ -354,5 +354,63 @@ class ImportacoesComandosTest extends BaseDeComando {
                 {"figura": 404}""")
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.detail").value("Figura 404 não existe."));
+    }
+
+    // --- o .docx da apostila, que vai para a aula -------------------------------
+
+    private String tokenParaAAula() throws Exception {
+        comando("criar_modulo", """
+                {"turma": "Extensivo 2027", "nome": "K01"}""").andExpect(status().isOk());
+        var resposta = comando("importar_questoes_docx", """
+                {"turma": "Extensivo 2027", "modulo": "K01", "submodulo": "Questões da apostila"}""")
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        return JsonPath.read(resposta, "$.token");
+    }
+
+    @Test
+    void oDocxDaApostilaViraLinhasDoSubmoduloEmRascunho() throws Exception {
+        entregarDocx(tokenParaAAula());
+
+        assertThat(contar("exams")).isZero();
+        assertThat(jdbc.queryForList("SELECT nome FROM items WHERE status = 'RASCUNHO' ORDER BY ordem", String.class))
+                .containsExactly("Q01", "Q03");
+        assertThat(contar("questions WHERE status = 'RASCUNHO'")).isEqualTo(2);
+
+        comando("revisar_importacao", """
+                {"importacao": 1}""")
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.simulado_id").value(org.hamcrest.Matchers.nullValue()))
+                .andExpect(jsonPath("$.titulo").value("K01 › Questões da apostila"))
+                .andExpect(jsonPath("$.total_questoes").value(2))
+                .andExpect(jsonPath("$.questoes[1].numero_no_documento").value(3))
+                .andExpect(jsonPath("$.incompletas[0].numero").value(2))
+                .andExpect(jsonPath("$.pendencias_para_publicar").isEmpty());
+    }
+
+    /** A que o parser não fechou entra depois, e a lista volta à ordem do documento. */
+    @Test
+    void aQuestaoCompletadaEntraNaAulaNaPosicaoDoNumeroDela() throws Exception {
+        entregarDocx(tokenParaAAula());
+
+        // Quatro blocos de alternativa: a questão da apostila pode parar na D.
+        comando("completar_questao_importada", """
+                {"importacao": 1, "numero": 2, "enunciado": "4", "alternativas": "5-8", "gabarito": "c"}""")
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.ordem").value(2))
+                .andExpect(jsonPath("$.total_questoes").value(3));
+
+        assertThat(jdbc.queryForList("SELECT nome FROM items ORDER BY ordem", String.class))
+                .containsExactly("Q01", "Q02", "Q03");
+        assertThat(contar("question_options WHERE questao_id = (SELECT questao_id FROM items WHERE nome = 'Q02')"))
+                .isEqualTo(4);
+        assertThat(contar("exams")).isZero();
+    }
+
+    @Test
+    void oLinkDaApostilaConfereOSubmoduloNaHora() throws Exception {
+        comando("importar_questoes_docx", """
+                {"turma": "Extensivo 2027", "modulo": "K99", "submodulo": "Questões da apostila"}""")
+                .andExpect(status().isNotFound());
     }
 }

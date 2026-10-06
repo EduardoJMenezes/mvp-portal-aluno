@@ -2,6 +2,7 @@ package br.com.plataforma.comandos;
 
 import br.com.plataforma.comum.RegraDeNegocio;
 import br.com.plataforma.questoes.QuestoesServico;
+import br.com.plataforma.rascunhos.RascunhosServico;
 import br.com.plataforma.simulados.MontagemDaProva;
 import java.util.ArrayList;
 import java.util.List;
@@ -43,6 +44,17 @@ class EntradasDaProva {
             }
         }
         return entradas;
+    }
+
+    /** As mesmas entradas da prova, mais o nome que a linha da aula vai ter ("Q04"). */
+    List<RascunhosServico.QuestaoParaAula> paraAula(List<Object> cruas) {
+        var linhas = new ArrayList<RascunhosServico.QuestaoParaAula>();
+        for (var crua : cruas) {
+            Object nome = crua instanceof Map<?, ?> mapa ? mapa.get("nome") : null;
+            linhas.add(new RascunhosServico.QuestaoParaAula(traduzir(List.of(crua)).getFirst(),
+                    nome == null ? null : String.valueOf(nome)));
+        }
+        return linhas;
     }
 
     Map<Integer, QuestoesServico.DadosDoVideo> resolucoes(Map<String, Object> cruas) {

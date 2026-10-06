@@ -198,6 +198,9 @@ public class ProvaDoAluno {
                     : "Esta prova já foi entregue.");
         }
 
+        if (!vinculo.getQuestao().tem(letra)) {
+            throw new RegraDeNegocio("Esta questão não tem a alternativa %s.".formatted(letra));
+        }
         var correta = letra == vinculo.getQuestao().getGabarito();
         var existente = t.getRespostas().stream().filter(x -> x.getQuestaoId().equals(questaoId)).findFirst();
         if (existente.isPresent()) {

@@ -49,7 +49,7 @@ export default function BancoDeQuestoes() {
   return (
     <Pagina
       titulo="Banco de questões"
-      legenda="As questões de simulado. As da apostila moram na apostila: aqui entra só o vídeo da resolução delas, no curso."
+      legenda="O acervo de questões: as de simulado e as que viram linha de aula, onde o aluno responde e vê o gabarito na hora."
       acoes={<BotaoLink variante="primario" href="/admin/questoes/editar/">Nova questão</BotaoLink>}
     >
       <Cartao className="grid gap-3 p-4 sm:grid-cols-2 lg:grid-cols-[2fr_1fr_1fr_1fr]">
@@ -104,6 +104,7 @@ export default function BancoDeQuestoes() {
                   {q.gabarito && <Etiqueta tom="info">Gabarito {q.gabarito}</Etiqueta>}
                   {q.imagem_pendente && <Etiqueta tom="atencao">Imagem pendente</Etiqueta>}
                   {q.video_resolucao_id && <Etiqueta>Com vídeo</Etiqueta>}
+                  {!!q.aulas?.length && <span title={q.aulas.join("; ")}><Etiqueta tom="info">Em aula</Etiqueta></span>}
                 </div>
                 <Link href={`/admin/questoes/editar/?id=${q.questao_id}`} className="text-sm font-semibold text-acento hover:underline">Abrir</Link>
               </div>

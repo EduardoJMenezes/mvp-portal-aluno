@@ -57,10 +57,32 @@ class RascunhosComandosTest extends BaseDeComando {
     @Test
     void faltandoUmaLetraERecusado() throws Exception {
         comando("criar_questao_rascunho", """
-                {"enunciado": "Sem a letra E", "alternativas": {"A": "1", "B": "2", "C": "3", "D": "4"},
+                {"enunciado": "Sem a letra D", "alternativas": {"A": "1", "B": "2", "C": "3"},
                  "gabarito": "A"}""")
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.detail").value("Faltam as alternativas E. A questão precisa de A a E."));
+                .andExpect(jsonPath("$.detail").value(
+                        "Faltam as alternativas D. A questão precisa de A a D; a E é opcional."));
+    }
+
+    /** A apostila às vezes para na D: quatro alternativas fazem uma questão completa. */
+    @Test
+    void deAaDJaEUmaQuestaoCompleta() throws Exception {
+        comando("criar_questao_rascunho", """
+                {"enunciado": "Sem a letra E", "alternativas": {"A": "1", "B": "2", "C": "3", "D": "4", "E": " "},
+                 "gabarito": "D"}""")
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.questoes[0].completa").value(true))
+                .andExpect(jsonPath("$.questoes[0].alternativas.D").value("4"))
+                .andExpect(jsonPath("$.questoes[0].alternativas.E").doesNotExist());
+    }
+
+    @Test
+    void gabaritoQueNaoEstaEntreAsAlternativasERecusado() throws Exception {
+        comando("criar_questao_rascunho", """
+                {"enunciado": "Gabarito na E", "alternativas": {"A": "1", "B": "2", "C": "3", "D": "4"},
+                 "gabarito": "E"}""")
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.detail").value("O gabarito é E, mas a questão não tem a alternativa E."));
     }
 
     // --- criar_simulado_rascunho ---------------------------------------------

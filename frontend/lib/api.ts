@@ -160,8 +160,28 @@ export type Video = {
 /** `turmas`: vazia é "toda turma do módulo"; com nomes, a aula é só delas (decisão 0011). */
 /** O PDF que uma aula leva (decisão 0013); abre no leitor de materiais. */
 export type MaterialLigado = { material_id: number; titulo: string };
-/** Sem `video_id`, a linha é só o PDF de `material`. */
-export type ItemCurso = { id: number; nome: string; ordem: number; status: StatusConteudo; video_id: number | null; video?: Video | null; turmas?: string[]; material?: MaterialLigado | null };
+/**
+ * A questão da linha. O professor recebe o começo do enunciado (`resumo`); o aluno, se já
+ * respondeu e se acertou — o enunciado vem quando ele abre a linha.
+ */
+export type QuestaoDaLinha = { questao_id: number; resumo?: string; status?: StatusConteudo; respondida?: boolean; correta?: boolean | null };
+/** Sem `video_id`, a linha é só o PDF de `material` ou a `questao` que o aluno responde ali. */
+export type ItemCurso = { id: number; nome: string; ordem: number; status: StatusConteudo; video_id: number | null; video?: Video | null; turmas?: string[]; material?: MaterialLigado | null; questao?: QuestaoDaLinha | null };
+/** A questão da aula. Gabarito e resolução só chegam depois da resposta (ou para o professor). */
+export type Exercicio = {
+  item_id: number;
+  nome: string;
+  questao_id: number;
+  enunciado: string;
+  alternativas: Record<string, string>;
+  respondida: boolean;
+  marcada: string | null;
+  correta: boolean | null;
+  respondido_em: string | null;
+  gabarito: string | null;
+  resolucao_comentada: string | null;
+  resolucao: Video | null;
+};
 /** Aula ao vivo agendada no sub-módulo, enquanto a gravação não chegou. ENCERRADA aqui é "processando". */
 export type AulaNoCurso = { aula_id: number; titulo: string; inicio_em: string; minutos: number; estado: Aula["estado"]; abre_em: string; material?: MaterialLigado | null };
 export type SubModulo = { id: number; nome: string; tipo: string; ordem: number; itens: ItemCurso[]; aulas?: AulaNoCurso[] };
@@ -307,7 +327,7 @@ export type RascunhoResumo = {
 };
 
 export type Rascunho = RascunhoResumo & {
-  itens: { item_id: number; nome: string; ordem: number; status: StatusConteudo; video: { vimeo_id: string; titulo: string }; assuntos: Classificacao[] }[];
+  itens: { item_id: number; nome: string; ordem: number; status: StatusConteudo; video: { vimeo_id: string; titulo: string } | null; assuntos: Classificacao[]; questao_id: number | null }[];
   questoes: {
     questao_id: number;
     enunciado: string;
@@ -327,8 +347,10 @@ export type Rascunho = RascunhoResumo & {
     abre_em: string | null;
     fecha_em: string | null;
     duracao_minutos: number | null;
-    questoes: { ordem: number; questao_id: number; nova: boolean; enunciado: string; gabarito: string; imagem_pendente: boolean; resolucao: string | null }[];
+    questoes: { ordem: number; questao_id: number; nova: boolean; enunciado: string; gabarito: string; imagem_pendente: boolean; resolucao: string | null; aulas?: string[] }[];
     pendencias_para_publicar: string[];
+    /** Não impedem publicar: hoje, as questões da prova que também estão em aula. */
+    avisos?: string[];
   };
   publicado: boolean;
   aviso: string;
@@ -344,6 +366,8 @@ export type Questao = {
   imagem_pendente: boolean;
   video_resolucao_id: number | null;
   gabarito?: string;
+  /** Onde a questão está no curso ("K01 › Questões da apostila › Q04"): lá o gabarito sai para quem responde. */
+  aulas?: string[];
 };
 
 export type QuestaoDetalhada = Questao & {
@@ -364,6 +388,7 @@ export type SimuladoDoProfessor = SimuladoResumo & {
     imagem_pendente: boolean;
     resolucao_comentada: string | null;
     resolucao: string | null;
+    aulas?: string[];
   }[];
   pendencias_para_publicar: string[];
 };
@@ -624,6 +649,9 @@ export const api = {
 
   // aluno
   conteudo: () => pedir<ConteudoDaTurma[]>("/aluno/conteudo"),
+  questaoDaAula: (item: number) => pedir<Exercicio>(`/aluno/itens/${item}/questao`),
+  responderNaAula: (item: number, alternativa: string) =>
+    pedir<Exercicio>(`/aluno/itens/${item}/responder`, { method: "POST", json: { alternativa } }),
   simulados: () => pedir<SimuladoResumo[]>("/aluno/simulados"),
   prova: (id: number) => pedir<Prova>(`/aluno/simulados/${id}`),
   responder: (id: number, questao_id: number, alternativa: string) =>
@@ -713,7 +741,7 @@ export const api = {
   removerItem: (turma: number | string, modulo: number, submodulo: number, item: number) =>
     pedir(`/admin/turmas/${turma}/modulos/${modulo}/submodulos/${submodulo}/itens/${item}`, { method: "DELETE" }),
   adicionarVideos: (turma: number | string, modulo: number, submodulo: number, videos: { vimeo_id: string; titulo?: string; embed_url?: string | null; nome?: string }[]) =>
-    pedir<Rascunho>(`/admin/turmas/${turma}/modulos/${modulo}/submodulos/${submodulo}/itens`, { method: "POST", json: { videos } }),
+    pedir<{ rascunho: Rascunho; erros: string[]; aviso: string }>(`/admin/turmas/${turma}/modulos/${modulo}/submodulos/${submodulo}/itens`, { method: "POST", json: { videos } }),
   classificar: (turma: number | string, modulo: number, submodulo: number, dados: { assunto: string; subassunto?: string; itens?: string }) =>
     pedir<{ videos_classificados: string[] }>(`/admin/turmas/${turma}/modulos/${modulo}/submodulos/${submodulo}/classificacao`, { method: "POST", json: dados }),
 
@@ -799,6 +827,9 @@ export const api = {
     pedir<Aula>(`/admin/aulas/${id}/material`, { method: "PUT", json: { material, so_no_dia } }),
   materialDoItem: (item: number, material: number | null) =>
     pedir<{ item_id: number; nome: string; material: MaterialLigado | null }>(`/admin/itens/${item}/material`, { method: "PUT", json: { material } }),
+  /** A questão do acervo (`questao_id`) ou uma nova, criada ali: a linha já sai publicada. */
+  questaoNoSubmodulo: (submodulo: number, dados: { questao_id?: number; nome?: string; nova?: Record<string, unknown> }) =>
+    pedir<ItemCurso>(`/admin/submodulos/${submodulo}/questao`, { method: "POST", json: dados }),
   pdfNoSubmodulo: (submodulo: number, material: number) =>
     pedir<{ item_id: number; nome: string; material: MaterialLigado }>(`/admin/submodulos/${submodulo}/pdf`, { method: "POST", json: { material } }),
   iniciarAula: (id: number) => pedir<{ aula_id: number; url: string }>(`/admin/aulas/${id}/iniciar`, { method: "POST" }),

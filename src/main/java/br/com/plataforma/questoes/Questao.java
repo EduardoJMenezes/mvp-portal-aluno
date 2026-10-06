@@ -24,13 +24,14 @@ import java.util.List;
 import org.hibernate.annotations.SQLRestriction;
 
 /**
- * Questão de simulado: enunciado, alternativas e gabarito.
+ * Questão do acervo: enunciado, alternativas (de A a D, ou até a E) e gabarito.
  *
- * <p><b>Não</b> é a questão da apostila — essa mora na apostila, e o que a plataforma guarda dela
- * é o vídeo da resolução, como item de sub-módulo.
+ * <p>Entra numa prova ({@code exam_questions}) ou vira linha de aula ({@code items.questao_id}),
+ * onde o aluno responde e vê o gabarito na hora. A resolução — o texto e o vídeo — é da questão,
+ * e vai com ela para onde ela for.
  *
- * <p>A figura que ainda não chegou vira {@code imagemPendente}, e o simulado não publica enquanto
- * ela não for anexada.
+ * <p>A figura que ainda não chegou vira {@code imagemPendente}, e nem o simulado nem a linha de
+ * aula publicam enquanto ela não for anexada.
  */
 @Entity
 @Table(name = "questions")
@@ -79,6 +80,9 @@ public class Questao extends Rastreavel {
 
     @OneToMany(mappedBy = "questao", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<QuestaoAssunto> assuntos = new ArrayList<>();
+
+    /** O mínimo de uma questão; a apostila às vezes para na D. */
+    public static final List<Letra> OBRIGATORIAS = List.of(Letra.A, Letra.B, Letra.C, Letra.D);
 
     protected Questao() {}
 
@@ -137,6 +141,15 @@ public class Questao extends Rastreavel {
         return alternativas;
     }
 
+    /** Pronta para o aluno responder: de A a D pelo menos. A E é opcional. */
+    public boolean completa() {
+        return OBRIGATORIAS.stream().allMatch(this::tem);
+    }
+
+    public boolean tem(Letra letra) {
+        return alternativas.stream().anyMatch(a -> a.getLetra() == letra);
+    }
+
     public List<QuestaoAssunto> getAssuntos() {
         return assuntos;
     }
@@ -170,12 +183,13 @@ public class Questao extends Rastreavel {
     }
 
     /**
-     * Atualiza no lugar, cria só a letra que falta.
+     * Atualiza no lugar, cria só a letra que falta e tira a que não veio — é assim que a E sai.
      *
      * <p>Não é {@code clear()} + {@code add()} de propósito: o Hibernate inseriria antes de
      * apagar, e o unique {@code (questao_id, letra)} estouraria no meio do flush.
      */
     void ajustarAlternativas(java.util.Map<Letra, String> novas) {
+        alternativas.removeIf(a -> !novas.containsKey(a.getLetra()));
         var atuais = new java.util.EnumMap<Letra, Alternativa>(Letra.class);
         alternativas.forEach(a -> atuais.put(a.getLetra(), a));
         novas.forEach((letra, texto) -> {

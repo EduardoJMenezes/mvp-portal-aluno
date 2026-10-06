@@ -111,7 +111,7 @@ aprovação humana gravada no banco. Detalhe das quatro camadas em
 src/main/java/br/com/plataforma/
   comum/       Identidade, erros de domínio, Rastreavel, Referencias
   contas/ catalogo/ estrutura/ acervo/ taxonomia/ questoes/ rascunhos/
-  simulados/ analytics/ materiais/ aulas/ vimeo/ importacoes/   as regras, por feature
+  simulados/ exercicios/ analytics/ materiais/ aulas/ vimeo/ importacoes/   as regras, por feature
   comandos/    a borda do MCP: /comandos/<tool> e /interno/*
   portal/      a borda do navegador: /api/*, sessão, portal estático
   seguranca/   as quatro portas

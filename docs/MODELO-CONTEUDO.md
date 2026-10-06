@@ -14,6 +14,28 @@ seção "Em aberto", no fim.
 > as turmas dela; o módulo aparece quando sobra aula visível. Onde este texto
 > diz "módulo da turma", leia "módulo que a turma recebe".
 
+> **Mudou em 06/10/2026 (migração V10): a questão entrou na aula.** A linha de
+> um sub-módulo é um vídeo, um PDF ou uma **questão do acervo**
+> (`items.questao_id`), e o aluno responde ali mesmo. Vale o contrário do que
+> este texto diz mais abaixo, em "Acervo": a questão da apostila **vira** uma
+> `Questao`, e a resolução em vídeo é da questão (`questions.video_id`), não
+> uma linha à parte. As regras:
+>
+> * **Uma resposta por aluno por linha** (`item_answers`): marcou, valeu. Fica
+>   gravada a alternativa marcada, não só o acerto — é dela que vai sair a
+>   devolutiva por assunto e sub-assunto.
+> * **Gabarito, resolução comentada e vídeo só saem do backend depois da
+>   resposta.** No simulado continuam saindo só quando a prova fecha.
+> * **A questão tem de A a D; a E é opcional.** Vale para o acervo inteiro.
+> * **A mesma questão pode estar em aula e em simulado.** Não é bloqueado: o
+>   simulado e a questão mostram onde ela está (`aulas`, `avisos`), e a
+>   decisão é do professor.
+> * **O que o professor monta no portal já sai publicado** — vídeo, PDF e
+>   questão. A proposta nasce, é aprovada por ele e publicada no mesmo ato
+>   (`PublicacaoServico.publicarPeloPortal`), então a aprovação humana continua
+>   gravada. O que chega pelo Claude segue em rascunho.
+> * As linhas só de vídeo que já existiam ("Q04") continuam valendo como estão.
+
 ## O que está errado hoje
 
 A unidade de conteúdo da plataforma é a **questão**:
@@ -84,13 +106,13 @@ da Q04 sem renumerar nada.
 | tabela | papel |
 |---|---|
 | `videos` | espelho do Vimeo, como já é hoje |
-| `questoes` | enunciado, alternativas e gabarito — **só para simulado** |
+| `questoes` | enunciado, alternativas e gabarito — do simulado e, desde a V10, da linha de aula |
 
 Esta é a separação que o modelo atual não faz. Conteúdo de curso é vídeo;
 questão com gabarito é instrumento de avaliação. Hoje `Questao` serve aos dois
 e por isso não serve bem a nenhum.
 
-**A questão da apostila nunca vira uma `Questao` aqui.** Ela mora na apostila;
+*(Superado em 06/10/2026 — ver a nota no topo.)* **A questão da apostila nunca vira uma `Questao` aqui.** Ela mora na apostila;
 o que a plataforma guarda é o vídeo da resolução, como item de sub-módulo. O
 código atual já admitia isso sem querer — a importação cria questões com o
 enunciado `f"Questão {numero} da apostila — resolução em vídeo"`, sem

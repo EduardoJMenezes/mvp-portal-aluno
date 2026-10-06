@@ -22,13 +22,14 @@ import java.util.ArrayList;
 import java.util.List;
 import jakarta.persistence.Table;
 import br.com.plataforma.materiais.Material;
+import br.com.plataforma.questoes.Questao;
 import org.hibernate.annotations.NotFound;
 import org.hibernate.annotations.NotFoundAction;
 import org.hibernate.annotations.SQLRestriction;
 
 /**
- * Uma linha na lista do aluno: um vídeo, um PDF, ou os dois — a gravação da aula ao vivo leva o
- * material da aula junto (decisão 0013).
+ * Uma linha na lista do aluno: um vídeo, um PDF, os dois — a gravação da aula ao vivo leva o
+ * material da aula junto (decisão 0013) — ou uma questão do acervo, que o aluno responde ali.
  *
  * <p>{@code nome} é a identidade editorial ("Q04", "Aula 1 — cadeias carbônicas") e {@code ordem}
  * é a posição na tela. São coisas diferentes de propósito: juntas, impediriam exibir a Q52 antes
@@ -58,6 +59,12 @@ public class Item extends Rastreavel implements Nomeavel {
     @NotFound(action = NotFoundAction.IGNORE)
     @JoinColumn(name = "material_id")
     private Material material;
+
+    // Questão removida do acervo chega como null, e a linha some da tela como a do PDF removido.
+    @ManyToOne
+    @NotFound(action = NotFoundAction.IGNORE)
+    @JoinColumn(name = "questao_id")
+    private Questao questao;
 
     @Column(nullable = false)
     private String nome;
@@ -91,6 +98,14 @@ public class Item extends Rastreavel implements Nomeavel {
         this.rascunhoId = rascunhoId;
     }
 
+    /** A linha de questão: sem vídeo nem PDF — a resolução em vídeo é da própria questão. */
+    static Item deQuestao(SubModulo submodulo, Questao questao, String nome, int ordem, Status status,
+            Integer rascunhoId) {
+        var item = new Item(submodulo, (Video) null, nome, ordem, status, rascunhoId);
+        item.questao = questao;
+        return item;
+    }
+
     @Override
     public Integer getId() {
         return id;
@@ -111,6 +126,15 @@ public class Item extends Rastreavel implements Nomeavel {
 
     public Material getMaterial() {
         return material;
+    }
+
+    public Questao getQuestao() {
+        return questao;
+    }
+
+    /** Tem o que mostrar: a linha cujo PDF ou cuja questão foi removida fica sem nada. */
+    public boolean temConteudo() {
+        return video != null || material != null || questao != null;
     }
 
     void anexarMaterial(Material material) {

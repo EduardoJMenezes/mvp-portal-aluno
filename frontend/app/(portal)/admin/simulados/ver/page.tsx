@@ -107,12 +107,13 @@ function Prova({ simulado: s, aoSalvar }: { simulado: SimuladoDoProfessor; aoSal
                 <span className="font-semibold tabular-nums">{q.ordem}.</span>
                 <Etiqueta tom="sucesso">Gabarito {q.gabarito}</Etiqueta>
                 {q.imagem_pendente && <Etiqueta tom="atencao">Imagem pendente</Etiqueta>}
+                {!!q.aulas?.length && <span title={`Lá o aluno vê o gabarito ao responder: ${q.aulas.join("; ")}`}><Etiqueta tom="atencao">Também em aula</Etiqueta></span>}
                 {q.resolucao ? <Etiqueta tom="info">Vídeo: {q.resolucao}</Etiqueta> : <Etiqueta>Sem vídeo de resolução</Etiqueta>}
                 <Link href={`/admin/questoes/editar/?id=${q.questao_id}`} className="ml-auto text-sm font-semibold text-acento hover:underline">Editar questão #{q.questao_id}</Link>
               </div>
               <TextoFormatado texto={q.enunciado} compacto />
               <ul className="mt-2 flex flex-col gap-1">
-                {LETRAS.map((l) => (
+                {LETRAS.filter((l) => l in q.alternativas).map((l) => (
                   <li key={l} className={`flex gap-2 rounded-md px-2 py-1 text-[15px] ${q.gabarito === l ? "bg-sucesso-fundo" : ""}`}>
                     <span className="font-semibold">{l})</span>
                     <TextoFormatado texto={q.alternativas[l] ?? ""} compacto className="min-w-0 flex-1" />

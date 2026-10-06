@@ -3,10 +3,11 @@
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useState, type FormEvent, type ReactNode } from "react";
-import { Aviso, Botao, Campo, Cartao, Estado, Etiqueta, Pagina, TituloDeSecao, Vazio, useConfirmar } from "@/components/ui";
+import { Aviso, Botao, BotaoLink, Campo, Cartao, Estado, Etiqueta, Pagina, TituloDeSecao, Vazio, useConfirmar } from "@/components/ui";
 import { CampoCategoria, EditarCategoria, categoriasDe } from "@/components/Categoria";
 import { ColocarVideo } from "@/components/ColocarVideo";
 import { EscolherTurmas } from "@/components/EscolherTurmas";
+import { BuscaNoBanco } from "@/components/MontarProva";
 import { EscolherPdf, PdfDaAula, PdfDaAulaAoVivo } from "@/components/Pdf";
 import { abrirEmNovaAba, api, useDados, type Assunto, type Aula, type Modulo, type SubModulo, type Turma, type VideoVimeo } from "@/lib/api";
 import { duracao, emBrasilia, plural } from "@/lib/formato";
@@ -78,7 +79,7 @@ function Biblioteca() {
   return (
     <Pagina
       titulo="Aulas"
-      legenda="Todos os módulos, agrupados pela categoria. Cada um diz que turmas o recebem: o que muda num módulo vale para todas elas. Vídeo novo entra como rascunho; a gravação de aula ao vivo entra publicada."
+      legenda="Todos os módulos, agrupados pela categoria. Cada um diz que turmas o recebem: o que muda num módulo vale para todas elas. Cada linha de um sub-módulo é um vídeo, um PDF ou uma questão, e o que você monta aqui já entra publicado; o que chega pelo Claude passa por Rascunhos."
       acoes={
         <>
           <Botao onClick={() => setCopiar(!copiar)} aria-expanded={copiar}>Copiar entre turmas</Botao>
@@ -411,7 +412,7 @@ function SecaoDoSubmodulo({
   executar: Executar;
   confirmar: Confirmar;
 }) {
-  const [painel, setPainel] = useState<"videos" | "classificar" | "aula" | "pdf" | null>(null);
+  const [painel, setPainel] = useState<"videos" | "classificar" | "aula" | "pdf" | "questao" | null>(null);
   const [renomeando, setRenomeando] = useState<number | null>(null);
   const [nomeItem, setNomeItem] = useState("");
   const publicados = sub.itens.filter((i) => i.status === "PUBLICADO").length;
@@ -446,6 +447,7 @@ function SecaoDoSubmodulo({
           <Botao variante="texto" onClick={() => setPainel(painel === "aula" ? null : "aula")} aria-expanded={painel === "aula"}>Aula ao vivo</Botao>
           <Botao variante="texto" onClick={() => setPainel(painel === "videos" ? null : "videos")} aria-expanded={painel === "videos"}>Adicionar vídeos</Botao>
           <Botao variante="texto" onClick={() => setPainel(painel === "pdf" ? null : "pdf")} aria-expanded={painel === "pdf"}>Adicionar PDF</Botao>
+          <Botao variante="texto" onClick={() => setPainel(painel === "questao" ? null : "questao")} aria-expanded={painel === "questao"}>Adicionar questão</Botao>
           <Botao variante="texto" onClick={() => setPainel(painel === "classificar" ? null : "classificar")} aria-expanded={painel === "classificar"}>Classificar</Botao>
           <Botao variante="texto" className="text-erro" onClick={() => void removerSub()}>Remover</Botao>
         </div>
@@ -461,6 +463,7 @@ function SecaoDoSubmodulo({
           />
         </div>
       )}
+      {painel === "questao" && <AdicionarQuestao modulo={modulo} sub={sub} executar={executar} aoFechar={() => setPainel(null)} />}
       {painel === "classificar" && <Classificar turma={turma} modulo={modulo} sub={sub} assuntos={assuntos} executar={executar} aoFechar={() => setPainel(null)} />}
       {painel === "aula" && <NovaAulaAoVivo turmas={modulo.turmas?.length ? modulo.turmas : [nomeDaTurma]} sub={sub} categorias={categoriasDeAula} executar={executar} aoFechar={() => setPainel(null)} />}
       {aulas.length > 0 && <AulasDoSubmodulo aulas={aulas} executar={executar} />}
@@ -490,7 +493,7 @@ function SecaoDoSubmodulo({
                           if (await executar(() => api.editarItem(turma, modulo.id, sub.id, item.id, { nome: nomeItem.trim() }))) setRenomeando(null);
                         }}
                       >
-                        <label htmlFor={`nome-item-${item.id}`} className="sr-only">Nome do vídeo</label>
+                        <label htmlFor={`nome-item-${item.id}`} className="sr-only">Nome da aula</label>
                         <input id={`nome-item-${item.id}`} value={nomeItem} onChange={(e) => setNomeItem(e.target.value)} className="campo py-1" autoFocus />
                         <Botao type="submit" tamanho="pequeno" variante="primario">Salvar</Botao>
                         <Botao tamanho="pequeno" onClick={() => setRenomeando(null)}>Cancelar</Botao>
@@ -498,14 +501,21 @@ function SecaoDoSubmodulo({
                     ) : (
                       <span className="flex flex-wrap items-center gap-2">
                         <span className="font-medium">{item.nome}</span>
-                        {!item.video_id && <Etiqueta tom="info">Só PDF</Etiqueta>}
+                        {item.questao ? <Etiqueta tom="info">Questão</Etiqueta> : !item.video_id && <Etiqueta tom="info">Só PDF</Etiqueta>}
                       </span>
                     )}
-                    <PdfDaAula
-                      material={item.material}
-                      aoTrocar={(id) => executar(() => api.materialDoItem(item.id, id), `PDF de "${item.nome}" salvo.`)}
-                      aoTirar={item.video_id ? () => executar(() => api.materialDoItem(item.id, null), `"${item.nome}" ficou sem PDF.`) : undefined}
-                    />
+                    {item.questao ? (
+                      <p className="mt-1 max-w-xl text-[13px] text-suave">
+                        <span className="line-clamp-2">{item.questao.resumo}</span>
+                        <Link href={`/admin/questoes/editar/?id=${item.questao.questao_id}`} className="font-semibold text-acento hover:underline">Editar questão #{item.questao.questao_id}</Link>
+                      </p>
+                    ) : (
+                      <PdfDaAula
+                        material={item.material}
+                        aoTrocar={(id) => executar(() => api.materialDoItem(item.id, id), `PDF de "${item.nome}" salvo.`)}
+                        aoTirar={item.video_id ? () => executar(() => api.materialDoItem(item.id, null), `"${item.nome}" ficou sem PDF.`) : undefined}
+                      />
+                    )}
                   </td>
                   <td>{item.status === "PUBLICADO" ? <Etiqueta tom="sucesso">Publicado</Etiqueta> : <Etiqueta tom="atencao">Rascunho</Etiqueta>}</td>
                   <td>
@@ -713,17 +723,14 @@ function AdicionarVideos({ turma, modulo, sub, executar, aoFechar }: { turma: nu
 
   async function adicionar() {
     const videos = Object.values(escolhidos).map((v) => ({ vimeo_id: v.id, titulo: v.titulo, embed_url: v.embed_url }));
-    let rascunho = 0;
+    let recusados: string[] = [];
     const ok = await executar(
       async () => {
-        rascunho = (await api.adicionarVideos(turma, modulo.id, sub.id, videos)).rascunho_id;
+        recusados = (await api.adicionarVideos(turma, modulo.id, sub.id, videos)).erros;
       },
-      () => (
-        <>
-          {plural(videos.length, "vídeo entrou", "vídeos entraram")} em rascunho.{" "}
-          <Link className="font-semibold underline" href={`/admin/rascunhos/revisar/?id=${rascunho}`}>Revisar e publicar</Link>
-        </>
-      ),
+      () =>
+        `${plural(videos.length - recusados.length, "vídeo adicionado", "vídeos adicionados")} em ${sub.nome}, já ${videos.length - recusados.length === 1 ? "publicado" : "publicados"}.` +
+        (recusados.length ? ` Ficaram de fora: ${recusados.join("; ")}.` : ""),
     );
     if (ok) aoFechar();
   }
@@ -767,10 +774,38 @@ function AdicionarVideos({ turma, modulo, sub, executar, aoFechar }: { turma: nu
       )}
       <div className="flex flex-wrap gap-2">
         <Botao variante="primario" disabled={!quantos} onClick={() => void adicionar()}>
-          {quantos ? `Adicionar ${plural(quantos, "vídeo")} em rascunho` : "Escolha os vídeos"}
+          {quantos ? `Adicionar ${plural(quantos, "vídeo")}` : "Escolha os vídeos"}
         </Botao>
         <Botao onClick={aoFechar}>Fechar</Botao>
       </div>
+    </div>
+  );
+}
+
+/** Uma linha de questão: criada agora, no editor, ou tirada do acervo. Já sai publicada. */
+function AdicionarQuestao({ modulo, sub, executar, aoFechar }: { modulo: Modulo; sub: SubModulo; executar: Executar; aoFechar: () => void }) {
+  const [doAcervo, setDoAcervo] = useState(false);
+  const jaNaAula = new Set<number | undefined>(sub.itens.map((i) => i.questao?.questao_id).filter((id) => id !== undefined));
+  const destino = encodeURIComponent(`${modulo.nome} › ${sub.nome}`);
+
+  return (
+    <div className="mt-3 flex flex-col gap-3 rounded-cartao border border-borda bg-canvas p-4">
+      <p className="text-[13px] text-suave">
+        A questão vira uma linha de {sub.nome}: o aluno responde ali, uma vez só, e vê o gabarito e a resolução na hora. Entra publicada.
+      </p>
+      <div className="flex flex-wrap gap-2">
+        <BotaoLink variante="primario" href={`/admin/questoes/editar/?submodulo=${sub.id}&destino=${destino}`}>Criar questão nova</BotaoLink>
+        <Botao variante="secundario" onClick={() => setDoAcervo(!doAcervo)} aria-expanded={doAcervo}>Escolher do banco de questões</Botao>
+        <Botao onClick={aoFechar}>Fechar</Botao>
+      </div>
+      {doAcervo && (
+        <BuscaNoBanco
+          jaNaProva={jaNaAula}
+          rotuloJaEsta="Na aula"
+          avisarReuso={false}
+          aoEscolher={(q) => void executar(() => api.questaoNoSubmodulo(sub.id, { questao_id: q.questao_id }), `Questão #${q.questao_id} adicionada em ${sub.nome}, já publicada.`)}
+        />
+      )}
     </div>
   );
 }

@@ -133,6 +133,16 @@ function Conteudo({ r, recarregar }: { r: Rascunho; recarregar: () => Promise<vo
         </Aviso>
       )}
 
+      {aberto && !!r.simulado?.avisos?.length && (
+        <Aviso tom="info" titulo="Antes de publicar, saiba">
+          <ul className="mt-1 list-disc pl-5">
+            {r.simulado.avisos.map((a) => (
+              <li key={a}>{a}</li>
+            ))}
+          </ul>
+        </Aviso>
+      )}
+
       {r.simulado && (
         <section className="flex flex-col gap-3">
           <TituloDeSecao acao={<BotaoLink tamanho="pequeno" href={`/admin/simulados/ver/?id=${r.simulado.simulado_id}`}>Editar agenda e questões</BotaoLink>}>
@@ -154,6 +164,7 @@ function Conteudo({ r, recarregar }: { r: Rascunho; recarregar: () => Promise<vo
                       <Etiqueta tom="sucesso">Gabarito {q.gabarito}</Etiqueta>
                       <Etiqueta>{q.nova ? "Nova" : "Do acervo"}</Etiqueta>
                       {q.imagem_pendente && <Etiqueta tom="atencao">Imagem pendente</Etiqueta>}
+                      {!!q.aulas?.length && <Etiqueta tom="atencao">Também em aula</Etiqueta>}
                       <Etiqueta tom={q.resolucao ? "info" : "neutro"}>{q.resolucao ? `Vídeo: ${q.resolucao}` : "Sem vídeo de resolução"}</Etiqueta>
                     </div>
                     <div className="line-clamp-3">
@@ -210,7 +221,13 @@ function Conteudo({ r, recarregar }: { r: Rascunho; recarregar: () => Promise<vo
                     )}
                     <td className="font-medium">{item.nome}</td>
                     <td className="text-suave">
-                      <span className="font-mono text-[13px]">{item.video.vimeo_id}</span> · {item.video.titulo}
+                      {item.video ? (
+                        <>
+                          <span className="font-mono text-[13px]">{item.video.vimeo_id}</span> · {item.video.titulo}
+                        </>
+                      ) : (
+                        `Questão #${item.questao_id}: o aluno responde na aula`
+                      )}
                     </td>
                     <td className="text-suave">{item.assuntos.map((a) => (a.subassunto ? `${a.assunto} › ${a.subassunto}` : a.assunto)).join(", ") || "—"}</td>
                     <td>{item.status === "PUBLICADO" ? <Etiqueta tom="sucesso">Publicado</Etiqueta> : <Etiqueta tom="atencao">Rascunho</Etiqueta>}</td>
@@ -230,7 +247,7 @@ function Conteudo({ r, recarregar }: { r: Rascunho; recarregar: () => Promise<vo
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="font-mono text-sm text-suave">#{q.questao_id}</span>
-                  {q.completa ? <Etiqueta tom="sucesso">Completa</Etiqueta> : <Etiqueta tom="erro">Sem as alternativas A–E</Etiqueta>}
+                  {q.completa ? <Etiqueta tom="sucesso">Completa</Etiqueta> : <Etiqueta tom="erro">Sem as alternativas A–D</Etiqueta>}
                   <Etiqueta>{DIFICULDADE[q.dificuldade] ?? q.dificuldade}</Etiqueta>
                   {q.imagem_pendente && <Etiqueta tom="atencao">Imagem pendente</Etiqueta>}
                 </div>
@@ -239,7 +256,7 @@ function Conteudo({ r, recarregar }: { r: Rascunho; recarregar: () => Promise<vo
               <TextoFormatado texto={q.enunciado} />
               {q.completa && (
                 <ul className="flex flex-col gap-1.5">
-                  {LETRAS.map((letra) => (
+                  {LETRAS.filter((letra) => letra in q.alternativas).map((letra) => (
                     <li key={letra} className={`flex items-start gap-2 rounded-md border px-3 py-2 ${letra === q.gabarito ? "border-sucesso-borda bg-sucesso-fundo" : "border-borda"}`}>
                       <span className="font-semibold">{letra}</span>
                       <TextoFormatado texto={q.alternativas[letra] ?? ""} compacto className="min-w-0 flex-1" />

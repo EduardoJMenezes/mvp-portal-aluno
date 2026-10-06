@@ -5,7 +5,7 @@ import { Suspense } from "react";
 import { useCategoria } from "@/components/Categoria";
 import { Estado, Pagina, TituloDeSecao, Vazio } from "@/components/ui";
 import { api, casaCategoria, useDados, type AulaNoCurso } from "@/lib/api";
-import { emBrasilia, plural } from "@/lib/formato";
+import { contarAulas, emBrasilia } from "@/lib/formato";
 
 export default function PaginaDoCurso() {
   return (
@@ -47,7 +47,7 @@ function MeuCurso() {
                         </span>
                         <ProximaAula aulas={modulo.submodulos.flatMap((s) => s.aulas ?? [])} />
                         <span className="text-sm font-semibold text-acento">
-                          {modulo.submodulos.some((s) => s.itens.length) ? `Assistir · ${plural(modulo.submodulos.reduce((n, s) => n + s.itens.length, 0), "vídeo")}` : "Ver capítulo"}
+                          {modulo.submodulos.some((s) => s.itens.length) ? `Abrir · ${contarAulas(modulo.submodulos.flatMap((s) => s.itens))}` : "Ver capítulo"}
                         </span>
                       </Link>
                     </li>

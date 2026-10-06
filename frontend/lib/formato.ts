@@ -77,6 +77,11 @@ export function plural(n: number, singular: string, pluralForma?: string): strin
   return `${n} ${n === 1 ? singular : (pluralForma ?? `${singular}s`)}`;
 }
 
+/** "5 vídeos" quando o módulo é só de vídeo; com PDF ou questão no meio, "5 aulas". */
+export function contarAulas(itens: { video_id: number | null }[]): string {
+  return plural(itens.length, itens.every((i) => i.video_id != null) ? "vídeo" : "aula");
+}
+
 /** Só caminho interno volta depois do login: nada de https://outro-site ou //outro-site. */
 export function destinoSeguro(volta: string | null, padrao: string): string {
   return volta && volta.startsWith("/") && !volta.startsWith("//") && !volta.startsWith("/\\") ? volta : padrao;

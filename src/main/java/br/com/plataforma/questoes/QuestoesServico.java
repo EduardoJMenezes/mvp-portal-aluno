@@ -1,12 +1,14 @@
 package br.com.plataforma.questoes;
 
 import br.com.plataforma.acervo.AcervoServico;
+import br.com.plataforma.acervo.AcessoServico;
 import br.com.plataforma.acervo.Video;
 import br.com.plataforma.comum.Identidade;
 import br.com.plataforma.comum.NaoAutorizado;
 import br.com.plataforma.comum.NaoEncontrado;
 import br.com.plataforma.comum.RegraDeNegocio;
 import br.com.plataforma.comum.Status;
+import br.com.plataforma.estrutura.EstruturaServico;
 import br.com.plataforma.simulados.Simulado;
 import br.com.plataforma.simulados.SimuladosServico;
 import br.com.plataforma.simulados.Situacao;
@@ -25,7 +27,7 @@ import java.util.Map;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-/** O acervo de questões de simulado. */
+/** O acervo de questões: as do simulado e as que viram linha de aula. */
 @Service
 public class QuestoesServico {
 
@@ -35,28 +37,36 @@ public class QuestoesServico {
     private final TaxonomiaServico taxonomia;
     private final SimuladosServico simulados;
     private final AcervoServico acervo;
+    private final AcessoServico acesso;
+    private final EstruturaServico estrutura;
 
     @PersistenceContext
     private EntityManager em;
 
     public QuestoesServico(QuestaoRepositorio questoes, QuestaoAssuntoRepositorio classificacoes,
             FigurasServico figuras, TaxonomiaServico taxonomia, SimuladosServico simulados,
-            AcervoServico acervo) {
+            AcervoServico acervo, AcessoServico acesso, EstruturaServico estrutura) {
         this.questoes = questoes;
         this.classificacoes = classificacoes;
         this.figuras = figuras;
         this.taxonomia = taxonomia;
         this.simulados = simulados;
         this.acervo = acervo;
+        this.acesso = acesso;
+        this.estrutura = estrutura;
     }
 
     // --- o que as respostas mostram ------------------------------------------
 
+    /**
+     * {@code aulas}: as linhas de aula em que a questão está ("K01 › Questões da apostila › Q04").
+     * Lá o aluno vê o gabarito ao responder — quem monta uma prova com ela precisa saber.
+     */
     public record QuestaoDescrita(
             Integer questaoId, String enunciado, Map<Letra, String> alternativas,
             Dificuldade dificuldade, Status status, List<Etiqueta> assuntos,
             List<Etiqueta> classificacao, boolean imagemPendente, Integer videoResolucaoId,
-            Letra gabarito) {}
+            Letra gabarito, List<String> aulas) {}
 
     public record FiguraNaQuestao(Integer figuraId, String parte) {}
 
@@ -69,10 +79,14 @@ public class QuestoesServico {
             Dificuldade dificuldade, Status status, List<Etiqueta> assuntos,
             List<Etiqueta> classificacao, boolean imagemPendente, Integer videoResolucaoId,
             Letra gabarito, String resolucaoComentada, List<FiguraNaQuestao> figuras,
-            ResolucaoEmVideo resolucao, List<SimuladoDaQuestao> simulados) {}
+            ResolucaoEmVideo resolucao, List<SimuladoDaQuestao> simulados, List<String> aulas) {}
 
     @Transactional(readOnly = true)
     public QuestaoDescrita descrever(Questao q, boolean incluirGabarito) {
+        return descrever(q, incluirGabarito, estrutura.aulasDasQuestoes(List.of(q.getId())));
+    }
+
+    private QuestaoDescrita descrever(Questao q, boolean incluirGabarito, Map<Integer, List<String>> aulas) {
         var alternativas = new LinkedHashMap<Letra, String>();
         q.getAlternativas().forEach(a -> alternativas.put(a.getLetra(), a.getTexto()));
 
@@ -81,7 +95,8 @@ public class QuestoesServico {
                 q.getVideo() == null ? List.of() : taxonomia.etiquetasDoVideo(q.getVideo()),
                 etiquetasDa(q), q.isImagemPendente(),
                 q.getVideo() == null ? null : q.getVideo().getId(),
-                incluirGabarito ? q.getGabarito() : null);
+                incluirGabarito ? q.getGabarito() : null,
+                aulas.getOrDefault(q.getId(), List.of()));
     }
 
     /** A questão inteira, e em que simulados ela está — o "antes" do preview. */
@@ -104,7 +119,8 @@ public class QuestoesServico {
                 simulados.simuladosDa(q).stream()
                         .map(s -> new SimuladoDaQuestao(
                                 s.getId(), s.getTitulo(), SimuladosServico.situacao(s, agora)))
-                        .toList());
+                        .toList(),
+                base.aulas());
     }
 
     // --- busca ---------------------------------------------------------------
@@ -147,10 +163,10 @@ public class QuestoesServico {
         var consulta = em.createQuery(jpql.toString(), Questao.class);
         parametros.forEach(consulta::setParameter);
 
-        return consulta.setFirstResult(Math.max(0, deslocamento)).setMaxResults(limite)
-                .getResultList().stream()
-                .map(q -> descrever(q, true))
-                .toList();
+        var achadas = consulta.setFirstResult(Math.max(0, deslocamento)).setMaxResults(limite)
+                .getResultList();
+        var aulas = estrutura.aulasDasQuestoes(achadas.stream().map(Questao::getId).toList());
+        return achadas.stream().map(q -> descrever(q, true, aulas)).toList();
     }
 
     // --- resolução -----------------------------------------------------------
@@ -207,8 +223,11 @@ public class QuestoesServico {
             var juntas = new LinkedHashMap<Letra, String>();
             q.getAlternativas().forEach(a -> juntas.put(a.getLetra(), a.getTexto()));
             nova.alternativas().forEach((k, v) -> juntas.put(letra(k), v == null ? "" : v.strip()));
-            exigirCincoAlternativas(juntas);
-            q.ajustarAlternativas(juntas);
+            q.ajustarAlternativas(exigirAlternativas(juntas));
+        }
+        if (nova.gabarito() != null || nova.alternativas() != null) {
+            exigirGabaritoEntreAsAlternativas(q.getGabarito(), q.getAlternativas().stream()
+                    .map(Alternativa::getLetra).toList());
         }
 
         if (nova.dificuldade() != null) {
@@ -289,7 +308,8 @@ public class QuestoesServico {
         var letras = new LinkedHashMap<Letra, String>();
         (dados.alternativas() == null ? Map.<String, String>of() : dados.alternativas())
                 .forEach((k, v) -> letras.put(letra(k), v == null ? "" : v.strip()));
-        exigirCincoAlternativas(letras);
+        exigirAlternativas(letras);
+        exigirGabaritoEntreAsAlternativas(letra(dados.gabarito()), letras.keySet());
 
         var escolhida = dados.resolucao() != null ? dados.resolucao() : resolucaoDaPasta;
         var video = escolhida == null ? null : videoDe(ident, escolhida);
@@ -333,9 +353,9 @@ public class QuestoesServico {
                             .formatted(referencia, lista));
         }
         var questao = achada.get();
-        if (questao.getAlternativas().size() < Letra.values().length) {
+        if (!questao.completa()) {
             throw new RegraDeNegocio(
-                    ("A questão %s ainda está sem as alternativas A-E e não pode ir para um simulado.")
+                    ("A questão %s ainda está sem as alternativas A-D e não pode ir para um simulado.")
                             .formatted(referencia));
         }
         return questao;
@@ -481,6 +501,9 @@ public class QuestoesServico {
      * <p>Operador, sempre. Aluno, só depois de começar uma prova publicada que tenha a questão —
      * antes disso, a figura adiantaria a prova. A da resolução, só depois que essa prova fechar,
      * como o vídeo de resolução.
+     *
+     * <p>A questão que está numa aula do aluno segue a regra da aula: enunciado e alternativas
+     * aparecem com a linha, e a resolução, depois que ele responde.
      */
     @Transactional(readOnly = true)
     public Imagem figura(Identidade ident, Integer figuraId, Instant agora) {
@@ -488,6 +511,9 @@ public class QuestoesServico {
         if (!ident.eOperador()) {
             if (f.getQuestao() == null) {
                 throw new NaoAutorizado("Esta figura ainda não faz parte de nenhuma questão.");
+            }
+            if (liberadaPelaAula(ident, f, agora)) {
+                return new Imagem(f.getTipo(), figuras.bytesDe(figuraId));
             }
             var fechamentos = em.createQuery("""
                     select s.fechaEm from Tentativa t join t.simulado s, SimuladoQuestao sq
@@ -506,6 +532,27 @@ public class QuestoesServico {
             }
         }
         return new Imagem(f.getTipo(), figuras.bytesDe(figuraId));
+    }
+
+    private boolean liberadaPelaAula(Identidade ident, Figura f, Instant agora) {
+        var questao = f.getQuestao();
+        if (questao.getStatus() != Status.PUBLICADO) {
+            return false;
+        }
+        var linhas = em.createQuery("select i.id from Item i where i.questao.id = :questao", Integer.class)
+                .setParameter("questao", questao.getId()).getResultList();
+        if (acesso.itensLiberados(ident, linhas, agora).isEmpty()) {
+            return false;
+        }
+        if (!ParteDaQuestao.RESOLUCAO.name().equals(f.getParte())) {
+            return true;
+        }
+        return em.createQuery("""
+                select count(r) from RespostaDeExercicio r
+                 where r.questaoId = :questao and r.alunoId = :aluno""", Long.class)
+                .setParameter("questao", questao.getId())
+                .setParameter("aluno", ident.usuarioId())
+                .getSingleResult() > 0;
     }
 
     private static boolean aindaTemMarca(Questao q) {
@@ -597,16 +644,28 @@ public class QuestoesServico {
         }
     }
 
-    static void exigirCincoAlternativas(Map<Letra, String> alternativas) {
-        var faltando = new ArrayList<String>();
-        for (var letra : Letra.values()) {
-            if (!alternativas.containsKey(letra)) {
-                faltando.add(letra.name());
-            }
+    /**
+     * De A a D são obrigatórias; a E é opcional, e vazia é o mesmo que não ter. Devolve o mesmo
+     * mapa, já sem a E vazia.
+     */
+    static Map<Letra, String> exigirAlternativas(Map<Letra, String> alternativas) {
+        var e = alternativas.get(Letra.E);
+        if (e != null && e.isBlank()) {
+            alternativas.remove(Letra.E);
         }
+        var faltando = Questao.OBRIGATORIAS.stream()
+                .filter(letra -> !alternativas.containsKey(letra)).map(Letra::name).toList();
         if (!faltando.isEmpty()) {
-            throw new RegraDeNegocio("Faltam as alternativas %s. A questão precisa de A a E."
+            throw new RegraDeNegocio("Faltam as alternativas %s. A questão precisa de A a D; a E é opcional."
                     .formatted(String.join(", ", faltando)));
+        }
+        return alternativas;
+    }
+
+    static void exigirGabaritoEntreAsAlternativas(Letra gabarito, java.util.Collection<Letra> letras) {
+        if (!letras.contains(gabarito)) {
+            throw new RegraDeNegocio("O gabarito é %s, mas a questão não tem a alternativa %s."
+                    .formatted(gabarito, gabarito));
         }
     }
 }

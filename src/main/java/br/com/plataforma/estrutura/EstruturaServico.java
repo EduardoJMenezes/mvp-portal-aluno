@@ -8,6 +8,7 @@ import br.com.plataforma.comum.RegraDeNegocio;
 import br.com.plataforma.comum.Status;
 import br.com.plataforma.materiais.Material;
 import br.com.plataforma.materiais.MaterialLigado;
+import br.com.plataforma.questoes.Questao;
 import java.util.List;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -87,19 +88,29 @@ public class EstruturaServico {
 
     // --- leitura -------------------------------------------------------------
 
+    /** A questão da linha, para quem monta: o começo do enunciado basta para reconhecer. */
+    public record QuestaoDaLinha(Integer questaoId, String resumo, Status status) {
+
+        static QuestaoDaLinha de(Questao q) {
+            return q == null ? null : new QuestaoDaLinha(q.getId(),
+                    q.getEnunciado().length() > 120 ? q.getEnunciado().substring(0, 120) + "…" : q.getEnunciado(),
+                    q.getStatus());
+        }
+    }
+
     /**
      * {@code turmas}: vazia é "toda turma que tem o módulo"; com nomes, só elas. Sem vídeo, a linha é
-     * só o PDF de {@code material} (decisão 0013).
+     * só o PDF de {@code material} (decisão 0013) ou a {@code questao} que o aluno responde ali.
      */
     public record ItemNaArvore(
             Integer id, String nome, Integer ordem, Status status, Integer videoId,
-            String vimeoId, List<String> turmas, MaterialLigado material) {
+            String vimeoId, List<String> turmas, MaterialLigado material, QuestaoDaLinha questao) {
 
-        static ItemNaArvore de(Item i) {
+        public static ItemNaArvore de(Item i) {
             return new ItemNaArvore(i.getId(), i.getNome(), i.getOrdem(), i.getStatus(),
                     i.getVideo() == null ? null : i.getVideo().getId(),
                     i.getVideo() == null ? null : i.getVideo().getVimeoId(), nomes(i.getTurmas()),
-                    MaterialLigado.de(i.getMaterial()));
+                    MaterialLigado.de(i.getMaterial()), QuestaoDaLinha.de(i.getQuestao()));
         }
     }
 
@@ -139,8 +150,11 @@ public class EstruturaServico {
                 var lista = itens.findBySubmoduloOrderByOrdemAsc(sub).stream()
                         .filter(i -> !doAluno || (i.getStatus() == Status.PUBLICADO && i.visivelPara(turma)
                                 && agenda.liberado(turma.getId(), modulo.getId(), i.getId(), agora)))
-                        // A linha só de PDF cujo material foi removido não tem o que mostrar.
-                        .filter(i -> i.getVideo() != null || i.getMaterial() != null)
+                        // A linha só de PDF ou só de questão que perdeu o conteúdo não tem o que mostrar.
+                        .filter(Item::temConteudo)
+                        // Questão ainda em rascunho não chega ao aluno, mesmo com a linha publicada.
+                        .filter(i -> !doAluno || i.getQuestao() == null
+                                || i.getQuestao().getStatus() == Status.PUBLICADO)
                         .toList();
                 if (doAluno && !manterVazios && lista.isEmpty()) {
                     continue;
@@ -199,6 +213,15 @@ public class EstruturaServico {
     /** Publica o item. Quem confere a aprovação humana é a publicação do rascunho. */
     @Transactional
     public void publicarItem(Identidade ident, Item item) {
+        var questao = item.getQuestao();
+        if (questao != null && !questao.completa()) {
+            throw new RegraDeNegocio("'%s' ainda está sem as alternativas A-D e não pode ir para a aula."
+                    .formatted(item.getNome()));
+        }
+        if (questao != null && questao.isImagemPendente()) {
+            throw new RegraDeNegocio("'%s' está com figura pendente: anexe a figura antes de pôr na aula."
+                    .formatted(item.getNome()));
+        }
         item.publicar();
         item.tocar(ident);
         itens.save(item);
@@ -396,6 +419,45 @@ public class EstruturaServico {
         return itens.save(item);
     }
 
+    /**
+     * Uma linha de questão no fim do sub-módulo. Sem nome, vira "Questão N" — a posição entre as
+     * questões dali.
+     */
+    @Transactional
+    public Item criarItemDeQuestao(Identidade ident, SubModulo submodulo, Questao questao, String nome,
+            Status status, Integer rascunhoId) {
+        ident.exigirOperador();
+        itens.findFirstBySubmoduloAndQuestao(submodulo, questao).ifPresent(repetido -> {
+            throw new RegraDeNegocio("'%s' já tem esta questão, como '%s'."
+                    .formatted(submodulo.getNome(), repetido.getNome()));
+        });
+        var escolhido = nome == null || nome.isBlank()
+                ? "Questão " + (itens.contarQuestoes(submodulo) + 1)
+                : nome.strip();
+        var item = Item.deQuestao(submodulo, questao, escolhido, itens.maiorOrdem(submodulo) + 1,
+                status == null ? Status.RASCUNHO : status, rascunhoId);
+        item.tocar(ident);
+        return itens.save(item);
+    }
+
+    /** Onde cada questão está no curso: "K01 › Questões da apostila › Q04". Rascunho também conta. */
+    @Transactional(readOnly = true)
+    public java.util.Map<Integer, List<String>> aulasDasQuestoes(java.util.Collection<Integer> questoes) {
+        var saida = new java.util.LinkedHashMap<Integer, List<String>>();
+        if (questoes.isEmpty()) {
+            return saida;
+        }
+        for (var i : itens.comAsQuestoes(questoes)) {
+            var sub = i.getSubmodulo();
+            if (sub == null || sub.getModulo() == null) {
+                continue;
+            }
+            saida.computeIfAbsent(i.getQuestao().getId(), id -> new java.util.ArrayList<>())
+                    .add("%s › %s › %s".formatted(sub.getModulo().getNome(), sub.getNome(), i.getNome()));
+        }
+        return saida;
+    }
+
     /** Uma linha só de PDF no sub-módulo (decisão 0013). Quem cria é o professor no portal: nasce publicada. */
     @Transactional
     public Item criarItemPdf(Identidade ident, SubModulo submodulo, Material material, String nome) {
@@ -411,6 +473,9 @@ public class EstruturaServico {
     @Transactional
     public Item anexarMaterial(Identidade ident, Item item, Material material) {
         ident.exigirOperador();
+        if (item.getQuestao() != null) {
+            throw new RegraDeNegocio("'%s' é uma questão: o PDF vai numa linha só dele.".formatted(item.getNome()));
+        }
         if (material == null && item.getVideo() == null) {
             throw new RegraDeNegocio("'%s' é só o PDF: para tirar, remova a linha.".formatted(item.getNome()));
         }
@@ -442,6 +507,12 @@ public class EstruturaServico {
         if (item.getVideo() != null) {
             itens.findFirstBySubmoduloAndVideo(destino, item.getVideo()).ifPresent(repetido -> {
                 throw new RegraDeNegocio("'%s' já tem este vídeo, como '%s'."
+                        .formatted(destino.getNome(), repetido.getNome()));
+            });
+        }
+        if (item.getQuestao() != null) {
+            itens.findFirstBySubmoduloAndQuestao(destino, item.getQuestao()).ifPresent(repetido -> {
+                throw new RegraDeNegocio("'%s' já tem esta questão, como '%s'."
                         .formatted(destino.getNome(), repetido.getNome()));
             });
         }

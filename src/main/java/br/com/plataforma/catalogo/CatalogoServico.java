@@ -21,16 +21,19 @@ public class CatalogoServico {
     private final br.com.plataforma.acervo.AcervoServico acervo;
     private final br.com.plataforma.acervo.AcessoServico acesso;
     private final br.com.plataforma.aulas.AulasServico aulas;
+    private final br.com.plataforma.exercicios.ExerciciosServico exercicios;
 
     public CatalogoServico(TurmaRepositorio turmas, EstruturaServico estrutura,
             br.com.plataforma.contas.ContasServico contas, br.com.plataforma.acervo.AcervoServico acervo,
-            br.com.plataforma.acervo.AcessoServico acesso, br.com.plataforma.aulas.AulasServico aulas) {
+            br.com.plataforma.acervo.AcessoServico acesso, br.com.plataforma.aulas.AulasServico aulas,
+            br.com.plataforma.exercicios.ExerciciosServico exercicios) {
         this.turmas = turmas;
         this.estrutura = estrutura;
         this.contas = contas;
         this.acervo = acervo;
         this.acesso = acesso;
         this.aulas = aulas;
+        this.exercicios = exercicios;
     }
 
     /** As turmas que a identidade enxerga: operador, todas; aluno, as dele. */
@@ -137,11 +140,17 @@ public class CatalogoServico {
 
     // --- a tela do aluno -----------------------------------------------------
 
-    /** {@code video} null: a linha é só o PDF de {@code material} (decisão 0013). */
+    /** A linha de questão na lista: o enunciado vem depois, quando o aluno abre a linha. */
+    public record QuestaoNaAula(Integer questaoId, boolean respondida, Boolean correta) {}
+
+    /**
+     * {@code video} null: a linha é só o PDF de {@code material} (decisão 0013), ou a
+     * {@code questao} que o aluno responde ali.
+     */
     public record ItemComVideo(
             Integer id, String nome, Integer ordem, Status status, Integer videoId,
             br.com.plataforma.acervo.AcessoServico.VideoDescrito video,
-            br.com.plataforma.materiais.MaterialLigado material) {}
+            br.com.plataforma.materiais.MaterialLigado material, QuestaoNaAula questao) {}
 
     public record SubModuloComVideos(
             Integer id, String nome, br.com.plataforma.estrutura.TipoSubModulo tipo, Integer ordem,
@@ -186,6 +195,9 @@ public class CatalogoServico {
                     .collect(java.util.stream.Collectors.toCollection(java.util.LinkedHashSet::new));
             var videos = acervo.porIds(ids);
             var liberados = acesso.videosLiberados(ident, ids, agora);
+            var feitas = exercicios.feitasPeloAluno(ident.usuarioId(), modulos.stream()
+                    .flatMap(m -> m.submodulos().stream()).flatMap(s -> s.itens().stream())
+                    .filter(i -> i.questao() != null).map(EstruturaServico.ItemNaArvore::id).toList());
 
             saida.add(new ConteudoDaTurma(turma.getNome(), turma.getId(), modulos.stream()
                     .map(m -> new ModuloComVideos(m.id(), m.nome(), m.ordem(), m.categoria(), m.turma(),
@@ -193,11 +205,14 @@ public class CatalogoServico {
                                     s.tipo(), s.ordem(), s.itens().stream()
                                             .map(i -> new ItemComVideo(i.id(), i.nome(), i.ordem(),
                                                     i.status(), i.videoId(),
-                                                    // Linha só de PDF: sem vídeo para descrever.
+                                                    // Linha só de PDF ou de questão: sem vídeo para descrever.
                                                     i.videoId() == null ? null : br.com.plataforma.acervo.AcessoServico.descrever(
                                                             videos.get(i.videoId()),
                                                             liberados.contains(i.videoId())),
-                                                    i.material()))
+                                                    i.material(),
+                                                    i.questao() == null ? null : new QuestaoNaAula(
+                                                            i.questao().questaoId(), feitas.containsKey(i.id()),
+                                                            feitas.containsKey(i.id()) ? feitas.get(i.id()).correta() : null)))
                                             .toList(),
                                     aoVivo.getOrDefault(s.id(), List.of())))
                                     .toList()))

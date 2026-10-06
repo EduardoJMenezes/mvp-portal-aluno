@@ -14,8 +14,9 @@ import org.springframework.transaction.annotation.Transactional;
  * Quem pode assistir o quê — e o que o backend conta sobre o que não pode.
  *
  * <p>Duas responsabilidades que andam juntas. <b>A decisão</b>: um só lugar responde "esta pessoa
- * pode assistir este vídeo?". Hoje de duas fontes — a matrícula, para o vídeo do curso, e a prova
- * feita, para a resolução de um simulado já fechado.
+ * pode assistir este vídeo?". Hoje de três fontes — a matrícula, para o vídeo do curso; a prova
+ * feita, para a resolução de um simulado já fechado; e a questão da aula já respondida, para a
+ * resolução dela.
  *
  * <p><b>O que sai no lugar</b>: vídeo bloqueado devolve o nome e mais nada. Isso não é detalhe de
  * tela: {@code videos.embed_url} guarda a URL como o Vimeo devolve, <b>com o hash de
@@ -71,8 +72,20 @@ public class AcessoServico {
                 .setParameter("agora", agora)
                 .getResultList();
 
+        // Na aula o gabarito sai na hora, e a resolução vai junto: basta ter respondido.
+        var deQuestaoRespondida = em.createQuery("""
+                select q.video.id from Questao q
+                 where q.video.id in :ids
+                   and exists (select 1 from RespostaDeExercicio r
+                                where r.questaoId = q.id and r.alunoId = :usuario)""",
+                Integer.class)
+                .setParameter("ids", ids)
+                .setParameter("usuario", ident.usuarioId())
+                .getResultList();
+
         var liberados = new LinkedHashSet<Integer>(doCurso);
         liberados.addAll(deProvaFeita);
+        liberados.addAll(deQuestaoRespondida);
         return liberados;
     }
 

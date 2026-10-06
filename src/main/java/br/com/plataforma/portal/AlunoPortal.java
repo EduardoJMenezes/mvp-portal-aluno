@@ -3,6 +3,7 @@ package br.com.plataforma.portal;
 import br.com.plataforma.aulas.AulasServico;
 import br.com.plataforma.catalogo.CatalogoServico;
 import br.com.plataforma.comum.Identidade;
+import br.com.plataforma.exercicios.ExerciciosServico;
 import br.com.plataforma.contas.Senhas;
 import br.com.plataforma.materiais.MateriaisServico;
 import br.com.plataforma.questoes.QuestoesServico;
@@ -38,15 +39,17 @@ public class AlunoPortal {
     private final QuestoesServico questoes;
     private final MateriaisServico materiais;
     private final AulasServico aulas;
+    private final ExerciciosServico exercicios;
     private final ObjectMapper json;
 
     public AlunoPortal(CatalogoServico catalogo, ProvaDoAluno prova, QuestoesServico questoes,
-            MateriaisServico materiais, AulasServico aulas, ObjectMapper json) {
+            MateriaisServico materiais, AulasServico aulas, ExerciciosServico exercicios, ObjectMapper json) {
         this.catalogo = catalogo;
         this.prova = prova;
         this.questoes = questoes;
         this.materiais = materiais;
         this.aulas = aulas;
+        this.exercicios = exercicios;
         this.json = json;
     }
 
@@ -95,6 +98,23 @@ public class AlunoPortal {
     @GetMapping("/simulados/{simulado}/resultado")
     public ProvaDoAluno.Resultado resultado(@AuthenticationPrincipal Identidade ident, @PathVariable String simulado) {
         return prova.resultado(ident, simulado, Instant.now());
+    }
+
+    // --- a questão da aula -----------------------------------------------------
+
+    /** A questão da linha. Sem gabarito nem resolução até o aluno responder. */
+    @GetMapping("/itens/{item}/questao")
+    public ExerciciosServico.Exercicio questaoDaAula(@AuthenticationPrincipal Identidade ident, @PathVariable Integer item) {
+        return exercicios.abrir(ident, item, Instant.now());
+    }
+
+    public record RespostaDaAulaIn(String alternativa) {}
+
+    /** Vale a primeira resposta: a correção volta aqui, e a segunda tentativa é recusada. */
+    @PostMapping("/itens/{item}/responder")
+    public ExerciciosServico.Exercicio responderNaAula(@AuthenticationPrincipal Identidade ident,
+            @PathVariable Integer item, @RequestBody RespostaDaAulaIn dados) {
+        return exercicios.responder(ident, item, dados.alternativa(), Instant.now());
     }
 
     @GetMapping("/desempenho")

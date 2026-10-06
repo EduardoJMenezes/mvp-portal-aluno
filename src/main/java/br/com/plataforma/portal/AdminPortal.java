@@ -277,13 +277,18 @@ public class AdminPortal {
         return estruturaComandos.removerDoCurso(ident, new EstruturaComandos.RemoverDoCurso(turma, modulo, submodulo, null));
     }
 
-    /** Vídeos entrando no sub-módulo — em rascunho, como pela tool. */
+    /** Vídeos entrando no sub-módulo. É o professor montando: já saem publicados. */
     @PostMapping("/turmas/{turma}/modulos/{modulo}/submodulos/{submodulo}/itens")
+    @Transactional
     public AcervoComandos.ItensImportados importarItens(@AuthenticationPrincipal Identidade ident,
             @PathVariable String turma, @PathVariable String modulo, @PathVariable String submodulo,
             @Valid @RequestBody ItensIn dados) {
-        return acervoComandos.importarVideosComoItens(ident,
+        var importados = acervoComandos.importarVideosComoItens(ident,
                 new AcervoComandos.ImportarVideosComoItens(turma, modulo, submodulo, dados.videos()));
+        var rascunho = importados.rascunho().rascunhoId();
+        publicacao.publicarPeloPortal(ident, rascunho, Instant.now());
+        return new AcervoComandos.ItensImportados(rascunhos.detalhar(ident, rascunho, Instant.now()),
+                importados.erros(), "Publicado: os vídeos já aparecem para os alunos.");
     }
 
     @PatchMapping("/turmas/{turma}/modulos/{modulo}/submodulos/{submodulo}/itens/{item}")
@@ -419,14 +424,17 @@ public class AdminPortal {
             String dificuldade, Boolean imagemPendente, String assunto, String subassunto, String vimeoId,
             String resolucaoComentada) {}
 
-    /** Uma questão avulsa, em rascunho. */
+    /** Uma questão avulsa. É o professor cadastrando: entra no acervo já publicada. */
     @PostMapping("/questoes")
+    @Transactional
     public RascunhosServico.RascunhoDetalhado criarQuestao(@AuthenticationPrincipal Identidade ident,
             @Valid @RequestBody QuestaoIn dados) {
-        return rascunhosComandos.criarQuestaoRascunho(ident, new RascunhosComandos.CriarQuestaoRascunho(
+        var rascunho = rascunhosComandos.criarQuestaoRascunho(ident, new RascunhosComandos.CriarQuestaoRascunho(
                 dados.enunciado(), dados.alternativas(), dados.gabarito(), dados.assunto(), dados.subassunto(),
                 dados.dificuldade(), vimeoImportacao.resolucao(dados.vimeoId()),
                 dados.imagemPendente() != null && dados.imagemPendente(), dados.resolucaoComentada()));
+        publicacao.publicarPeloPortal(ident, rascunho.rascunhoId(), Instant.now());
+        return rascunhos.detalhar(ident, rascunho.rascunhoId(), Instant.now());
     }
 
     @GetMapping("/questoes/{questaoId}")

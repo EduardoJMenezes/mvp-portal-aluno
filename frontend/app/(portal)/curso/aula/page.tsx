@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useMemo, useState } from "react";
+import { Exercicio } from "@/components/Exercicio";
 import { Player } from "@/components/Player";
 import { LinkDoPdf } from "@/components/Pdf";
 import { Aviso, Botao, BotaoLink, Estado, Pagina } from "@/components/ui";
@@ -35,6 +36,8 @@ function Modulo({ turmas }: { turmas: ConteudoDaTurma[] }) {
 
   const modulo = useMemo(() => turmas.flatMap((t) => t.modulos).find((m) => m.id === moduloId), [turmas, moduloId]);
   const itens = useMemo(() => modulo?.submodulos.flatMap((s) => s.itens) ?? [], [modulo]);
+  // A resposta dada agora: a lista marca a questão sem esperar a árvore do curso ser relida.
+  const [feitasAgora, setFeitasAgora] = useState<Record<number, boolean>>({});
 
   if (!modulo) {
     return (
@@ -53,9 +56,11 @@ function Modulo({ turmas }: { turmas: ConteudoDaTurma[] }) {
       <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_20rem]">
         <div className="flex min-w-0 flex-col gap-3">
           {!atual ? (
-            <Aviso tom="info" titulo="Ainda sem vídeo neste capítulo">
+            <Aviso tom="info" titulo="Ainda sem aula neste capítulo">
               As aulas ao vivo dele estão na lista. Depois de cada uma, a gravação aparece aqui.
             </Aviso>
+          ) : atual.questao ? (
+            <Exercicio item={atual.id} aoResponder={(correta) => setFeitasAgora((f) => ({ ...f, [atual.id]: correta }))} />
           ) : atual.video ? (
             <Player video={atual.video} />
           ) : atual.material ? (
@@ -83,7 +88,7 @@ function Modulo({ turmas }: { turmas: ConteudoDaTurma[] }) {
           </div>}
         </div>
 
-        <aside aria-label="Vídeos do módulo" className="flex flex-col gap-3 lg:sticky lg:top-20 lg:max-h-[calc(100dvh-6rem)] lg:overflow-y-auto">
+        <aside aria-label="Aulas do módulo" className="flex flex-col gap-3 lg:sticky lg:top-20 lg:max-h-[calc(100dvh-6rem)] lg:overflow-y-auto">
           {modulo.submodulos.map((sub) => (
             <details key={sub.id} open className="rounded-cartao border border-borda bg-papel">
               <summary className="flex cursor-pointer items-center justify-between px-4 py-3 font-semibold text-tinta">
@@ -93,7 +98,9 @@ function Modulo({ turmas }: { turmas: ConteudoDaTurma[] }) {
               <ol className="border-t border-borda py-1">
                 {sub.itens.map((item) => {
                   const selecionado = item.id === atual?.id;
-                  const bloqueado = item.video ? item.video.bloqueado : !item.material;
+                  const bloqueado = item.questao ? false : item.video ? item.video.bloqueado : !item.material;
+                  // undefined: ainda não respondeu.
+                  const acertou = !item.questao ? undefined : item.id in feitasAgora ? feitasAgora[item.id] : item.questao.respondida ? item.questao.correta === true : undefined;
                   return (
                     <li key={item.id}>
                       <Link
@@ -105,14 +112,19 @@ function Modulo({ turmas }: { turmas: ConteudoDaTurma[] }) {
                         <span aria-hidden="true" className="flex w-4 shrink-0 justify-center text-xs text-suave">
                           {bloqueado ? (
                             <svg width="12" height="12" viewBox="0 0 24 24"><path d="M7 10V7a5 5 0 0 1 10 0v3" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" /><rect x="4.5" y="10" width="15" height="11" rx="2.5" fill="currentColor" /></svg>
+                          ) : acertou !== undefined ? (
+                            <span className={`font-bold ${acertou ? "text-sucesso" : "text-erro"}`}>{acertou ? "✓" : "✗"}</span>
                           ) : selecionado ? (
                             "▶"
+                          ) : item.questao ? (
+                            <span className="text-[11px] font-bold">?</span>
                           ) : !item.video ? (
                             <span className="text-[10px] font-bold">PDF</span>
                           ) : null}
                         </span>
                         <span className="truncate">{item.nome}</span>
                         {bloqueado && <span className="sr-only">(bloqueado)</span>}
+                        {item.questao && <span className="sr-only">{acertou === undefined ? "(questão para responder)" : acertou ? "(questão: você acertou)" : "(questão: você errou)"}</span>}
                       </Link>
                     </li>
                   );

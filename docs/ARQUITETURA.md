@@ -36,6 +36,7 @@ src/main/java/br/com/plataforma/
   questoes/     Questao, Alternativa, Figura
   rascunhos/    Rascunho, criação e publicação (aprovação humana)
   simulados/    Simulado, Tentativa, a prova do aluno (ProvaDoAluno)
+  exercicios/   a questão respondida dentro da aula: uma vez, e o gabarito sai depois
   analytics/    desempenho e estatísticas
   materiais/    PDF em faixas de bytes e anotações
   aulas/        aula ao vivo, Zoom real e de mentira

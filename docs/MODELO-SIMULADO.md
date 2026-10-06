@@ -9,7 +9,7 @@ seções "O que já existia" e "O que não existia" guardam o ponto de partida.
 
 ## O que já existia
 
-Questão com enunciado, alternativas A–E, gabarito, dificuldade e vídeo de
+Questão com enunciado, alternativas (de A a D, ou até a E), gabarito, dificuldade e vídeo de
 resolução; simulado com questões em ordem; tentativa e resposta por aluno; a
 correção no backend; estatísticas da turma e desempenho do aluno com
 recomendação de vídeos por assunto — pelo MCP. No portal, o aluno lista os
