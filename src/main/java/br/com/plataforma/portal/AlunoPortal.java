@@ -40,16 +40,19 @@ public class AlunoPortal {
     private final MateriaisServico materiais;
     private final AulasServico aulas;
     private final ExerciciosServico exercicios;
+    private final br.com.plataforma.estrutura.EstruturaServico estrutura;
     private final ObjectMapper json;
 
     public AlunoPortal(CatalogoServico catalogo, ProvaDoAluno prova, QuestoesServico questoes,
-            MateriaisServico materiais, AulasServico aulas, ExerciciosServico exercicios, ObjectMapper json) {
+            MateriaisServico materiais, AulasServico aulas, ExerciciosServico exercicios,
+            br.com.plataforma.estrutura.EstruturaServico estrutura, ObjectMapper json) {
         this.catalogo = catalogo;
         this.prova = prova;
         this.questoes = questoes;
         this.materiais = materiais;
         this.aulas = aulas;
         this.exercicios = exercicios;
+        this.estrutura = estrutura;
         this.json = json;
     }
 
@@ -98,6 +101,19 @@ public class AlunoPortal {
     @GetMapping("/simulados/{simulado}/resultado")
     public ProvaDoAluno.Resultado resultado(@AuthenticationPrincipal Identidade ident, @PathVariable String simulado) {
         return prova.resultado(ident, simulado, Instant.now());
+    }
+
+    /**
+     * A foto do cartão do módulo. O endereço leva a versão dela ({@code ?v=}), então o navegador
+     * pode guardá-la para sempre: foto nova, endereço novo.
+     */
+    @GetMapping("/modulos/{modulo}/foto")
+    public ResponseEntity<byte[]> fotoDoModulo(@AuthenticationPrincipal Identidade ident, @PathVariable Integer modulo) {
+        var foto = estrutura.foto(ident, modulo);
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CACHE_CONTROL, "private, max-age=31536000, immutable")
+                .contentType(MediaType.parseMediaType(foto.tipo()))
+                .body(foto.conteudo());
     }
 
     // --- a questão da aula -----------------------------------------------------

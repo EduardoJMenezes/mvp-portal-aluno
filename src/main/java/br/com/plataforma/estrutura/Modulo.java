@@ -50,6 +50,17 @@ public class Modulo extends Rastreavel implements Nomeavel {
 
     private String categoria;
 
+    /** Um nome de {@link IconeDoModulo#CATALOGO}; nulo é "o portal escolhe pelo nome". */
+    private String icone;
+
+    // A foto em si (coluna `foto`) não é mapeada: listar módulos não pode carregar imagem.
+    @Column(name = "foto_tipo")
+    private String fotoTipo;
+
+    /** Quando a foto entrou. Nulo: sem foto. É também a versão dela no endereço. */
+    @Column(name = "foto_em")
+    private java.time.Instant fotoEm;
+
     protected Modulo() {}
 
     /** Package-private: módulo só nasce pelo {@link EstruturaServico}, que aplica as regras. */
@@ -94,5 +105,27 @@ public class Modulo extends Rastreavel implements Nomeavel {
 
     void mudarCategoria(String categoria) {
         this.categoria = categoria;
+    }
+
+    public String getIcone() {
+        return icone;
+    }
+
+    void mudarIcone(String icone) {
+        this.icone = icone;
+    }
+
+    public String getFotoTipo() {
+        return fotoTipo;
+    }
+
+    /** A versão da foto, para o endereço dela mudar quando a foto muda. Nulo: sem foto. */
+    public Long getFotoVersao() {
+        return fotoEm == null ? null : fotoEm.toEpochMilli();
+    }
+
+    void marcarFoto(String tipo, java.time.Instant quando) {
+        this.fotoTipo = tipo;
+        this.fotoEm = quando;
     }
 }

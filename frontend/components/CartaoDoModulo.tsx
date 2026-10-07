@@ -2,15 +2,15 @@ import { ArrowRight, FileText, SquarePlay } from "lucide-react";
 import Link from "next/link";
 import type { AulaNoCurso, Modulo } from "@/lib/api";
 import { contarAulas, emBrasilia } from "@/lib/formato";
-import { iconeDoModulo, partesDoNome } from "@/lib/icones";
+import { partesDoNome } from "@/lib/icones";
+import { CapaDoModulo } from "./CapaDoModulo";
 
-// O cartão do capítulo em "Meu curso", como no guia: o ícone do assunto, o código da apostila,
+// O cartão do capítulo em "Meu curso", como no guia: a capa (ícone ou foto), o código da apostila,
 // o título e o que tem dentro. A barra de progresso do guia entra quando a plataforma souber
 // o que o aluno já assistiu — até lá, um número aqui seria inventado.
 
 export function CartaoDoModulo({ modulo }: { modulo: Modulo }) {
   const { codigo, titulo } = partesDoNome(modulo.nome);
-  const Icone = iconeDoModulo(modulo.nome);
   const itens = modulo.submodulos.flatMap((s) => s.itens);
   const soVideos = itens.length > 0 && itens.every((i) => i.video_id != null);
 
@@ -19,9 +19,7 @@ export function CartaoDoModulo({ modulo }: { modulo: Modulo }) {
       href={`/curso/aula/?modulo=${modulo.id}`}
       className="group flex h-full gap-4 rounded-cartao border border-borda/70 bg-papel p-5 shadow-suave transition-colors hover:border-acento/50"
     >
-      <span aria-hidden="true" className="flex size-14 shrink-0 items-center justify-center rounded-2xl bg-gelo/60 text-acento">
-        <Icone className="size-7" strokeWidth={1.6} />
-      </span>
+      <CapaDoModulo modulo={modulo} />
       <span className="flex min-w-0 flex-1 flex-col gap-2">
         {codigo && <span className="self-start rounded-md bg-lilas px-2 py-0.5 text-xs font-bold tracking-wide text-acento-forte">{codigo}</span>}
         <span className="font-titulo text-[17px] font-semibold leading-snug text-tinta">{titulo}</span>

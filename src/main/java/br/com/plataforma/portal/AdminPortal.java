@@ -233,9 +233,9 @@ public class AdminPortal {
 
     // --- curso: módulo, sub-módulo e item ------------------------------------
 
-    public record ModuloIn(@NotBlank String nome, List<String> submodulos, String categoria) {}
+    public record ModuloIn(@NotBlank String nome, List<String> submodulos, String categoria, String icone) {}
 
-    public record EdicaoModuloIn(String nome, Integer ordem, String categoria) {}
+    public record EdicaoModuloIn(String nome, Integer ordem, String categoria, String icone) {}
 
     public record SubModuloIn(@NotBlank String nome) {}
 
@@ -249,14 +249,14 @@ public class AdminPortal {
     public EstruturaComandos.ModuloCriado criarModulo(@AuthenticationPrincipal Identidade ident,
             @PathVariable String turma, @Valid @RequestBody ModuloIn dados) {
         return estruturaComandos.criarModulo(ident, new EstruturaComandos.CriarModulo(turma, dados.nome(), dados.submodulos(),
-                dados.categoria()));
+                dados.categoria(), dados.icone()));
     }
 
     @PatchMapping("/turmas/{turma}/modulos/{modulo}")
     public EstruturaComandos.ModuloEditado editarModulo(@AuthenticationPrincipal Identidade ident,
             @PathVariable String turma, @PathVariable String modulo, @RequestBody EdicaoModuloIn dados) {
         return estruturaComandos.editarModulo(ident, new EstruturaComandos.EditarModulo(turma, modulo, dados.nome(), dados.ordem(),
-                dados.categoria()));
+                dados.categoria(), dados.icone()));
     }
 
     @DeleteMapping("/turmas/{turma}/modulos/{modulo}")

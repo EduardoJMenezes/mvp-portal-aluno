@@ -39,7 +39,8 @@ public class EstruturaComandos {
             String turma,
             @NotBlank(message = "é obrigatório, ex.: 'K01 - Introdução à química orgânica'") String nome,
             List<String> submodulos,
-            String categoria) {}
+            String categoria,
+            String icone) {}
 
     public record ModuloCriado(
             Integer moduloId, String modulo, String turma, List<String> submodulos, String mensagem) {}
@@ -49,9 +50,14 @@ public class EstruturaComandos {
     public ModuloCriado criarModulo(
             @AuthenticationPrincipal Identidade ident, @Valid @RequestBody CriarModulo pedido) {
         var turma = catalogo.resolverTurmaOuBiblioteca(pedido.turma());
+        // O ícone é conferido antes de criar: um nome errado não deixa módulo pela metade.
+        var icone = br.com.plataforma.estrutura.IconeDoModulo.validar(pedido.icone());
         var modulo = estrutura.criarModulo(ident, turma, pedido.nome(), null);
         if (pedido.categoria() != null) {
             estrutura.editarModulo(ident, modulo, null, null, pedido.categoria());
+        }
+        if (icone != null) {
+            estrutura.definirIcone(ident, modulo, icone);
         }
 
         var nomes = pedido.submodulos() == null || pedido.submodulos().isEmpty()
@@ -93,22 +99,29 @@ public class EstruturaComandos {
             @NotBlank(message = "é obrigatório: o módulo a alterar") String modulo,
             String novoNome,
             Integer novaOrdem,
-            String novaCategoria) {}
+            String novaCategoria,
+            /** Um nome do catálogo de ícones, ou "automatico". Escolher ícone tira a foto do módulo. */
+            String novoIcone) {}
 
-    public record ModuloEditado(String modulo, Integer ordem, String categoria, String turma) {}
+    public record ModuloEditado(String modulo, Integer ordem, String categoria, String turma, String icone) {}
 
     @PostMapping("/editar_modulo")
     @Transactional
     public ModuloEditado editarModulo(
             @AuthenticationPrincipal Identidade ident, @Valid @RequestBody EditarModulo pedido) {
-        if (pedido.novoNome() == null && pedido.novaOrdem() == null && pedido.novaCategoria() == null) {
-            throw new RegraDeNegocio("Diga o que mudar: nome, ordem ou categoria.");
+        if (pedido.novoNome() == null && pedido.novaOrdem() == null && pedido.novaCategoria() == null
+                && pedido.novoIcone() == null) {
+            throw new RegraDeNegocio("Diga o que mudar: nome, ordem, categoria ou ícone.");
         }
         var turma = catalogo.resolverTurmaOuBiblioteca(pedido.turma());
         var alvos = estrutura.alvos(turma, pedido.modulo(), null, null);
         var modulo = estrutura.editarModulo(ident, alvos.modulo(), pedido.novoNome(), pedido.novaOrdem(),
                 pedido.novaCategoria());
-        return new ModuloEditado(modulo.getNome(), modulo.getOrdem(), modulo.getCategoria(), turma == null ? null : turma.getNome());
+        if (pedido.novoIcone() != null) {
+            modulo = estrutura.definirIcone(ident, modulo, pedido.novoIcone());
+        }
+        return new ModuloEditado(modulo.getNome(), modulo.getOrdem(), modulo.getCategoria(),
+                turma == null ? null : turma.getNome(), modulo.getIcone());
     }
 
     // --- editar_item ---------------------------------------------------------

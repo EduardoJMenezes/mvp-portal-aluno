@@ -156,9 +156,10 @@ public class CatalogoServico {
             Integer id, String nome, br.com.plataforma.estrutura.TipoSubModulo tipo, Integer ordem,
             List<ItemComVideo> itens, List<br.com.plataforma.aulas.AulasServico.NoCurso> aulas) {}
 
+    /** {@code icone} e {@code fotoVersao}: a capa do cartão, como em {@link EstruturaServico.ModuloNaArvore}. */
     public record ModuloComVideos(
             Integer id, String nome, Integer ordem, String categoria, String turma,
-            List<SubModuloComVideos> submodulos) {}
+            List<SubModuloComVideos> submodulos, String icone, Long fotoVersao) {}
 
     public record ConteudoDaTurma(String turma, Integer turmaId, List<ModuloComVideos> modulos) {}
 
@@ -183,7 +184,8 @@ public class CatalogoServico {
                     .map(m -> new EstruturaServico.ModuloNaArvore(m.id(), m.nome(), m.ordem(), m.categoria(), m.turma(),
                             m.turmas(), m.submodulos().stream()
                                     .filter(s -> !ident.eAluno() || !s.itens().isEmpty() || aoVivo.containsKey(s.id()))
-                                    .toList()))
+                                    .toList(),
+                            m.icone(), m.fotoVersao()))
                     .filter(m -> !ident.eAluno() || !m.submodulos().isEmpty())
                     .toList();
             if (modulos.isEmpty()) {
@@ -215,7 +217,8 @@ public class CatalogoServico {
                                                             feitas.containsKey(i.id()) ? feitas.get(i.id()).correta() : null)))
                                             .toList(),
                                     aoVivo.getOrDefault(s.id(), List.of())))
-                                    .toList()))
+                                    .toList(),
+                            m.icone(), m.fotoVersao()))
                     .toList()));
         }
         return saida;

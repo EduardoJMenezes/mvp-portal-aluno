@@ -76,8 +76,7 @@ public class ModulosPortal {
             @PathVariable String modulo, @Valid @RequestBody TurmasIn dados) {
         var m = estrutura.atribuirModulo(ident, estrutura.resolverModulo(null, modulo),
                 catalogo.resolverTurmas(dados.turmas()));
-        return new EstruturaServico.ModuloDaBiblioteca(m.getId(), m.getNome(), m.getOrdem(), m.getCategoria(),
-                m.getTurmas().stream().map(br.com.plataforma.catalogo.Turma::getNome).toList());
+        return EstruturaServico.ModuloDaBiblioteca.de(m);
     }
 
     /** A aula só para estas turmas; lista vazia devolve a aula a toda turma do módulo. */
@@ -110,6 +109,22 @@ public class ModulosPortal {
         var i = estrutura.anexarMaterial(ident, exigirItem(item),
                 dados.material() == null ? null : materiais.exigir(String.valueOf(dados.material())));
         return new ItemComPdf(i.getId(), i.getNome(), MaterialLigado.de(i.getMaterial()));
+    }
+
+    public record Capa(Integer moduloId, String icone, Long fotoVersao) {}
+
+    private br.com.plataforma.estrutura.Modulo exigirModulo(Integer modulo) {
+        return estrutura.modulo(modulo).orElseThrow(() -> new NaoEncontrado("Módulo %d não existe.".formatted(modulo)));
+    }
+
+    /** A foto do cartão do módulo. O portal manda a imagem já recortada em quadrado. */
+    @PostMapping(value = "/modulos/{modulo}/foto", consumes = org.springframework.http.MediaType.MULTIPART_FORM_DATA_VALUE)
+    @Transactional
+    public Capa fotoDoModulo(@AuthenticationPrincipal Identidade ident, @PathVariable Integer modulo,
+            @org.springframework.web.bind.annotation.RequestPart("arquivo") org.springframework.web.multipart.MultipartFile arquivo)
+            throws java.io.IOException {
+        var m = estrutura.definirFoto(ident, exigirModulo(modulo), arquivo.getBytes(), Instant.now());
+        return new Capa(m.getId(), m.getIcone(), m.getFotoVersao());
     }
 
     public record QuestaoNovaIn(@NotBlank String enunciado, @NotNull Map<String, String> alternativas,

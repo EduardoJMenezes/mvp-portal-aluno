@@ -117,10 +117,14 @@ public class EstruturaServico {
     public record SubModuloNaArvore(
             Integer id, String nome, TipoSubModulo tipo, Integer ordem, List<ItemNaArvore> itens) {}
 
-    /** {@code turma}: a turma pela qual se olha; {@code turmas}: todas as que recebem o módulo. */
+    /**
+     * {@code turma}: a turma pela qual se olha; {@code turmas}: todas as que recebem o módulo.
+     * {@code icone} e {@code fotoVersao} são a capa do cartão: com foto, vale a foto; sem as duas, o
+     * portal escolhe o ícone pelo nome.
+     */
     public record ModuloNaArvore(
             Integer id, String nome, Integer ordem, String categoria, String turma, List<String> turmas,
-            List<SubModuloNaArvore> submodulos) {}
+            List<SubModuloNaArvore> submodulos, String icone, Long fotoVersao) {}
 
     private static List<String> nomes(List<Turma> turmas) {
         return turmas.stream().map(Turma::getNome).toList();
@@ -167,7 +171,8 @@ public class EstruturaServico {
                 continue;
             }
             arvore.add(new ModuloNaArvore(modulo.getId(), modulo.getNome(), modulo.getOrdem(),
-                    modulo.getCategoria(), turma.getNome(), nomes(modulo.getTurmas()), galhos));
+                    modulo.getCategoria(), turma.getNome(), nomes(modulo.getTurmas()), galhos,
+                    modulo.getIcone(), modulo.getFotoVersao()));
         }
         return arvore;
     }
@@ -182,18 +187,26 @@ public class EstruturaServico {
                                 .map(sub -> new SubModuloNaArvore(sub.getId(), sub.getNome(), sub.getTipo(),
                                         sub.getOrdem(), itens.findBySubmoduloOrderByOrdemAsc(sub).stream()
                                                 .map(ItemNaArvore::de).toList()))
-                                .toList()))
+                                .toList(),
+                        modulo.getIcone(), modulo.getFotoVersao()))
                 .toList();
     }
 
-    public record ModuloDaBiblioteca(Integer id, String nome, Integer ordem, String categoria, List<String> turmas) {}
+    /** {@code icone} e {@code fotoVersao}: a capa do cartão, como em {@link ModuloNaArvore}. */
+    public record ModuloDaBiblioteca(
+            Integer id, String nome, Integer ordem, String categoria, List<String> turmas, String icone, Long fotoVersao) {
+
+        public static ModuloDaBiblioteca de(Modulo m) {
+            return new ModuloDaBiblioteca(m.getId(), m.getNome(), m.getOrdem(), m.getCategoria(), nomes(m.getTurmas()),
+                    m.getIcone(), m.getFotoVersao());
+        }
+    }
 
     /** Todos os módulos, de todas as turmas e de nenhuma: é daqui que se atribui. */
     @Transactional(readOnly = true)
     public List<ModuloDaBiblioteca> biblioteca() {
         return modulos.findAllByOrderByOrdemAscIdAsc().stream()
-                .map(m -> new ModuloDaBiblioteca(m.getId(), m.getNome(), m.getOrdem(), m.getCategoria(),
-                        nomes(m.getTurmas())))
+                .map(ModuloDaBiblioteca::de)
                 .toList();
     }
 
@@ -254,6 +267,58 @@ public class EstruturaServico {
         }
         modulo.tocar(ident);
         return modulos.save(modulo);
+    }
+
+    // --- a capa do módulo: ícone ou foto -------------------------------------------------
+
+    /** 1 MB sobra: o portal já manda a foto recortada em quadrado e reduzida. */
+    private static final int LIMITE_DA_FOTO = 1024 * 1024;
+
+    /**
+     * O ícone do cartão. Escolher um ícone — ou "automatico" — é dizer que a capa não é mais a
+     * foto: ela sai junto.
+     */
+    @Transactional
+    public Modulo definirIcone(Identidade ident, Modulo modulo, String icone) {
+        ident.exigirOperador();
+        modulo.mudarIcone(IconeDoModulo.validar(icone));
+        modulo.marcarFoto(null, null);
+        modulo.tocar(ident);
+        var salvo = modulos.saveAndFlush(modulo);
+        modulos.apagarFoto(salvo.getId());
+        return salvo;
+    }
+
+    /** A foto do cartão. O tipo sai dos bytes, não do nome do arquivo. */
+    @Transactional
+    public Modulo definirFoto(Identidade ident, Modulo modulo, byte[] conteudo, java.time.Instant agora) {
+        ident.exigirOperador();
+        var tipo = br.com.plataforma.questoes.FigurasServico.tipoDaImagem(conteudo);
+        if (conteudo.length > LIMITE_DA_FOTO) {
+            throw new RegraDeNegocio("A foto tem %d KB; o limite é %d KB. Envie uma imagem menor."
+                    .formatted(conteudo.length / 1024, LIMITE_DA_FOTO / 1024));
+        }
+        modulo.marcarFoto(tipo, agora);
+        modulo.tocar(ident);
+        var salvo = modulos.saveAndFlush(modulo);
+        modulos.gravarFoto(salvo.getId(), conteudo);
+        return salvo;
+    }
+
+    public record Foto(String tipo, byte[] conteudo) {}
+
+    /**
+     * A foto do módulo, para quem pode ver o módulo: o professor, sempre; o aluno, só o da turma
+     * dele. Para quem não pode, ela não existe.
+     */
+    @Transactional(readOnly = true)
+    public Foto foto(Identidade ident, Integer moduloId) {
+        var modulo = modulos.findById(moduloId).filter(m -> m.getFotoVersao() != null).orElse(null);
+        var visivel = modulo != null && (ident.eOperador() || modulos.alcancadoPor(moduloId, ident.usuarioId()));
+        if (!visivel) {
+            throw new br.com.plataforma.comum.NaoEncontrado("Este módulo não tem foto.");
+        }
+        return new Foto(modulo.getFotoTipo(), modulos.lerFoto(moduloId));
     }
 
     /** Duas pastas com o mesmo nome na mesma turma confundiriam aluno e professor. */

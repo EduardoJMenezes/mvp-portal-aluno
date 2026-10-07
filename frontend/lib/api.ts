@@ -186,7 +186,11 @@ export type Exercicio = {
 export type AulaNoCurso = { aula_id: number; titulo: string; inicio_em: string; minutos: number; estado: Aula["estado"]; abre_em: string; material?: MaterialLigado | null };
 export type SubModulo = { id: number; nome: string; tipo: string; ordem: number; itens: ItemCurso[]; aulas?: AulaNoCurso[] };
 /** `turmas`: as que recebem o módulo, que mora numa biblioteca (decisão 0011). Só o professor recebe. */
-export type Modulo = { id: number; nome: string; ordem: number; categoria?: string | null; turma: string; turmas?: string[]; submodulos: SubModulo[] };
+/**
+ * `icone` e `foto_versao` são a capa do cartão: com foto, vale a foto; sem as duas, o portal
+ * escolhe o ícone pelo nome (lib/icones.ts).
+ */
+export type Modulo = { id: number; nome: string; ordem: number; categoria?: string | null; turma: string; turmas?: string[]; submodulos: SubModulo[]; icone?: string | null; foto_versao?: number | null };
 export type ModuloDaBiblioteca = { id: number; nome: string; ordem: number; categoria?: string | null; turmas: string[] };
 export type ConteudoDaTurma = { turma: string; turma_id: number; modulos: Modulo[] };
 
@@ -726,10 +730,16 @@ export const api = {
   redefinirSenha: (aluno: number) => pedir<{ aluno: Aluno; senha_temporaria: string }>(`/admin/alunos/${aluno}/senha`, { method: "POST" }),
 
   // curso
-  criarModulo: (turma: number | string, nome: string, submodulos?: string[], categoria?: string) =>
-    pedir<{ modulo_id: number }>(`/admin/turmas/${turma}/modulos`, { method: "POST", json: { nome, submodulos, categoria } }),
-  editarModulo: (turma: number | string, modulo: number, dados: { nome?: string; ordem?: number; categoria?: string }) =>
+  criarModulo: (turma: number | string, nome: string, submodulos?: string[], categoria?: string, icone?: string) =>
+    pedir<{ modulo_id: number }>(`/admin/turmas/${turma}/modulos`, { method: "POST", json: { nome, submodulos, categoria, icone } }),
+  /** `icone`: um nome do catálogo, ou "automatico". Escolher ícone tira a foto. */
+  editarModulo: (turma: number | string, modulo: number, dados: { nome?: string; ordem?: number; categoria?: string; icone?: string }) =>
     pedir(`/admin/turmas/${turma}/modulos/${modulo}`, { method: "PATCH", json: dados }),
+  fotoDoModulo: (modulo: number, foto: Blob) => {
+    const corpo = new FormData();
+    corpo.append("arquivo", foto, "capa.jpg");
+    return pedir<{ modulo_id: number; icone: string | null; foto_versao: number | null }>(`/admin/modulos/${modulo}/foto`, { method: "POST", body: corpo });
+  },
   removerModulo: (turma: number | string, modulo: number) =>
     pedir<{ itens_publicados_que_somem_da_tela: number }>(`/admin/turmas/${turma}/modulos/${modulo}`, { method: "DELETE" }),
   criarSubmodulo: (turma: number | string, modulo: number, nome: string) =>

@@ -156,11 +156,11 @@ export default function PaginaDeEstilo() {
         </Bloco>
       </div>
 
-      <Bloco titulo="Cartão de módulo" nota="O ícone sai do assunto do capítulo, e o código da apostila (K01) vira a etiqueta. A barra de progresso do guia entra quando a plataforma registrar as aulas assistidas.">
+      <Bloco titulo="Cartão de módulo" nota="A capa é o ícone ou a foto que o professor escolhe ao criar o módulo; sem escolha, o ícone sai do nome do capítulo. O código da apostila (K01) vira a etiqueta. A barra de progresso do guia entra quando a plataforma registrar as aulas assistidas.">
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           <CartaoDoModulo modulo={EXEMPLO} />
           <CartaoDoModulo modulo={{ ...EXEMPLO, id: -1, nome: "K03 - Estequiometria", submodulos: [EXEMPLO.submodulos[0]] }} />
-          <CartaoDoModulo modulo={{ ...EXEMPLO, id: -2, nome: "K05 - Separação de misturas" }} />
+          <CartaoDoModulo modulo={{ ...EXEMPLO, id: -2, nome: "K05 - Separação de misturas", icone: "gota" }} />
         </div>
       </Bloco>
 

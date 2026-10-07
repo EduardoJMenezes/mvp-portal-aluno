@@ -36,6 +36,16 @@ seção "Em aberto", no fim.
 >   gravada. O que chega pelo Claude segue em rascunho.
 > * As linhas só de vídeo que já existiam ("Q04") continuam valendo como estão.
 
+> **Mudou em 06/10/2026 (migração V11): o módulo tem capa.** É o que o aluno
+> vê no cartão do módulo, em "Meu curso": um **ícone** de um catálogo fechado
+> (`IconeDoModulo`, espelhado em `frontend/lib/icones.ts`) ou uma **foto** que
+> o professor envia pelo portal. Com foto, vale a foto; sem as duas, o portal
+> escolhe o ícone pelo nome do capítulo. Escolher um ícone tira a foto. A foto
+> mora em `modules.foto`, fora da entidade, e só chega a quem alcança o módulo
+> (`/api/aluno/modulos/{id}/foto`): professor, sempre; aluno, o da turma dele.
+> Pelo Claude vai só o ícone (`criar_modulo`, `editar_modulo`) — arquivo não
+> passa pelo chat.
+
 ## O que está errado hoje
 
 A unidade de conteúdo da plataforma é a **questão**:

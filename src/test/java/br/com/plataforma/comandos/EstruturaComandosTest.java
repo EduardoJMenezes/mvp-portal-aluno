@@ -83,7 +83,7 @@ class EstruturaComandosTest extends BaseDeComando {
         comando("editar_modulo", """
                 {"turma": "Extensivo 2027", "modulo": "K01"}""")
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.detail").value("Diga o que mudar: nome, ordem ou categoria."));
+                .andExpect(jsonPath("$.detail").value("Diga o que mudar: nome, ordem, categoria ou ícone."));
     }
 
     /** A categoria é a gaveta do menu (decisão 0009): texto livre, e vazio tira. */

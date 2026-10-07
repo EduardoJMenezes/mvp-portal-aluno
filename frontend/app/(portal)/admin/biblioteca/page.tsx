@@ -4,8 +4,10 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useState, type FormEvent, type ReactNode } from "react";
 import { Aviso, Botao, BotaoLink, Campo, Cartao, Estado, Etiqueta, Pagina, TituloDeSecao, Vazio, useConfirmar } from "@/components/ui";
+import { CapaDoModulo } from "@/components/CapaDoModulo";
 import { CampoCategoria, EditarCategoria, categoriasDe } from "@/components/Categoria";
 import { ColocarVideo } from "@/components/ColocarVideo";
+import { EscolherCapa, capaDe, capaPronta, type Capa } from "@/components/EscolherCapa";
 import { EscolherTurmas } from "@/components/EscolherTurmas";
 import { BuscaNoBanco } from "@/components/MontarProva";
 import { EscolherPdf, PdfDaAula, PdfDaAulaAoVivo } from "@/components/Pdf";
@@ -206,11 +208,17 @@ function NovoModulo({ turma, nomeDaTurma, categorias, executar, aoFechar }: { tu
   const [nome, setNome] = useState("");
   const [subs, setSubs] = useState("Aulas, Questões da apostila");
   const [categoria, setCategoria] = useState("");
+  const [capa, setCapa] = useState<Capa>({ tipo: "automatico" });
 
   async function criar(e: FormEvent) {
     e.preventDefault();
     const lista = subs.split(",").map((s) => s.trim()).filter(Boolean);
-    if (await executar(() => api.criarModulo(turma, nome.trim(), lista.length ? lista : undefined, categoria.trim() || undefined), `Módulo "${nome.trim()}" criado.`)) aoFechar();
+    const criou = await executar(async () => {
+      const criado = await api.criarModulo(turma, nome.trim(), lista.length ? lista : undefined, categoria.trim() || undefined, capa.tipo === "icone" ? capa.icone : undefined);
+      // A foto precisa do módulo já criado: vai logo em seguida.
+      if (capa.tipo === "foto" && capa.arquivo) await api.fotoDoModulo(criado.modulo_id, capa.arquivo);
+    }, `Módulo "${nome.trim()}" criado.`);
+    if (criou) aoFechar();
   }
 
   return (
@@ -231,8 +239,9 @@ function NovoModulo({ turma, nomeDaTurma, categorias, executar, aoFechar }: { tu
             {(id) => <CampoCategoria id={id} valor={categoria} aoMudar={setCategoria} sugestoes={categorias} />}
           </Campo>
         </div>
+        <EscolherCapa nomeDoModulo={nome} valor={capa} aoMudar={setCapa} />
         <div className="flex gap-2">
-          <Botao type="submit" variante="primario" disabled={!nome.trim()}>Criar módulo</Botao>
+          <Botao type="submit" variante="primario" disabled={!nome.trim() || !capaPronta(capa)}>Criar módulo</Botao>
           <Botao onClick={aoFechar}>Cancelar</Botao>
         </div>
       </form>
@@ -273,6 +282,7 @@ function CartaoDoModulo({
   const [nome, setNome] = useState(modulo.nome);
   const [novoSub, setNovoSub] = useState(false);
   const [nomeSub, setNomeSub] = useState("");
+  const [trocandoCapa, setTrocandoCapa] = useState(false);
   const publicados = modulo.submodulos.reduce((n, s) => n + s.itens.filter((i) => i.status === "PUBLICADO").length, 0);
 
   // A ordem é da biblioteca inteira: trocar de lugar é trocar a ordem dos dois.
@@ -316,6 +326,16 @@ function CartaoDoModulo({
         ) : (
           <div className="flex min-w-0 items-center gap-3">
             <span className="flex size-7 shrink-0 items-center justify-center rounded-md bg-lilas text-sm font-semibold tabular-nums text-acento-forte">{vizinhos.posicao}</span>
+            <button
+              type="button"
+              onClick={() => setTrocandoCapa(!trocandoCapa)}
+              aria-expanded={trocandoCapa}
+              aria-label={`Trocar a capa de ${modulo.nome}`}
+              title="Trocar a capa"
+              className="shrink-0 rounded-xl transition-opacity hover:opacity-80"
+            >
+              <CapaDoModulo modulo={modulo} tamanho="pequeno" />
+            </button>
             <h2 className="truncate text-lg font-semibold text-tinta">{modulo.nome}</h2>
             <EditarCategoria
               valor={modulo.categoria}
@@ -340,6 +360,8 @@ function CartaoDoModulo({
           </div>
         )}
       </div>
+
+      {trocandoCapa && <TrocarCapa turma={turma} modulo={modulo} executar={executar} aoFechar={() => setTrocandoCapa(false)} />}
 
       {novoSub && (
         <form
@@ -386,6 +408,32 @@ function CartaoDoModulo({
         </div>
       )}
     </Cartao>
+  );
+}
+
+/** A capa de um módulo que já existe: começa da que ele tem e grava só o que mudou. */
+function TrocarCapa({ turma, modulo, executar, aoFechar }: { turma: number | string; modulo: Modulo; executar: Executar; aoFechar: () => void }) {
+  const [capa, setCapa] = useState<Capa>(() => capaDe(modulo));
+
+  async function salvar() {
+    // Foto sem arquivo novo é a que já estava: não há o que enviar.
+    if (capa.tipo === "foto" && !capa.arquivo) return aoFechar();
+    const arquivo = capa.tipo === "foto" ? capa.arquivo : null;
+    const salvou = await executar(
+      () => (arquivo ? api.fotoDoModulo(modulo.id, arquivo) : api.editarModulo(turma, modulo.id, { icone: capa.tipo === "icone" ? capa.icone : "automatico" })),
+      `Capa de "${modulo.nome}" salva.`,
+    );
+    if (salvou) aoFechar();
+  }
+
+  return (
+    <div className="flex flex-col gap-4 border-b border-borda px-5 py-4">
+      <EscolherCapa nomeDoModulo={modulo.nome} valor={capa} aoMudar={setCapa} />
+      <div className="flex gap-2">
+        <Botao variante="primario" tamanho="pequeno" disabled={!capaPronta(capa)} onClick={() => void salvar()}>Salvar capa</Botao>
+        <Botao tamanho="pequeno" onClick={aoFechar}>Cancelar</Botao>
+      </div>
+    </div>
   );
 }
 
