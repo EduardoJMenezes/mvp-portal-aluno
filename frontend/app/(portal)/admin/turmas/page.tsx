@@ -13,7 +13,7 @@ export default function Turmas() {
   return (
     <Pagina
       titulo="Turmas"
-      legenda="O que se vende é a turma. Aqui ficam os alunos e o menu de cada uma; as aulas que ela recebe se escolhem em Aulas."
+      legenda="O que se vende é a turma. Aqui ficam os alunos e o menu de cada uma; os módulos que ela recebe se escolhem em Montar o curso."
       acoes={!criando && <Botao variante="primario" onClick={() => setCriando(true)}>Nova turma</Botao>}
     >
       {criando && <NovaTurma aoCriar={() => { setCriando(false); void turmas.recarregar(); }} aoCancelar={() => setCriando(false)} />}

@@ -744,6 +744,12 @@ export const api = {
     pedir<{ itens_publicados_que_somem_da_tela: number }>(`/admin/turmas/${turma}/modulos/${modulo}`, { method: "DELETE" }),
   criarSubmodulo: (turma: number | string, modulo: number, nome: string) =>
     pedir(`/admin/turmas/${turma}/modulos/${modulo}/submodulos`, { method: "POST", json: { nome } }),
+  renomearSubmodulo: (submodulo: number, nome: string) =>
+    pedir<{ submodulo_id: number; nome: string }>(`/admin/submodulos/${submodulo}`, { method: "PATCH", json: { nome } }),
+  /** As três ordens da tela de montar o curso: a fila como ficou, de cima para baixo, numa chamada só. */
+  ordemDosModulos: (ids: number[]) => pedir(`/admin/biblioteca/ordem`, { method: "PUT", json: { ids } }),
+  ordemDosSubmodulos: (modulo: number, ids: number[]) => pedir(`/admin/modulos/${modulo}/submodulos/ordem`, { method: "PUT", json: { ids } }),
+  ordemDosItens: (submodulo: number, ids: number[]) => pedir(`/admin/submodulos/${submodulo}/itens/ordem`, { method: "PUT", json: { ids } }),
   removerSubmodulo: (turma: number | string, modulo: number, submodulo: number) =>
     pedir(`/admin/turmas/${turma}/modulos/${modulo}/submodulos/${submodulo}`, { method: "DELETE" }),
   editarItem: (turma: number | string, modulo: number, submodulo: number, item: number, dados: { nome?: string; ordem?: number; mover_para_submodulo?: string }) =>

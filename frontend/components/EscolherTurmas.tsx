@@ -11,14 +11,26 @@ export function EscolherTurmas({
   turmas,
   marcadas,
   vazio,
+  acao = "Turmas",
+  abertoDeInicio = false,
   aoSalvar,
+  aoFechar,
 }: {
   turmas: string[];
   marcadas: string[];
   vazio: string;
+  /** O nome do botão que abre as caixas. */
+  acao?: string;
+  /** Já abre nas caixas, e avisa quando fecha: é o modo de quem chamou por um menu. */
+  abertoDeInicio?: boolean;
   aoSalvar: (turmas: string[]) => Promise<boolean>;
+  aoFechar?: () => void;
 }) {
-  const [aberto, setAberto] = useState(false);
+  const [aberto, setAberto] = useState(abertoDeInicio);
+  const fechar = () => {
+    setAberto(false);
+    aoFechar?.();
+  };
   const [escolhidas, setEscolhidas] = useState<string[]>(marcadas);
 
   if (!aberto) {
@@ -26,7 +38,7 @@ export function EscolherTurmas({
       <span className="inline-flex flex-wrap items-center gap-1 text-[13px] text-suave">
         {marcadas.length ? marcadas.join(", ") : vazio}
         <Botao variante="texto" onClick={() => { setEscolhidas(marcadas); setAberto(true); }}>
-          Turmas
+          {acao}
         </Botao>
       </span>
     );
@@ -36,7 +48,7 @@ export function EscolherTurmas({
       className="flex flex-wrap items-center gap-2"
       onSubmit={async (e) => {
         e.preventDefault();
-        if (await aoSalvar(escolhidas)) setAberto(false);
+        if (await aoSalvar(escolhidas)) fechar();
       }}
     >
       <fieldset className="flex flex-wrap gap-1.5">
@@ -62,7 +74,7 @@ export function EscolherTurmas({
         })}
       </fieldset>
       <Botao type="submit" tamanho="pequeno" variante="primario">Salvar</Botao>
-      <Botao tamanho="pequeno" onClick={() => setAberto(false)}>Cancelar</Botao>
+      <Botao tamanho="pequeno" onClick={fechar}>Cancelar</Botao>
       <span className="basis-full text-[13px] text-suave">Nenhuma marcada: {vazio.toLowerCase()}.</span>
     </form>
   );

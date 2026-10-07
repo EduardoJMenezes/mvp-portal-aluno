@@ -4,7 +4,7 @@ import { BookOpen, CalendarDays, ChartNoAxesColumn, ChevronDown, FileText, Folde
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
-import { Suspense, type MouseEvent, type ReactNode } from "react";
+import { Suspense, useEffect, type MouseEvent, type ReactNode } from "react";
 import { api, useDados, type BotaoDoAluno, type Funcionalidade } from "@/lib/api";
 import { ehOperador, useSessao, useUsuario } from "@/lib/sessao";
 import logo from "@/marca/logo.png";
@@ -34,19 +34,39 @@ function doAluno(menu: BotaoDoAluno[]): Destino[] {
   ];
 }
 
-const DO_OPERADOR: Destino[] = [
+/** Um botão do menu do professor que abre uma lista: as telas que andam juntas no trabalho dele. */
+type Grupo = { rotulo: string; itens: Destino[] };
+
+// Eram doze links numa fila. Agora são cinco, pelo que o professor veio fazer: montar o curso,
+// preparar prova, cuidar das turmas — e os rascunhos, que são a caixa de entrada do que o Claude propõe.
+const DO_OPERADOR: (Destino | Grupo)[] = [
   { href: "/admin/", rotulo: "Painel", exato: true },
-  { href: "/admin/turmas/", rotulo: "Turmas" },
-  { href: "/admin/biblioteca/", rotulo: "Aulas" },
-  { href: "/admin/aulas/", rotulo: "Aulas ao vivo" },
-  { href: "/admin/agenda/", rotulo: "Agenda" },
+  {
+    rotulo: "Curso",
+    itens: [
+      { href: "/admin/biblioteca/", rotulo: "Montar o curso" },
+      { href: "/admin/aulas/", rotulo: "Aulas ao vivo" },
+      { href: "/admin/agenda/", rotulo: "Agenda" },
+      { href: "/admin/materiais/", rotulo: "Materiais" },
+    ],
+  },
+  {
+    rotulo: "Simulados e questões",
+    itens: [
+      { href: "/admin/simulados/", rotulo: "Simulados" },
+      { href: "/admin/questoes/", rotulo: "Banco de questões" },
+      { href: "/admin/assuntos/", rotulo: "Assuntos" },
+      { href: "/admin/importar/", rotulo: "Importar" },
+    ],
+  },
+  {
+    rotulo: "Turmas",
+    itens: [
+      { href: "/admin/turmas/", rotulo: "Turmas e alunos" },
+      { href: "/admin/vendas/", rotulo: "Vendas" },
+    ],
+  },
   { href: "/admin/rascunhos/", rotulo: "Rascunhos" },
-  { href: "/admin/questoes/", rotulo: "Questões" },
-  { href: "/admin/simulados/", rotulo: "Simulados" },
-  { href: "/admin/vendas/", rotulo: "Vendas" },
-  { href: "/admin/materiais/", rotulo: "Materiais" },
-  { href: "/admin/importar/", rotulo: "Importar" },
-  { href: "/admin/assuntos/", rotulo: "Assuntos" },
 ];
 
 const semBarra = (caminho: string) => (caminho.length > 1 ? caminho.replace(/\/+$/, "") : caminho);
@@ -92,6 +112,53 @@ function Links({ destinos, caminho, classe }: { destinos: Destino[]; caminho: st
   });
 }
 
+/** O menu do professor: links soltos e grupos que abrem uma lista. `gaveta` é a versão do celular, tudo aberto. */
+function NavDoOperador({ caminho, gaveta, classe }: { caminho: string; gaveta?: boolean; classe: (ativo: boolean) => string }) {
+  return DO_OPERADOR.map((entrada) => {
+    if ("href" in entrada) {
+      const aceso = ativo(caminho, null, entrada);
+      return (
+        <Link key={entrada.href} href={entrada.href} onClick={fecharMenu} aria-current={aceso ? "page" : undefined} className={classe(aceso)}>
+          {entrada.rotulo}
+        </Link>
+      );
+    }
+    const links = entrada.itens.map((d) => {
+      const aceso = ativo(caminho, null, d);
+      return (
+        <Link
+          key={d.href}
+          href={d.href}
+          onClick={fecharMenu}
+          aria-current={aceso ? "page" : undefined}
+          className={`block rounded-lg px-3 py-2 text-[15px] font-medium ${aceso ? "bg-lilas text-acento-forte" : "text-tinta hover:bg-canvas"}`}
+        >
+          {d.rotulo}
+        </Link>
+      );
+    });
+    if (gaveta) {
+      return (
+        <div key={entrada.rotulo} role="group" aria-label={entrada.rotulo} className="mt-1.5 border-t border-borda pt-1.5">
+          <p className="px-3 pb-0.5 pt-1 text-[13px] font-semibold text-suave">{entrada.rotulo}</p>
+          {links}
+        </div>
+      );
+    }
+    const aceso = entrada.itens.some((d) => ativo(caminho, null, d));
+    return (
+      // `name` igual em todos: abrir um grupo fecha o outro.
+      <details key={entrada.rotulo} name="menu-do-professor" className="group/nav relative shrink-0">
+        <summary className={`${classe(aceso)} cursor-pointer list-none [&::-webkit-details-marker]:hidden`}>
+          {entrada.rotulo}
+          <ChevronDown aria-hidden="true" className="size-4 transition-transform group-open/nav:rotate-180" />
+        </summary>
+        <div className="absolute left-0 top-[calc(100%+0.75rem)] flex w-56 flex-col gap-0.5 rounded-cartao border border-borda bg-papel p-1.5 shadow-suave">{links}</div>
+      </details>
+    );
+  });
+}
+
 // Link dentro de <details> fecha o menu ao navegar.
 const fecharMenu = (e: MouseEvent<HTMLElement>) => {
   const menu = e.currentTarget.closest("details");
@@ -105,17 +172,35 @@ export function AppShell({ children }: { children: ReactNode }) {
   const operador = ehOperador(usuario);
   // O aluno relê o menu a cada minuto: é assim que a bolinha de ao vivo acende sozinha.
   const menu = useDados(() => (operador ? Promise.resolve([]) : api.menu()), [operador], operador ? undefined : 60);
-  const destinos = operador ? DO_OPERADOR : doAluno(menu.dados ?? []);
+  const destinos = doAluno(menu.dados ?? []);
+
+  // Os menus do cabeçalho são <details>: fecham ao clicar fora e com Esc, como se espera de um menu.
+  useEffect(() => {
+    const abertos = () => document.querySelectorAll<HTMLDetailsElement>("header details[open]");
+    const fora = (e: PointerEvent) => abertos().forEach((d) => !d.contains(e.target as Node) && (d.open = false));
+    const tecla = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      abertos().forEach((d) => {
+        d.open = false;
+        d.querySelector("summary")?.focus();
+      });
+    };
+    document.addEventListener("pointerdown", fora);
+    document.addEventListener("keydown", tecla);
+    return () => {
+      document.removeEventListener("pointerdown", fora);
+      document.removeEventListener("keydown", tecla);
+    };
+  }, []);
   const iniciais = usuario.nome
     .split(/\s+/)
     .slice(0, 2)
     .map((p) => p[0]?.toUpperCase())
     .join("");
 
-  // O item aceso leva o fundo claro e o traço na base do cabeçalho, como no guia. O professor tem
-  // doze itens: lá o texto é menor, sem ícone, e a fila rola de lado antes de quebrar.
+  // O item aceso leva o fundo claro e o traço na base do cabeçalho, como no guia.
   const naBarra = (aceso: boolean) =>
-    `relative flex shrink-0 items-center gap-2 whitespace-nowrap rounded-lg font-medium transition-colors ${operador ? "px-2 py-2 text-sm" : "px-3 py-2 text-[15px]"} ${
+    `relative flex shrink-0 items-center gap-2 whitespace-nowrap rounded-lg px-3 py-2 text-[15px] font-medium transition-colors ${
       aceso
         ? "bg-lilas text-acento-forte after:absolute after:inset-x-3 after:-bottom-3 after:h-0.5 after:rounded-full after:bg-acento"
         : "text-suave hover:bg-canvas hover:text-tinta"
@@ -133,29 +218,38 @@ export function AppShell({ children }: { children: ReactNode }) {
               <Menu aria-hidden="true" className="size-5" />
             </summary>
             <nav aria-label="Principal" className="absolute left-0 top-12 flex w-60 flex-col gap-0.5 rounded-cartao border border-borda bg-papel p-1.5 shadow-suave">
-              <Suspense>
-                <Links destinos={destinos} caminho={caminho}
-                  classe={(aceso) => `flex items-center gap-2.5 rounded-lg px-3 py-2.5 text-[15px] font-medium ${aceso ? "bg-lilas text-acento-forte" : "text-tinta hover:bg-canvas"}`} />
-              </Suspense>
+              {operador ? (
+                <NavDoOperador caminho={caminho} gaveta classe={(aceso) => `block rounded-lg px-3 py-2 text-[15px] font-medium ${aceso ? "bg-lilas text-acento-forte" : "text-tinta hover:bg-canvas"}`} />
+              ) : (
+                <Suspense>
+                  <Links destinos={destinos} caminho={caminho}
+                    classe={(aceso) => `flex items-center gap-2.5 rounded-lg px-3 py-2.5 text-[15px] font-medium ${aceso ? "bg-lilas text-acento-forte" : "text-tinta hover:bg-canvas"}`} />
+                </Suspense>
+              )}
             </nav>
           </details>
 
           <Link href={operador ? "/admin/" : "/"} className="flex shrink-0 items-center rounded-lg" aria-label="Rodrigo Melo Química: página inicial">
-            {/* Com o menu do professor não sobra lugar para o nome: fica só o Q. */}
-            <Image src={marca} alt="" priority className={`h-10 w-auto ${operador ? "" : "lg:hidden"}`} />
-            {!operador && <Image src={logo} alt="" priority className="hidden h-12 w-auto lg:block" />}
+            <Image src={marca} alt="" priority className="h-10 w-auto lg:hidden" />
+            <Image src={logo} alt="" priority className="hidden h-12 w-auto lg:block" />
           </Link>
 
-          <nav aria-label="Principal" className="ml-3 hidden h-full min-w-0 items-center gap-0.5 overflow-x-auto md:flex">
-            <Suspense>
-              <Links destinos={destinos} caminho={caminho} classe={naBarra} />
-            </Suspense>
+          {/* A fila do aluno rola de lado se o professor montou muitos botões; a do professor não pode
+              rolar, ou cortaria as listas que os grupos abrem. */}
+          <nav aria-label="Principal" className={`ml-3 hidden h-full min-w-0 items-center gap-0.5 md:flex ${operador ? "" : "overflow-x-auto"}`}>
+            {operador ? (
+              <NavDoOperador caminho={caminho} classe={naBarra} />
+            ) : (
+              <Suspense>
+                <Links destinos={destinos} caminho={caminho} classe={naBarra} />
+              </Suspense>
+            )}
           </nav>
 
           <details className="relative ml-auto shrink-0">
             <summary className="flex cursor-pointer list-none items-center gap-2 rounded-full py-1 pl-1 pr-2 hover:bg-canvas [&::-webkit-details-marker]:hidden">
               <span className="flex size-9 items-center justify-center rounded-full bg-lilas text-xs font-bold text-acento-forte" aria-hidden="true">{iniciais}</span>
-              <span className={`hidden max-w-40 truncate text-sm font-medium text-tinta ${operador ? "2xl:inline" : "sm:inline"}`}>{usuario.nome}</span>
+              <span className="hidden max-w-40 truncate text-sm font-medium text-tinta sm:inline">{usuario.nome}</span>
               <ChevronDown aria-hidden="true" className="hidden size-4 text-suave sm:block" />
             </summary>
             <div className="absolute right-0 top-12 w-64 rounded-cartao border border-borda bg-papel p-1.5 shadow-suave">

@@ -25,7 +25,7 @@ Tudo em Java, no pacote `br.com.plataforma.aulas`.
 | Sala no ar de verdade: `meeting.started`/`meeting.ended` (V3) — "Aguardando o professor", "Ao vivo agora", "Encerrada" | `AulasServico.estado`, `EventosDoZoom` |
 | "Assistir à gravação" para o aluno | `AulasServico.assistir` |
 | Pelo chat: `agendar_aula` (rascunho, ou já publicada com `publicar` depois do ok no chat) e `listar_aulas` | `comandos/AulasComandos` + `mvp-portal-mcp/app/mcp_server/tools_aulas.py` |
-| Telas | "Aula ao vivo" em `/admin/biblioteca` (tela Aulas) (agendar no capítulo, colocar vídeo), `/admin/aulas` (presença, estado da gravação), `/curso/aula` e `/aulas` |
+| Telas | "Aula ao vivo" em `/admin/biblioteca` (tela Montar o curso) (agendar no capítulo, colocar vídeo), `/admin/aulas` (presença, estado da gravação), `/curso/aula` e `/aulas` |
 | Testes | `AulasTest`, `WebhookDoZoomTest`, `AulasComandosTest`; `tests/test_aulas.py` no mcp |
 
 Decisões que o código já toma:

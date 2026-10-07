@@ -43,6 +43,15 @@ seção "Em aberto", no fim.
 > escolhe o ícone pelo nome do capítulo. Escolher um ícone tira a foto. A foto
 > mora em `modules.foto`, fora da entidade, e só chega a quem alcança o módulo
 > (`/api/aluno/modulos/{id}/foto`): professor, sempre; aluno, o da turma dele.
+>
+> **Mudou em 07/10/2026: a ordem muda de uma vez.** A tela "Montar o curso"
+> (`/admin/biblioteca`, em `frontend/components/curso/`) reordena arrastando, e
+> manda a fila inteira numa chamada: `PUT /api/admin/biblioteca/ordem` (módulos),
+> `/modulos/{id}/submodulos/ordem` e `/submodulos/{id}/itens/ordem`, todas com
+> `{"ids": [...]}`. Quem a lista não cita fica onde estava — a tela pode estar
+> olhando por uma turma, que não vê tudo —, e a ordem sai renumerada de 1 a n.
+> O sub-módulo também ganhou nome editável (`PATCH /api/admin/submodulos/{id}`).
+> Pelo Claude nada mudou: `editar_item` e `editar_modulo` seguem com `ordem`.
 > Pelo Claude vai só o ícone (`criar_modulo`, `editar_modulo`) — arquivo não
 > passa pelo chat.
 

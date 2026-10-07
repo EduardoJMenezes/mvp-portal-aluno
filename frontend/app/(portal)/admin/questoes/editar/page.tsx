@@ -64,9 +64,12 @@ function Editor() {
   const router = useRouter();
   const parametros = useSearchParams();
   const id = Number(parametros.get("id")) || null;
-  // Vindo de Admin › Biblioteca: a questão nasce já como linha deste sub-módulo.
+  // Vindo de Montar o curso: a questão nasce já como item deste sub-módulo.
   const submodulo = (!id && Number(parametros.get("submodulo"))) || null;
   const destino = parametros.get("destino") ?? "";
+  // Quem veio da tela de montar o curso volta para o módulo em que estava.
+  const moduloDeVolta = Number(parametros.get("modulo")) || null;
+  const curso = moduloDeVolta ? `/admin/biblioteca/?modulo=${moduloDeVolta}` : "/admin/biblioteca/";
   const [nomeDaLinha, setNomeDaLinha] = useState("");
   const assuntos = useDados(() => api.assuntos());
   const questao = useDados(() => (id ? api.questao(id) : Promise.resolve(null)), [id]);
@@ -115,7 +118,7 @@ function Editor() {
         };
         if (submodulo) {
           await api.questaoNoSubmodulo(submodulo, { nome: nomeDaLinha.trim() || undefined, nova });
-          router.replace("/admin/biblioteca/");
+          router.replace(curso);
           return;
         }
         const criada = await api.criarQuestao({ ...nova, imagem_pendente: form.imagem_pendente });
@@ -179,7 +182,7 @@ function Editor() {
     <Pagina
       titulo={id ? `Questão #${id}` : submodulo ? "Nova questão na aula" : "Nova questão"}
       legenda={id ? undefined : submodulo ? `Entra no banco e vira uma linha de ${destino || "o sub-módulo"}, já publicada: o aluno responde ali e vê o gabarito na hora.` : "Entra no banco já publicada: fica disponível para simulados e para as aulas."}
-      voltar={submodulo ? { href: "/admin/biblioteca/", rotulo: "Aulas" } : { href: "/admin/questoes/", rotulo: "Banco de questões" }}
+      voltar={submodulo || moduloDeVolta ? { href: curso, rotulo: "Montar o curso" } : { href: "/admin/questoes/", rotulo: "Banco de questões" }}
       acoes={id && <Botao variante="perigo" onClick={() => void remover()}>Remover</Botao>}
     >
       {dialogo}

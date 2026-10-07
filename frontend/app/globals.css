@@ -148,6 +148,17 @@
     border-bottom: 0;
   }
 
+  /* O recado ao pé da tela sobe um pouco ao aparecer: mostra que algo acabou de acontecer. */
+  .recado {
+    animation: recado-entra 180ms ease-out;
+  }
+  @keyframes recado-entra {
+    from {
+      opacity: 0;
+      transform: translateY(8px);
+    }
+  }
+
   /* Texto da questão: Markdown, fórmula (KaTeX, \ce{}) e figura. Em serifa,
      que casa com a fórmula e dá cara de prova impressa. */
   .texto {

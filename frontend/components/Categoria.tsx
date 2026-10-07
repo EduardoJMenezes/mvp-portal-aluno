@@ -48,10 +48,13 @@ export function CampoCategoria({
 export function EditarCategoria({
   valor,
   sugestoes,
+  acao = "Categoria",
   aoSalvar,
 }: {
   valor?: string | null;
   sugestoes: string[];
+  /** O nome do botão que abre o campo. */
+  acao?: string;
   aoSalvar: (categoria: string) => Promise<unknown>;
 }) {
   const id = useId();
@@ -63,7 +66,7 @@ export function EditarCategoria({
       <span className="inline-flex items-center gap-1">
         {valor ? <Etiqueta tom="info">{valor}</Etiqueta> : <Etiqueta>Sem categoria</Etiqueta>}
         <Botao variante="texto" onClick={() => { setTexto(valor ?? ""); setEditando(true); }}>
-          Categoria
+          {acao}
         </Botao>
       </span>
     );

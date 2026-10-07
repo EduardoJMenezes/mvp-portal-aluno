@@ -27,11 +27,14 @@ export function LinkDoPdf({ material, className = "" }: { material: MaterialLiga
 export function EscolherPdf({
   rotulo = "Anexar PDF",
   abertoDeInicio = false,
+  moldura = true,
   aoEscolher,
   aoFechar,
 }: {
   rotulo?: string;
   abertoDeInicio?: boolean;
+  /** Sem moldura, para morar dentro de um painel que já tem a dele. */
+  moldura?: boolean;
   aoEscolher: (materialId: number) => Promise<boolean>;
   aoFechar?: () => void;
 }) {
@@ -70,7 +73,7 @@ export function EscolherPdf({
     return <Botao variante="texto" tamanho="pequeno" className="w-fit" onClick={() => setAberto(true)}>{rotulo}</Botao>;
   }
   return (
-    <div className="flex flex-col gap-2 rounded-cartao border border-borda bg-canvas p-3">
+    <div className={`flex flex-col gap-2 ${moldura ? "rounded-cartao border border-borda bg-canvas p-3" : ""}`}>
       <div className="flex flex-wrap items-end gap-3">
         <label className="flex min-w-52 flex-1 flex-col gap-1 text-sm font-semibold text-tinta-2">
           Um material que já existe

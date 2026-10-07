@@ -171,6 +171,51 @@ public class ModulosPortal {
         return new ItemComPdf(i.getId(), i.getNome(), MaterialLigado.de(i.getMaterial()));
     }
 
+    // --- a ordem e o nome, pela tela de montar o curso -------------------------
+
+    /** A fila como ficou na tela, de cima para baixo. */
+    public record OrdemIn(@NotNull List<Integer> ids) {}
+
+    public record NomeDoSubmoduloIn(@NotBlank @jakarta.validation.constraints.Size(max = 120) String nome) {}
+
+    public record SubmoduloEditado(Integer submoduloId, String nome) {}
+
+    private br.com.plataforma.estrutura.SubModulo exigirSubmodulo(Integer submodulo) {
+        return estrutura.submodulo(submodulo)
+                .orElseThrow(() -> new NaoEncontrado("Sub-módulo %d não existe.".formatted(submodulo)));
+    }
+
+    /** A ordem dos módulos na biblioteca: é a que o aluno vê em "Meu curso". */
+    @PutMapping("/biblioteca/ordem")
+    public OrdemIn ordemDosModulos(@AuthenticationPrincipal Identidade ident, @Valid @RequestBody OrdemIn dados) {
+        estrutura.ordenarModulos(ident, dados.ids());
+        return dados;
+    }
+
+    @PutMapping("/modulos/{modulo}/submodulos/ordem")
+    @Transactional
+    public OrdemIn ordemDosSubmodulos(@AuthenticationPrincipal Identidade ident, @PathVariable Integer modulo,
+            @Valid @RequestBody OrdemIn dados) {
+        estrutura.ordenarSubmodulos(ident, exigirModulo(modulo), dados.ids());
+        return dados;
+    }
+
+    @PutMapping("/submodulos/{submodulo}/itens/ordem")
+    @Transactional
+    public OrdemIn ordemDosItens(@AuthenticationPrincipal Identidade ident, @PathVariable Integer submodulo,
+            @Valid @RequestBody OrdemIn dados) {
+        estrutura.ordenarItens(ident, exigirSubmodulo(submodulo), dados.ids());
+        return dados;
+    }
+
+    @org.springframework.web.bind.annotation.PatchMapping("/submodulos/{submodulo}")
+    @Transactional
+    public SubmoduloEditado renomearSubmodulo(@AuthenticationPrincipal Identidade ident,
+            @PathVariable Integer submodulo, @Valid @RequestBody NomeDoSubmoduloIn dados) {
+        var sub = estrutura.editarSubmodulo(ident, exigirSubmodulo(submodulo), dados.nome(), null);
+        return new SubmoduloEditado(sub.getId(), sub.getNome());
+    }
+
     @PostMapping("/turmas/{turma}/modulos/copiar")
     public EstruturaServico.ModulosCopiados copiar(@AuthenticationPrincipal Identidade ident,
             @PathVariable String turma, @Valid @RequestBody CopiaIn dados) {

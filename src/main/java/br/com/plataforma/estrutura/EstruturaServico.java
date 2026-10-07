@@ -431,7 +431,14 @@ public class EstruturaServico {
     public SubModulo editarSubmodulo(Identidade ident, SubModulo submodulo, String nome, Integer ordem) {
         ident.exigirOperador();
         if (nome != null) {
-            submodulo.renomear(exigirNome(nome, "O nome do sub-módulo não pode ficar vazio."));
+            var limpo = exigirNome(nome, "O nome do sub-módulo não pode ficar vazio.");
+            submodulos.findFirstByModuloAndNomeIgnoreCase(submodulo.getModulo(), limpo)
+                    .filter(outro -> !outro.getId().equals(submodulo.getId()))
+                    .ifPresent(outro -> {
+                        throw new RegraDeNegocio("'%s' já tem um sub-módulo chamado '%s'."
+                                .formatted(submodulo.getModulo().getNome(), outro.getNome()));
+                    });
+            submodulo.renomear(limpo);
         }
         if (ordem != null) {
             submodulo.reordenar(ordem);
@@ -594,6 +601,75 @@ public class EstruturaServico {
         item.remover(ident);
         itens.save(item);
         return new ItemRemovido(item.getNome(), submodulo, estavaPublicado, true);
+    }
+
+    // --- a ordem, de uma vez -------------------------------------------------
+
+    /**
+     * A fila como ficou na tela, numa transação só: é o que arrastar pede. Quem a lista não cita
+     * fica na posição em que estava — a tela pode estar olhando por uma turma, que não vê tudo.
+     */
+    @Transactional
+    public void ordenarModulos(Identidade ident, List<Integer> ids) {
+        ident.exigirOperador();
+        var fila = encaixar(modulos.findAllByOrderByOrdemAscIdAsc(), Modulo::getId, ids, "Módulo", "a biblioteca");
+        for (int k = 0; k < fila.size(); k++) {
+            var m = fila.get(k);
+            if (m.getOrdem() != k + 1) {
+                m.reordenar(k + 1);
+                m.tocar(ident);
+            }
+        }
+        modulos.saveAll(fila);
+    }
+
+    @Transactional
+    public void ordenarSubmodulos(Identidade ident, Modulo modulo, List<Integer> ids) {
+        ident.exigirOperador();
+        var fila = encaixar(submodulos.findByModuloOrderByOrdemAsc(modulo), SubModulo::getId, ids, "Sub-módulo",
+                "'" + modulo.getNome() + "'");
+        for (int k = 0; k < fila.size(); k++) {
+            var sub = fila.get(k);
+            if (sub.getOrdem() != k + 1) {
+                sub.reordenar(k + 1);
+                sub.tocar(ident);
+            }
+        }
+        submodulos.saveAll(fila);
+    }
+
+    @Transactional
+    public void ordenarItens(Identidade ident, SubModulo submodulo, List<Integer> ids) {
+        ident.exigirOperador();
+        var fila = encaixar(itens.findBySubmoduloOrderByOrdemAsc(submodulo), Item::getId, ids, "Linha",
+                "'" + submodulo.getNome() + "'");
+        for (int k = 0; k < fila.size(); k++) {
+            var item = fila.get(k);
+            if (item.getOrdem() != k + 1) {
+                item.reordenar(k + 1);
+                item.tocar(ident);
+            }
+        }
+        itens.saveAll(fila);
+    }
+
+    /** {@code atuais} com os citados em {@code ids} trocando de lugar entre si, na ordem pedida. */
+    private static <T> List<T> encaixar(List<T> atuais, java.util.function.Function<T, Integer> id,
+            List<Integer> ids, String oQue, String onde) {
+        var porId = new java.util.HashMap<Integer, T>();
+        atuais.forEach(a -> porId.put(id.apply(a), a));
+        var citados = new java.util.LinkedHashSet<>(ids);
+        if (citados.size() != ids.size()) {
+            throw new RegraDeNegocio("A ordem cita o mesmo id duas vezes.");
+        }
+        for (var i : ids) {
+            if (!porId.containsKey(i)) {
+                throw new RegraDeNegocio("%s %d não está em %s: a tela pode estar desatualizada, recarregue."
+                        .formatted(oQue, i, onde));
+            }
+        }
+        var proximo = ids.iterator();
+        return atuais.stream().map(a -> citados.contains(id.apply(a)) ? porId.get(proximo.next()) : a).toList();
     }
 
     // --- o que a remoção devolve ---------------------------------------------

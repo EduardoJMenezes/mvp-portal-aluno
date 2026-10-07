@@ -128,7 +128,7 @@ function Turmas({ turmas }: { turmas: Turma[] }) {
                 {plural(t.alunos, "aluno")} · {plural(t.modulos, "módulo")} · {plural(t.itens_publicados, "vídeo publicado", "vídeos publicados")}
               </p>
               <div className="mt-2 flex gap-3 text-sm font-semibold">
-                <Link href={`/admin/biblioteca/?turma=${t.id}`} className="text-acento hover:underline">Aulas</Link>
+                <Link href={`/admin/biblioteca/?turma=${t.id}`} className="text-acento hover:underline">Curso</Link>
                 <Link href={`/admin/turmas/alunos/?turma=${t.id}`} className="text-acento hover:underline">Alunos</Link>
               </div>
             </Cartao>
