@@ -1,11 +1,11 @@
 "use client";
 
-import Link from "next/link";
 import { Suspense } from "react";
+import { CartaoDoModulo } from "@/components/CartaoDoModulo";
 import { useCategoria } from "@/components/Categoria";
-import { Estado, Pagina, TituloDeSecao, Vazio } from "@/components/ui";
-import { api, casaCategoria, useDados, type AulaNoCurso } from "@/lib/api";
-import { contarAulas, emBrasilia } from "@/lib/formato";
+import { Estado, Pagina, Vazio } from "@/components/ui";
+import { api, casaCategoria, useDados } from "@/lib/api";
+import { plural } from "@/lib/formato";
 
 export default function PaginaDoCurso() {
   return (
@@ -14,6 +14,9 @@ export default function PaginaDoCurso() {
     </Suspense>
   );
 }
+
+// Cada turma leva uma cor na barrinha do título: quem está em duas distingue de relance.
+const COR_DA_TURMA = ["bg-acento", "bg-violeta", "bg-ceu"];
 
 function MeuCurso() {
   const categoria = useCategoria();
@@ -30,43 +33,32 @@ function MeuCurso() {
           return turmas.length === 0 ? (
             <Vazio titulo="Nada publicado para você ainda">Quando o professor publicar as aulas da sua turma, elas aparecem aqui.</Vazio>
           ) : (
-            turmas.map((turma) => (
-              <section key={turma.turma_id} className="flex flex-col gap-3" aria-label={turma.turma}>
-                <TituloDeSecao>{turma.turma}</TituloDeSecao>
-                <ol className="grid gap-3 md:grid-cols-2">
-                  {turma.modulos.map((modulo) => (
-                    <li key={modulo.id}>
-                      <Link href={`/curso/aula/?modulo=${modulo.id}`} className="flex h-full flex-col gap-3 rounded-cartao border border-borda bg-papel p-5 transition-shadow hover:shadow-suave">
-                        <span className="text-lg font-semibold text-tinta">{modulo.nome}</span>
-                        <span className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-suave">
-                          {modulo.submodulos.map((s) => (
-                            <span key={s.id}>
-                              {s.nome}: <span className="font-semibold tabular-nums text-tinta-2">{s.itens.length}</span>
-                            </span>
-                          ))}
-                        </span>
-                        <ProximaAula aulas={modulo.submodulos.flatMap((s) => s.aulas ?? [])} />
-                        <span className="text-sm font-semibold text-acento">
-                          {modulo.submodulos.some((s) => s.itens.length) ? `Abrir · ${contarAulas(modulo.submodulos.flatMap((s) => s.itens))}` : "Ver capítulo"}
-                        </span>
-                      </Link>
-                    </li>
-                  ))}
-                </ol>
-              </section>
-            ))
+            turmas.map((turma, i) => {
+              const aulas = turma.modulos.reduce((n, m) => n + m.submodulos.reduce((k, s) => k + s.itens.length, 0), 0);
+              return (
+                <section key={turma.turma_id} className="mt-2 flex flex-col gap-4" aria-label={turma.turma}>
+                  <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+                    <h2 className="flex items-center gap-3 text-xl font-bold uppercase tracking-[0.02em] text-tinta">
+                      <span aria-hidden="true" className={`h-6 w-1.5 rounded-full ${COR_DA_TURMA[i % COR_DA_TURMA.length]}`} />
+                      {turma.turma}
+                    </h2>
+                    <p className="rounded-full bg-lilas/80 px-3.5 py-1.5 text-sm font-medium text-tinta-2">
+                      {plural(turma.modulos.length, "módulo")} <span aria-hidden="true">•</span> {plural(aulas, "aula")}
+                    </p>
+                  </div>
+                  <ol className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                    {turma.modulos.map((modulo) => (
+                      <li key={modulo.id}>
+                        <CartaoDoModulo modulo={modulo} />
+                      </li>
+                    ))}
+                  </ol>
+                </section>
+              );
+            })
           );
         }}
       </Estado>
     </Pagina>
   );
-}
-
-/** O aviso da aula ao vivo no cartão do capítulo: a que está acontecendo ou a próxima. */
-function ProximaAula({ aulas }: { aulas: AulaNoCurso[] }) {
-  const agora = aulas.find((a) => a.estado === "ABERTA" || a.estado === "AGUARDANDO");
-  const proxima = aulas.find((a) => a.estado === "AGENDADA");
-  if (agora) return <span className="text-sm font-semibold text-erro">{agora.estado === "ABERTA" ? "Ao vivo agora" : "Sala aberta"}: {agora.titulo}</span>;
-  if (proxima) return <span className="text-sm text-suave">Ao vivo em {emBrasilia(proxima.inicio_em)}: {proxima.titulo}</span>;
-  return null;
 }

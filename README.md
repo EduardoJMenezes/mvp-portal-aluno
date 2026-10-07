@@ -68,6 +68,12 @@ MCP em `/comandos`. Para mexer no frontend com recarregamento automático:
 para o 8080). O portal é Next.js + Tailwind, exportado como site estático em
 `frontend/out` — mesma origem para o cookie da sessão.
 
+As cores, as fontes e os raios do guia de estilo da marca são tokens em
+`frontend/app/globals.css`, e os arquivos da marca (logo, banner) ficam em
+`frontend/marca/`. A página pública `/estilo` mostra os componentes do portal
+renderizados de verdade: é por ela que o design confere o que saiu diferente
+do guia.
+
 O conector do Claude é o outro repositório: suba-o com `API_BASE_URL` apontando
 para cá e o mesmo `SERVICO_TOKEN`.
 

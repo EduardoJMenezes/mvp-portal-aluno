@@ -1,10 +1,11 @@
 "use client";
 
 import Link from "next/link";
+import { CartaoDoModulo } from "@/components/CartaoDoModulo";
 import { BotaoLink, Cartao, Estado, Etiqueta, Pagina, TituloDeSecao, Vazio } from "@/components/ui";
 import { LinhaDoEvento } from "@/components/Agenda";
 import { api, useDados, type ConteudoDaTurma, type EventoDaAgenda, type SimuladoResumo } from "@/lib/api";
-import { contarAulas, emBrasilia, plural } from "@/lib/formato";
+import { emBrasilia, plural } from "@/lib/formato";
 import { useUsuario } from "@/lib/sessao";
 
 export default function Inicio() {
@@ -97,17 +98,12 @@ function Curso({ conteudo }: { conteudo: ConteudoDaTurma[] }) {
       {modulos.length === 0 ? (
         <Vazio titulo="Nada publicado ainda">As aulas e resoluções aparecem aqui assim que o professor publicar.</Vazio>
       ) : (
-        <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {modulos.slice(0, 6).map((m) => {
-            return (
-              <li key={m.id}>
-                <Link href={`/curso/aula/?modulo=${m.id}`} className="flex h-full flex-col gap-1 rounded-cartao border border-borda bg-papel p-4 transition-shadow hover:shadow-suave">
-                  <span className="font-semibold text-tinta">{m.nome}</span>
-                  <span className="text-sm text-suave">{contarAulas(m.submodulos.flatMap((s) => s.itens))} · {m.submodulos.map((s) => s.nome).join(" · ")}</span>
-                </Link>
-              </li>
-            );
-          })}
+        <ul className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {modulos.slice(0, 6).map((m) => (
+            <li key={m.id}>
+              <CartaoDoModulo modulo={m} />
+            </li>
+          ))}
         </ul>
       )}
     </section>

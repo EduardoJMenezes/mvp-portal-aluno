@@ -2,49 +2,68 @@
 @import "katex/dist/katex.min.css";
 
 /*
- * Tokens do estilo escolhido (Quizlet, via Refero), com as correções:
- * a cor principal é a de ação e link; #282e3e (não #282e3); botão principal em
- * pílula, campo com 4px, cartão com 8px; line-height em proporção, não em px.
- * Por cima, a camada de estados que o estilo não tem: acerto, erro, em branco,
- * rascunho e publicado.
+ * Tokens do guia de estilo da marca (Rodrigo Melo — Química): a família de azuis,
+ * Montserrat nos títulos e Inter no texto, cartão branco bem arredondado sobre um
+ * azul quase branco.
+ *
+ * Onde o guia e a leitura brigam, ganha a leitura: o Sky Blue, o verde e o amarelo
+ * do guia são claros demais para texto pequeno no branco, então ficam para
+ * preenchimento (barra, ícone, destaque) e o texto usa o tom escuro de cada um.
+ * A borda do campo também é mais escura que a do guia: 3:1 no branco.
  */
 @theme {
-  --color-canvas: #f6f7fb;
+  --color-canvas: #f3f7fd;
   --color-papel: #ffffff;
-  --color-lilas: #edefff;
-  --color-tinta: #282e3e;
-  --color-tinta-2: #2e3856;
-  --color-suave: #586380;
-  --color-apagado: #939bb4; /* só placeholder e desabilitado: 2,8:1 não serve para texto */
-  --color-borda: #d9dde8; /* cartão e divisória */
-  --color-borda-campo: #8a93ad; /* campo de formulário: 3:1 no branco */
-  --color-acento: #4255ff;
-  --color-acento-forte: #2f3fd6;
+  --color-lilas: #e8efff; /* Lavender Blue: etiqueta, item aceso, hover */
+  --color-gelo: #ddeffa; /* Drafting White: o fundo do ícone */
+  --color-tinta: #0a2550; /* Deep Indigo */
+  --color-tinta-2: #1b3562;
+  --color-suave: #55647f;
+  --color-apagado: #94a3b8; /* Neutral Gray: só placeholder e desabilitado */
+  --color-borda: #dbe4f1; /* cartão e divisória */
+  --color-borda-campo: #7f92b0; /* campo de formulário: 3:1 no branco */
+  --color-acento: #2060d0; /* Bright Blueprint: ação e link */
+  --color-acento-forte: #1240a0; /* Blueprint Blue: hover e texto sobre o lilás */
+  --color-ceu: #4090e0; /* Sky Blue: só preenchimento */
+  --color-violeta: #6b4ce6; /* a segunda turma, na barrinha do título */
 
-  --color-sucesso: #11683f;
-  --color-sucesso-fundo: #e3f5ec;
-  --color-sucesso-borda: #9fd9bc;
-  --color-atencao: #8a5100;
-  --color-atencao-fundo: #fdf1dc;
-  --color-atencao-borda: #f0cf8f;
-  --color-erro: #b42318;
-  --color-erro-fundo: #fef3f2;
-  --color-erro-borda: #fecdca;
+  --color-sucesso: #1d7a2b;
+  --color-sucesso-vivo: #2eae3a; /* Success Green: ícone e preenchimento */
+  --color-sucesso-fundo: #e8f6ea;
+  --color-sucesso-borda: #a9dcb1;
+  --color-atencao: #8a5a00;
+  --color-atencao-vivo: #f6b400; /* Warning Yellow */
+  --color-atencao-fundo: #fef5da;
+  --color-atencao-borda: #f3d37a;
+  --color-erro: #b91c1c;
+  --color-erro-vivo: #ef4444; /* Alert Red */
+  --color-erro-fundo: #fef0f0;
+  --color-erro-borda: #f7b5b5;
 
   --font-sans: var(--fonte-sans), ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-titulo: var(--fonte-titulo), var(--fonte-sans), ui-sans-serif, system-ui, sans-serif;
   --font-serif: var(--fonte-serifa), Georgia, "Times New Roman", serif;
   --font-mono: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
 
-  --radius-cartao: 8px;
-  --radius-campo: 4px;
-  --shadow-suave: 0 4px 16px rgb(40 46 62 / 0.1);
-  --shadow-botao: 0 2px 4px rgb(40 46 62 / 0.1);
+  --radius-cartao: 16px;
+  --radius-campo: 10px; /* campo e botão */
+  --shadow-suave: 0 1px 2px rgb(10 37 80 / 0.04), 0 8px 24px rgb(10 37 80 / 0.07);
+  --shadow-botao: 0 1px 2px rgb(18 64 160 / 0.28);
 }
 
 @layer base {
   html {
     color-scheme: light;
     -webkit-text-size-adjust: 100%;
+    /* O cabeçalho é fixo: quem navega por teclado ou por âncora não pode parar atrás dele. */
+    scroll-padding-top: 5rem;
+  }
+  a,
+  button,
+  summary,
+  label {
+    /* Sem a espera do toque duplo para dar zoom: o clique no celular responde na hora. */
+    touch-action: manipulation;
   }
   body {
     background: var(--color-canvas);
@@ -57,6 +76,7 @@
   h1,
   h2,
   h3 {
+    font-family: var(--font-titulo);
     text-wrap: balance;
   }
   :focus-visible {
@@ -82,7 +102,7 @@
     border: 1px solid var(--color-borda-campo);
     border-radius: var(--radius-campo);
     background: var(--color-papel);
-    padding: 0.5rem 0.75rem;
+    padding: 0.625rem 0.875rem;
     font-size: 15px;
     line-height: 1.4;
     color: var(--color-tinta);
@@ -214,4 +234,29 @@
 
 .recado-de-impressao {
   display: none;
+}
+
+/* Os arcos do canto: o mesmo desenho de círculos do banner da marca, quase apagado.
+   É enfeite — não recebe clique e some no celular, onde só roubaria espaço. */
+.arcos {
+  position: relative;
+  isolation: isolate;
+}
+.arcos::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  z-index: -1;
+  width: min(40rem, 55vw);
+  height: 21rem;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 100% 0, rgb(64 144 224 / 0.1) 0 8rem, transparent 8.05rem),
+    radial-gradient(circle at 100% 0, transparent 0 13rem, rgb(64 144 224 / 0.06) 13.05rem 20rem, transparent 20.05rem);
+}
+@media (max-width: 767px) {
+  .arcos::before {
+    display: none;
+  }
 }
