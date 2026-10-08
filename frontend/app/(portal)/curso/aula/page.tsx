@@ -4,6 +4,7 @@ import { Check, CircleCheck } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useMemo, useState } from "react";
+import { CapituloConcluido } from "@/components/Comemoracao";
 import { Exercicio } from "@/components/Exercicio";
 import { Player } from "@/components/Player";
 import { LinkDoPdf } from "@/components/Pdf";
@@ -72,8 +73,22 @@ function Modulo({ turmas }: { turmas: ConteudoDaTurma[] }) {
   }
   const ir = (novo: number) => router.push(`/curso/aula/?modulo=${modulo.id}&item=${itens[novo].id}`, { scroll: false });
 
+  // Para onde ir depois de terminar: o capítulo seguinte da turma que ainda tem o que fazer.
+  const daTurma = turmas.find((t) => t.modulos.some((m) => m.id === modulo.id))?.modulos ?? [];
+  const posicao = daTurma.findIndex((m) => m.id === modulo.id);
+  const seguinte = [...daTurma.slice(posicao + 1), ...daTurma.slice(0, posicao)].find((m) => m.submodulos.some((s) => s.itens.some((i) => !i.concluido)));
+  const primeiroQueFalta = seguinte?.submodulos.flatMap((s) => s.itens).find((i) => !i.concluido);
+
   return (
     <Pagina titulo={modulo.nome} legenda={modulo.turma} voltar={{ href: "/curso/", rotulo: "Meu curso" }}>
+      {acompanha && (
+        <CapituloConcluido
+          modulo={modulo}
+          feitos={feitos}
+          total={itens.length}
+          proximo={seguinte && { nome: seguinte.nome, href: `/curso/aula/?modulo=${seguinte.id}${primeiroQueFalta ? `&item=${primeiroQueFalta.id}` : ""}` }}
+        />
+      )}
       <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_20rem]">
         <div className="flex min-w-0 flex-col gap-3">
           {!atual ? (

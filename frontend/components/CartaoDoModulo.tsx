@@ -1,9 +1,13 @@
-import { ArrowRight, FileText, SquarePlay } from "lucide-react";
+"use client";
+
+import { ArrowRight, Check, CircleCheck, FileText, SquarePlay } from "lucide-react";
 import Link from "next/link";
+import { useEffect, useState } from "react";
 import type { AulaNoCurso, Modulo } from "@/lib/api";
 import { contarAulas, emBrasilia } from "@/lib/formato";
 import { partesDoNome } from "@/lib/icones";
 import { CapaDoModulo } from "./CapaDoModulo";
+import { CHAVE_DO_RECEM_CONCLUIDO } from "./Comemoracao";
 import { Progresso } from "./ui";
 
 // O cartão do capítulo em "Meu curso", como no guia: a capa (ícone ou foto), o código da apostila,
@@ -18,13 +22,34 @@ export function CartaoDoModulo({ modulo, comProgresso = false }: { modulo: Modul
   const completo = itens.length > 0 && feitos === itens.length;
   // Quem já começou cai direto na primeira aula que falta.
   const proxima = comProgresso && feitos > 0 ? itens.find((i) => !i.concluido) : undefined;
+  const concluido = comProgresso && completo;
+
+  // Quem acabou de terminar este capítulo e voltou para cá vê o selo chegar, uma vez.
+  const [recem, setRecem] = useState(false);
+  useEffect(() => {
+    if (!concluido) return;
+    try {
+      if (sessionStorage.getItem(CHAVE_DO_RECEM_CONCLUIDO) !== String(modulo.id)) return;
+      sessionStorage.removeItem(CHAVE_DO_RECEM_CONCLUIDO);
+      setRecem(true);
+    } catch {
+      // Sem sessionStorage, o selo só aparece parado.
+    }
+  }, [concluido, modulo.id]);
 
   return (
     <Link
       href={`/curso/aula/?modulo=${modulo.id}${proxima ? `&item=${proxima.id}` : ""}`}
-      className="group flex h-full gap-4 rounded-cartao border border-borda/70 bg-papel p-5 shadow-suave transition-colors hover:border-acento/50"
+      className={`group flex h-full gap-4 rounded-cartao border bg-papel p-5 shadow-suave transition-colors ${concluido ? "border-sucesso-borda hover:border-sucesso-vivo" : "border-borda/70 hover:border-acento/50"}`}
     >
-      <CapaDoModulo modulo={modulo} />
+      <span className="relative shrink-0 self-start">
+        <CapaDoModulo modulo={modulo} />
+        {concluido && (
+          <span aria-hidden="true" className={`absolute -bottom-1.5 -right-1.5 flex size-6 items-center justify-center rounded-full bg-sucesso-vivo text-white ring-2 ring-papel ${recem ? "selo-pulsa" : ""}`}>
+            <Check className="size-3.5" strokeWidth={3.5} />
+          </span>
+        )}
+      </span>
       <span className="flex min-w-0 flex-1 flex-col gap-2">
         {codigo && <span className="self-start rounded-md bg-lilas px-2 py-0.5 text-xs font-bold tracking-wide text-acento-forte">{codigo}</span>}
         <span className="font-titulo text-[17px] font-semibold leading-snug text-tinta">{titulo}</span>
@@ -43,13 +68,14 @@ export function CartaoDoModulo({ modulo, comProgresso = false }: { modulo: Modul
         {comProgresso && itens.length > 0 && (
           <span className="mt-auto flex flex-col gap-1.5 pt-1">
             <Progresso feitos={feitos} total={itens.length} rotulo={`Progresso em ${modulo.nome}`} />
-            <span className={`text-[13px] tabular-nums ${completo ? "font-semibold text-sucesso" : "text-suave"}`}>
-              {completo ? "Concluído" : feitos === 0 ? "Ainda não começou" : `${feitos} de ${itens.length} concluídos`}
+            <span className={`inline-flex items-center gap-1.5 text-[13px] tabular-nums ${completo ? "font-semibold text-sucesso" : "text-suave"}`}>
+              {completo && <CircleCheck aria-hidden="true" className="size-4 text-sucesso-vivo" strokeWidth={2.4} />}
+              {completo ? "Capítulo concluído" : feitos === 0 ? "Ainda não começou" : `${feitos} de ${itens.length} concluídos`}
             </span>
           </span>
         )}
         <span className={`${comProgresso && itens.length > 0 ? "" : "mt-auto pt-1"} inline-flex items-center gap-1.5 text-sm font-semibold text-acento group-hover:text-acento-forte`}>
-          {itens.length === 0 ? "Ver capítulo" : comProgresso && feitos > 0 && !completo ? "Continuar" : `${soVideos ? "Assistir" : "Abrir"} • ${contarAulas(itens)}`}
+          {itens.length === 0 ? "Ver capítulo" : concluido ? "Rever o capítulo" : comProgresso && feitos > 0 ? "Continuar" : `${soVideos ? "Assistir" : "Abrir"} • ${contarAulas(itens)}`}
           <ArrowRight aria-hidden="true" className="size-4 transition-transform group-hover:translate-x-0.5" />
         </span>
       </span>
