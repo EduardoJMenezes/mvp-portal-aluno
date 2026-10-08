@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useState, type FormEvent } from "react";
-import { Aviso, Botao, Campo, Cartao, Estado, Etiqueta, Pagina, Progresso, SegredoUmaVez, Vazio, useConfirmar } from "@/components/ui";
+import { Aviso, Botao, BotaoLink, Campo, Cartao, Estado, Etiqueta, Pagina, Progresso, SegredoUmaVez, Vazio, useConfirmar } from "@/components/ui";
 import { api, useDados, type Aluno } from "@/lib/api";
 import { emBrasilia, haQuantoTempo } from "@/lib/formato";
 
@@ -66,6 +66,7 @@ function Alunos() {
       titulo={alunos.dados ? `Alunos · ${alunos.dados.turma}` : "Alunos"}
       legenda={`Quem está matriculado vê o curso publicado e os simulados desta turma.${progresso.dados ? ` Hoje o curso dela tem ${progresso.dados.total} ${progresso.dados.total === 1 ? "item publicado" : "itens publicados"}.` : ""}`}
       voltar={{ href: "/admin/turmas/", rotulo: "Turmas" }}
+      acoes={<BotaoLink href={`/admin/turmas/desempenho/?turma=${turma}`}>Desempenho da turma</BotaoLink>}
     >
       {dialogo}
       <Matricular turma={turma} aoMatricular={(r) => { if (r) setSegredo(r); void alunos.recarregar(); }} />

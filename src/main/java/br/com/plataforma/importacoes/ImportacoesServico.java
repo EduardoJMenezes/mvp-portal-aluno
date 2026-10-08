@@ -357,7 +357,7 @@ public class ImportacoesServico {
     private static QuestoesServico.DadosDaQuestaoNova comNumero(QuestoesServico.DadosDaQuestaoNova d, Integer numero) {
         return new QuestoesServico.DadosDaQuestaoNova(d.enunciado(), d.alternativas(), d.gabarito(),
                 d.assunto(), d.subassunto(), d.dificuldade(), d.resolucao(), d.imagemPendente(),
-                d.resolucaoComentada(), d.numero() != null ? d.numero() : numero);
+                d.resolucaoComentada(), d.numero() != null ? d.numero() : numero, d.comentarios());
     }
 
     private static QuestoesServico.DadosDaQuestaoNova comIds(
@@ -368,7 +368,7 @@ public class ImportacoesServico {
         }
         return new QuestoesServico.DadosDaQuestaoNova(troca.apply(d.enunciado()), alternativas,
                 d.gabarito(), d.assunto(), d.subassunto(), d.dificuldade(), d.resolucao(),
-                d.imagemPendente(), troca.apply(d.resolucaoComentada()), d.numero());
+                d.imagemPendente(), troca.apply(d.resolucaoComentada()), d.numero(), d.comentarios());
     }
 
     /** Os blocos ficam guardados para a revisão no chat: a chave ali também vira id. */

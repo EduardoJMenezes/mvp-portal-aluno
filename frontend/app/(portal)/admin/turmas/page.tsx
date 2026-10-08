@@ -111,6 +111,7 @@ function LinhaDaTurma({ turma, aoMudar }: { turma: Turma; aoMudar: () => void })
           </div>
           <div className="flex flex-wrap gap-2">
             <Link href={`/admin/turmas/alunos/?turma=${turma.id}`} className="inline-flex rounded-full border border-acento px-4 py-1.5 text-sm font-semibold text-acento hover:bg-lilas">Alunos</Link>
+            <Link href={`/admin/turmas/desempenho/?turma=${turma.id}`} className="inline-flex rounded-full border border-borda px-4 py-1.5 text-sm font-semibold text-tinta hover:border-suave">Desempenho</Link>
             <Link href={`/admin/turmas/menu/?turma=${turma.id}`} className="inline-flex rounded-full border border-borda px-4 py-1.5 text-sm font-semibold text-tinta hover:border-suave">Menu do aluno</Link>
           </div>
         </>

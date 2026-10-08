@@ -18,9 +18,38 @@ import org.springframework.web.bind.annotation.RestController;
 public class AnalyticsComandos {
 
     private final AnalyticsServico analytics;
+    private final br.com.plataforma.analytics.DevolutivaServico devolutiva;
+    private final br.com.plataforma.catalogo.CatalogoServico catalogo;
 
-    public AnalyticsComandos(AnalyticsServico analytics) {
+    public AnalyticsComandos(AnalyticsServico analytics, br.com.plataforma.analytics.DevolutivaServico devolutiva,
+            br.com.plataforma.catalogo.CatalogoServico catalogo) {
         this.analytics = analytics;
+        this.devolutiva = devolutiva;
+        this.catalogo = catalogo;
+    }
+
+    // --- buscar_desempenho_por_assunto ---------------------------------------
+
+    public record BuscarDesempenhoPorAssunto(String turma, String aluno) {}
+
+    /**
+     * A devolutiva por assunto, juntando questão de aula e de simulado: da turma inteira (com as
+     * questões das aulas e o que cada um marcou) ou de um aluno. Um dos dois, não os dois.
+     */
+    @PostMapping("/buscar_desempenho_por_assunto")
+    @Transactional
+    public Object buscarDesempenhoPorAssunto(
+            @AuthenticationPrincipal Identidade ident, @RequestBody BuscarDesempenhoPorAssunto pedido) {
+        var temTurma = pedido.turma() != null && !pedido.turma().isBlank();
+        var temAluno = pedido.aluno() != null && !pedido.aluno().isBlank();
+        if (temTurma == temAluno) {
+            throw new br.com.plataforma.comum.RegraDeNegocio(
+                    "Informe a turma ou o aluno — um dos dois. Turmas: listar_turmas.");
+        }
+        ident.exigirOperador();
+        return temTurma
+                ? devolutiva.daTurma(ident, catalogo.resolverTurma(pedido.turma()), Instant.now())
+                : devolutiva.doAluno(ident, pedido.aluno(), Instant.now());
     }
 
     // --- buscar_desempenho_aluno ---------------------------------------------

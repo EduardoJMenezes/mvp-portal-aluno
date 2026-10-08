@@ -126,6 +126,11 @@ function QuestaoCorrigida({ q, indice, total, aoTrocar }: { q: Resultado["questo
                     {gabarito && letra === q.marcada ? "Gabarito · sua resposta" : gabarito ? `Gabarito (${letra})` : `Sua resposta (${letra})`}
                   </p>
                 )}
+                {(gabarito || letra === q.marcada) && q.comentarios?.[letra] && (
+                  <div className="mt-1.5 border-t border-current/10 pt-1.5 text-tinta-2">
+                    <TextoFormatado texto={q.comentarios[letra]} compacto />
+                  </div>
+                )}
               </div>
             </li>
           );

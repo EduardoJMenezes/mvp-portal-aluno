@@ -41,12 +41,16 @@ public class ExerciciosServico {
         this.acesso = acesso;
     }
 
-    /** Os quatro últimos campos só vêm preenchidos depois da resposta (ou para o professor). */
+    /**
+     * Do gabarito em diante, os campos só vêm preenchidos depois da resposta (ou para o professor).
+     * {@code comentarios}: por letra, por que cada alternativa está certa ou errada — o aluno lê o
+     * da que marcou.
+     */
     public record Exercicio(
             Integer itemId, String nome, Integer questaoId, String enunciado,
             Map<Letra, String> alternativas, boolean respondida, Letra marcada, Boolean correta,
             String respondidoEm, Letra gabarito, String resolucaoComentada,
-            AcessoServico.VideoDescrito resolucao) {}
+            AcessoServico.VideoDescrito resolucao, Map<Letra, String> comentarios) {}
 
     /** A questão da linha. O professor vê tudo, como prévia; o aluno, o que a resposta dele liberou. */
     @Transactional(readOnly = true)
@@ -106,20 +110,20 @@ public class ExerciciosServico {
         return saida;
     }
 
-    public record Resposta(Integer alunoId, Integer itemId, boolean correta, Instant respondidoEm) {}
+    public record Resposta(Integer alunoId, Integer itemId, boolean correta, Instant respondidoEm, Letra marcada) {}
 
     /** As respostas de um aluno nestes itens, com a data: é a linha do tempo dele no curso. */
     @Transactional(readOnly = true)
     public List<Resposta> respostasDoAluno(Integer alunoId, Collection<Integer> itens) {
         return itens.isEmpty() ? List.of() : respostas.findByAlunoIdAndItemIdIn(alunoId, itens).stream()
-                .map(r -> new Resposta(r.getAlunoId(), r.getItemId(), r.isCorreta(), r.getRespondidoEm())).toList();
+                .map(r -> new Resposta(r.getAlunoId(), r.getItemId(), r.isCorreta(), r.getRespondidoEm(), r.getAlternativaMarcada())).toList();
     }
 
     /** As respostas de todos os alunos nestes itens: é o que o progresso da turma conta. */
     @Transactional(readOnly = true)
     public List<Resposta> respostasNosItens(Collection<Integer> itens) {
         return itens.isEmpty() ? List.of() : respostas.findByItemIdIn(itens).stream()
-                .map(r -> new Resposta(r.getAlunoId(), r.getItemId(), r.isCorreta(), r.getRespondidoEm())).toList();
+                .map(r -> new Resposta(r.getAlunoId(), r.getItemId(), r.isCorreta(), r.getRespondidoEm(), r.getAlternativaMarcada())).toList();
     }
 
     private static RegraDeNegocio jaRespondida() {
@@ -150,6 +154,7 @@ public class ExerciciosServico {
                 revelar ? q.getGabarito() : null,
                 revelar ? q.getResolucaoComentada() : null,
                 // Quem respondeu ganhou a resolução: não passa de novo pela pergunta "pode assistir?".
-                revelar && q.getVideo() != null ? AcessoServico.descrever(q.getVideo(), true) : null);
+                revelar && q.getVideo() != null ? AcessoServico.descrever(q.getVideo(), true) : null,
+                revelar ? q.comentarios() : Map.of());
     }
 }

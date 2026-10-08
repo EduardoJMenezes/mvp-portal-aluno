@@ -52,7 +52,9 @@ public class RascunhosComandos {
             String dificuldade,
             QuestoesServico.DadosDoVideo resolucao,
             Boolean imagemPendente,
-            String resolucaoComentada) {}
+            String resolucaoComentada,
+            /** Por letra: o que o aluno lê se marcar aquela alternativa. Opcional. */
+            Map<String, String> comentarios) {}
 
     @PostMapping("/criar_questao_rascunho")
     @Transactional
@@ -62,7 +64,7 @@ public class RascunhosComandos {
         var r = rascunhos.criarQuestaoRascunho(ident, new QuestoesServico.DadosDaQuestaoNova(
                 pedido.enunciado(), pedido.alternativas(), pedido.gabarito(), pedido.assunto(),
                 pedido.subassunto(), pedido.dificuldade(), pedido.resolucao(),
-                pedido.imagemPendente(), pedido.resolucaoComentada(), null));
+                pedido.imagemPendente(), pedido.resolucaoComentada(), null, pedido.comentarios()));
         return rascunhos.detalhar(ident, r.getId(), Instant.now());
     }
 

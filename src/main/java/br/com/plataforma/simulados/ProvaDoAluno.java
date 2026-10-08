@@ -240,7 +240,7 @@ public class ProvaDoAluno {
     public record QuestaoCorrigida(
             Integer ordem, Integer questaoId, String enunciado, Map<Letra, String> alternativas,
             Letra marcada, boolean emBranco, Letra gabarito, boolean correta, String resolucaoComentada,
-            AcessoServico.VideoDescrito resolucao) {}
+            AcessoServico.VideoDescrito resolucao, Map<Letra, String> comentarios) {}
 
     public record Resultado(
             Integer simuladoId, String titulo, int acertos, int total, double percentual, int emBranco,
@@ -284,7 +284,8 @@ public class ProvaDoAluno {
                     r == null ? null : r.getAlternativaMarcada(), r == null, q.getGabarito(),
                     r != null && r.isCorreta(), q.getResolucaoComentada(),
                     q.getVideo() == null ? null
-                            : AcessoServico.descrever(q.getVideo(), liberados.contains(q.getVideo().getId()))));
+                            : AcessoServico.descrever(q.getVideo(), liberados.contains(q.getVideo().getId())),
+                    q.comentarios()));
         }
         var total = s.getQuestoes().size();
         return new Resultado(s.getId(), s.getTitulo(), minha.acertos(), total,

@@ -129,7 +129,7 @@ public class ModulosPortal {
 
     public record QuestaoNovaIn(@NotBlank String enunciado, @NotNull Map<String, String> alternativas,
             @NotBlank String gabarito, String assunto, String subassunto, String dificuldade, String vimeoId,
-            String resolucaoComentada) {}
+            String resolucaoComentada, Map<String, String> comentarios) {}
 
     /** A questão do acervo ({@code questaoId}) ou uma nova, criada ali mesmo ({@code nova}). */
     public record QuestaoNaLinhaIn(Integer questaoId, String nome, @Valid QuestaoNovaIn nova) {}
@@ -153,7 +153,7 @@ public class ModulosPortal {
                 : new MontagemDaProva.Nova(new QuestoesServico.DadosDaQuestaoNova(nova.enunciado(),
                         nova.alternativas(), nova.gabarito(), nova.assunto(), nova.subassunto(),
                         nova.dificuldade(), vimeo.resolucao(nova.vimeoId()), false,
-                        nova.resolucaoComentada(), null));
+                        nova.resolucaoComentada(), null, nova.comentarios()));
         var rascunho = rascunhos.criarQuestoesNaAula(ident, null, sub,
                 List.of(new RascunhosServico.QuestaoParaAula(entrada, dados.nome())), null);
         publicacao.publicarPeloPortal(ident, rascunho.getId(), Instant.now());

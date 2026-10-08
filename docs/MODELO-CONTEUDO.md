@@ -72,6 +72,30 @@ seção "Em aberto", no fim.
 > para o ETag dela não mudar a cada aviso do player. O professor vê por turma
 > (`GET /api/admin/turmas/{turma}/progresso`) e por aluno, item a item
 > (`GET /api/admin/alunos/{aluno}/progresso`).
+>
+> **Mudou em 07/10/2026 (migração V13): a devolutiva.** Duas peças:
+>
+> * **Desempenho por assunto, de qualquer questão** (`analytics/DevolutivaServico`).
+>   "Tudo é questão": a resposta da aula (`item_answers`) e a do simulado
+>   (`exam_answers`) viram a mesma `RespostaAvaliada` e entram na mesma conta,
+>   organizada pela etiqueta da questão. Fonte nova de questão é só mais um
+>   bloco em `respostasDe`. Não há corte fixo de "ponto fraco": cada assunto
+>   leva uma nota **ajustada**, que parte do acerto geral de quem respondeu e
+>   se afasta dele conforme chegam respostas
+>   (`(acertos + 4 × geral) / (respostas + 4)`); é ela que ordena e que define
+>   o nível (atenção < 50, em desenvolvimento < 75, bem). O aluno só conta
+>   simulado que já fechou; o professor, prova entregue. Em branco em prova
+>   entregue é erro. Questão sem assunto fica de fora, e a tela diz quantas.
+>   Rotas: `GET /api/aluno/desempenho/assuntos`,
+>   `/api/admin/alunos/{aluno}/assuntos` e `/api/admin/turmas/{turma}/devolutiva`
+>   (esta com as questões das aulas e quantos marcaram cada letra); pelo
+>   Claude, `buscar_desempenho_por_assunto`.
+> * **Comentário por alternativa** (`question_options.comentario`): por que o
+>   aluno marca aquela letra e onde está o erro. O professor escreve no
+>   cadastro da questão (ou o Claude propõe, em rascunho, e ele aprova). O
+>   aluno lê o da alternativa que marcou e o da correta — na aula, logo depois
+>   de responder; no simulado, com o resultado. Como a resolução, muda mesmo
+>   com a prova aberta. E continua valendo: o aluno responde **uma vez**.
 > Pelo Claude vai só o ícone (`criar_modulo`, `editar_modulo`) — arquivo não
 > passa pelo chat.
 

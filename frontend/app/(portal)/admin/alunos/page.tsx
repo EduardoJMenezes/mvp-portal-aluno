@@ -3,6 +3,7 @@
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense } from "react";
 import { CursoDoAluno } from "@/components/CursoDoAluno";
+import { PorAssunto, ResumoDaDevolutiva } from "@/components/Devolutiva";
 import { OndeRevisar } from "@/components/Resultado";
 import { Anel } from "@/components/Resultado";
 import { Aviso, Campo, Cartao, Estado, Etiqueta, Pagina, TituloDeSecao } from "@/components/ui";
@@ -24,14 +25,31 @@ function DesempenhoDoAluno() {
   const simulado = parametros.get("simulado") ?? undefined;
   const desempenho = useDados(() => api.desempenho(aluno, simulado), [aluno, simulado]);
   const simulados = useDados(() => api.simuladosDoProfessor());
+  const assuntos = useDados(() => (aluno ? api.devolutivaDoAluno(aluno).catch(() => null) : Promise.resolve(null)), [aluno]);
 
   return (
-    <Pagina titulo={desempenho.dados?.aluno ?? "Desempenho do aluno"} legenda="O que já fez do curso e como foi em cada simulado, a qualquer momento, inclusive antes de fechar." voltar={{ href: "/admin/turmas/", rotulo: "Turmas" }}>
+    <Pagina titulo={desempenho.dados?.aluno ?? "Desempenho do aluno"} legenda="O que já fez do curso, como está em cada assunto e como foi em cada simulado, a qualquer momento, inclusive antes de fechar." voltar={{ href: "/admin/turmas/", rotulo: "Turmas" }}>
       {!aluno ? (
         <Aviso tom="atencao">Abra o desempenho a partir da lista de alunos ou do ranking.</Aviso>
       ) : (
         <>
           <CursoDoAluno aluno={aluno} />
+          {assuntos.dados && (
+            <section className="flex flex-col gap-3" aria-labelledby="titulo-por-assunto">
+              <TituloDeSecao>
+                <span id="titulo-por-assunto">Por assunto</span>
+              </TituloDeSecao>
+              <div className="-mt-1">
+                <ResumoDaDevolutiva dados={assuntos.dados} quem="O aluno" />
+              </div>
+              <PorAssunto dados={assuntos.dados} />
+              {assuntos.dados.sem_assunto > 0 && (
+                <p className="text-[13px] text-suave">
+                  {assuntos.dados.sem_assunto === 1 ? "1 resposta ficou" : `${assuntos.dados.sem_assunto} respostas ficaram`} de fora desta leitura: {assuntos.dados.questoes_sem_assunto === 1 ? "a questão não tem" : "as questões não têm"} assunto.
+                </p>
+              )}
+            </section>
+          )}
           <TituloDeSecao>Nos simulados</TituloDeSecao>
           <Campo rotulo="Simulado" className="max-w-md">
             {(id) => (

@@ -211,6 +211,8 @@ export type Exercicio = {
   gabarito: string | null;
   resolucao_comentada: string | null;
   resolucao: Video | null;
+  /** Por letra: por que a alternativa está certa ou errada. Só chega depois da resposta. */
+  comentarios?: Record<string, string>;
 };
 /** Aula ao vivo agendada no sub-módulo, enquanto a gravação não chegou. ENCERRADA aqui é "processando". */
 export type AulaNoCurso = { aula_id: number; titulo: string; inicio_em: string; minutos: number; estado: Aula["estado"]; abre_em: string; material?: MaterialLigado | null };
@@ -307,6 +309,48 @@ export type Prova = SimuladoResumo & {
 
 export type Recomendacao = { topico: string; erros: number; videos: Video[] };
 
+/**
+ * A devolutiva por assunto, juntando questão de aula e de simulado. `percentual` é o acerto cru;
+ * `ajustado` é o mesmo puxado para a média de quem respondeu, tanto mais quanto menos respostas
+ * houver — é ele que ordena e que define o `nivel`.
+ */
+export type NivelNoAssunto = "ATENCAO" | "DESENVOLVENDO" | "BEM";
+export type LinhaDaDevolutiva = {
+  id: number;
+  nome: string;
+  respostas: number;
+  acertos: number;
+  percentual: number;
+  ajustado: number;
+  nivel: NivelNoAssunto;
+  da_aula: number;
+  de_simulado: number;
+};
+export type AssuntoNaDevolutiva = LinhaDaDevolutiva & { subassuntos: LinhaDaDevolutiva[] };
+export type Devolutiva = {
+  respostas: number;
+  acertos: number;
+  percentual: number | null;
+  sem_assunto: number;
+  questoes_sem_assunto: number;
+  assuntos: AssuntoNaDevolutiva[];
+  onde_revisar: Recomendacao[];
+};
+export type QuestaoDaAulaNaTurma = {
+  item_id: number;
+  item: string;
+  modulo: string;
+  questao_id: number;
+  resumo: string;
+  topico: string | null;
+  gabarito: string | null;
+  respostas: number;
+  acertos: number;
+  percentual: number;
+  distribuicao: Record<string, number>;
+};
+export type DevolutivaDaTurma = { turma_id: number; turma: string; alunos: number; responderam: number; geral: Devolutiva; questoes_da_aula: QuestaoDaAulaNaTurma[] };
+
 export type Resultado = {
   simulado_id: number;
   titulo: string;
@@ -324,6 +368,7 @@ export type Resultado = {
     correta: boolean;
     resolucao_comentada: string | null;
     resolucao: Video | null;
+    comentarios?: Record<string, string>;
   })[];
   analise: Recomendacao[];
 };
@@ -369,6 +414,7 @@ export type Rascunho = RascunhoResumo & {
     gabarito: string | null;
     completa: boolean;
     resolucao_comentada: string | null;
+    comentarios?: Record<string, string>;
     dificuldade: string;
     classificacao: Classificacao[];
     imagem_pendente: boolean;
@@ -406,6 +452,8 @@ export type Questao = {
 
 export type QuestaoDetalhada = Questao & {
   resolucao_comentada: string | null;
+  /** Por letra: o que o aluno lê se marcar aquela alternativa. */
+  comentarios?: Record<string, string>;
   figuras: { figura_id: number; parte: string }[];
   resolucao: { vimeo_id: string; titulo: string } | null;
   simulados: { simulado_id: number; titulo: string; situacao: Situacao }[];
@@ -702,6 +750,7 @@ export const api = {
   entregar: (id: number) => pedir<{ mensagem: string; resultado_em: string }>(`/aluno/simulados/${id}/entregar`, { method: "POST" }),
   resultado: (id: number) => pedir<Resultado>(`/aluno/simulados/${id}/resultado`),
   historico: () => pedir<Historico>("/aluno/desempenho"),
+  minhaDevolutiva: () => pedir<Devolutiva>("/aluno/desempenho/assuntos"),
 
   // materiais
   materiais: () => pedir<Material[]>("/aluno/materiais"),
@@ -757,6 +806,8 @@ export const api = {
 
   progressoDaTurma: (turma: number) => pedir<ProgressoDaTurma>(`/admin/turmas/${turma}/progresso`),
   progressoDoAluno: (aluno: string | number) => pedir<ProgressoDoAluno>(`/admin/alunos/${seg(String(aluno))}/progresso`),
+  devolutivaDoAluno: (aluno: string | number) => pedir<Devolutiva>(`/admin/alunos/${seg(String(aluno))}/assuntos`),
+  devolutivaDaTurma: (turma: number) => pedir<DevolutivaDaTurma>(`/admin/turmas/${turma}/devolutiva`),
 
   // turmas e alunos
   criarTurma: (nome: string) => pedir<{ id: number; nome: string }>("/admin/turmas", { method: "POST", json: { nome } }),

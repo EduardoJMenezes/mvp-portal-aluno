@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowRight, Check, CircleCheck, FileText, SquarePlay } from "lucide-react";
+import { ArrowRight, Check, CircleCheck, CircleHelp, FileText, LayoutList, SquarePlay, type LucideIcon } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import type { AulaNoCurso, Modulo } from "@/lib/api";
@@ -12,6 +12,18 @@ import { Progresso } from "./ui";
 
 // O cartão do capítulo em "Meu curso", como no guia: a capa (ícone ou foto), o código da apostila,
 // o título, o que tem dentro e, para o aluno, a barra do que ele já fez.
+
+/**
+ * O ícone do sub-módulo sai do que há dentro dele, nunca do nome: "Questões da apostila" pode
+ * guardar os vídeos de resolução, e aí é uma lista de vídeos. Misturado ou vazio, uma lista.
+ */
+function iconeDoSubmodulo(itens: Modulo["submodulos"][number]["itens"]): LucideIcon {
+  if (itens.length === 0) return LayoutList;
+  if (itens.every((i) => i.questao)) return CircleHelp;
+  if (itens.every((i) => !i.questao && i.video_id != null)) return SquarePlay;
+  if (itens.every((i) => !i.questao && i.video_id == null)) return FileText;
+  return LayoutList;
+}
 
 /** `comProgresso`: só para o aluno — o professor que abre "Meu curso" não tem o que mostrar na barra. */
 export function CartaoDoModulo({ modulo, comProgresso = false }: { modulo: Modulo; comProgresso?: boolean }) {
@@ -55,7 +67,7 @@ export function CartaoDoModulo({ modulo, comProgresso = false }: { modulo: Modul
         <span className="font-titulo text-[17px] font-semibold leading-snug text-tinta">{titulo}</span>
         <span className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-suave">
           {modulo.submodulos.map((s) => {
-            const DoSub = s.itens.some((i) => i.questao) || /quest/i.test(s.nome) ? FileText : SquarePlay;
+            const DoSub = iconeDoSubmodulo(s.itens);
             return (
               <span key={s.id} className="inline-flex items-center gap-1.5">
                 <DoSub aria-hidden="true" className="size-4 shrink-0" strokeWidth={1.8} />

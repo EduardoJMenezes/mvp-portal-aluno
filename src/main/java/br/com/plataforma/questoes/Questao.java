@@ -188,6 +188,23 @@ public class Questao extends Rastreavel {
      * <p>Não é {@code clear()} + {@code add()} de propósito: o Hibernate inseriria antes de
      * apagar, e o unique {@code (questao_id, letra)} estouraria no meio do flush.
      */
+    /** O comentário de cada alternativa que tem um, na ordem das letras. */
+    public java.util.Map<Letra, String> comentarios() {
+        var saida = new java.util.EnumMap<Letra, String>(Letra.class);
+        alternativas.stream().filter(a -> a.getComentario() != null).forEach(a -> saida.put(a.getLetra(), a.getComentario()));
+        return saida;
+    }
+
+    /** Só as letras informadas mudam; texto vazio tira o comentário. */
+    void comentarAlternativas(java.util.Map<Letra, String> comentarios) {
+        comentarios.forEach((letra, texto) -> {
+            var alvo = alternativas.stream().filter(a -> a.getLetra() == letra).findFirst()
+                    .orElseThrow(() -> new br.com.plataforma.comum.RegraDeNegocio(
+                            "A questão não tem a alternativa %s para comentar.".formatted(letra)));
+            alvo.comentar(texto == null || texto.isBlank() ? null : texto.strip());
+        });
+    }
+
     void ajustarAlternativas(java.util.Map<Letra, String> novas) {
         alternativas.removeIf(a -> !novas.containsKey(a.getLetra()));
         var atuais = new java.util.EnumMap<Letra, Alternativa>(Letra.class);

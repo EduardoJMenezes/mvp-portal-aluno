@@ -19,6 +19,8 @@ export default function PaginaDoEditor() {
 type Formulario = {
   enunciado: string;
   alternativas: Record<string, string>;
+  /** Por letra: o que o aluno lê se marcar aquela alternativa. */
+  comentarios: Record<string, string>;
   gabarito: string;
   dificuldade: string;
   assunto: string;
@@ -31,6 +33,7 @@ type Formulario = {
 const VAZIO: Formulario = {
   enunciado: "",
   alternativas: { A: "", B: "", C: "", D: "", E: "" },
+  comentarios: { A: "", B: "", C: "", D: "", E: "" },
   gabarito: "",
   dificuldade: "MEDIA",
   assunto: "",
@@ -46,6 +49,7 @@ function doDetalhe(q: QuestaoDetalhada, assuntos: Assunto[]): Formulario {
   return {
     enunciado: q.enunciado,
     alternativas: { ...VAZIO.alternativas, ...q.alternativas },
+    comentarios: { ...VAZIO.comentarios, ...(q.comentarios ?? {}) },
     gabarito: q.gabarito ?? "",
     dificuldade: q.dificuldade,
     assunto: assunto ? String(assunto.id) : "",
@@ -59,6 +63,10 @@ function doDetalhe(q: QuestaoDetalhada, assuntos: Assunto[]): Formulario {
 // A E é opcional: vazia, a questão vai de A a D.
 const alternativasPreenchidas = (alternativas: Record<string, string>) =>
   Object.fromEntries(Object.entries(alternativas).filter(([letra, texto]) => letra !== "E" || texto.trim()));
+
+// Comentário só vale em alternativa que existe: a E em branco não leva o dela.
+const comentariosPreenchidos = (form: Formulario) =>
+  Object.fromEntries(LETRAS.filter((l) => form.alternativas[l]?.trim() && form.comentarios[l]?.trim()).map((l) => [l, form.comentarios[l].trim()]));
 
 function Editor() {
   const router = useRouter();
@@ -115,6 +123,7 @@ function Editor() {
           subassunto: nomeDoSubassunto || undefined,
           vimeo_id: form.vimeo_id.trim() || undefined,
           resolucao_comentada: form.resolucao_comentada || undefined,
+          comentarios: comentariosPreenchidos(form),
         };
         if (submodulo) {
           await api.questaoNoSubmodulo(submodulo, { nome: nomeDaLinha.trim() || undefined, nova });
@@ -139,6 +148,11 @@ function Editor() {
       }
       if (form.vimeo_id.trim() !== original.vimeo_id) mudancas.vimeo_id = form.vimeo_id.trim();
       if (form.resolucao_comentada !== original.resolucao_comentada) mudancas.resolucao_comentada = form.resolucao_comentada;
+      // Só as letras cujo comentário mudou; vazio tira. A letra sem alternativa fica de fora.
+      const comentarios = Object.fromEntries(
+        LETRAS.filter((l) => form.alternativas[l]?.trim() && form.comentarios[l].trim() !== original.comentarios[l].trim()).map((l) => [l, form.comentarios[l].trim()]),
+      );
+      if (Object.keys(comentarios).length) mudancas.comentarios = comentarios;
       if (!Object.keys(mudancas).length) {
         setAviso("Nada mudou.");
         return;
@@ -212,27 +226,43 @@ function Editor() {
             <Campo rotulo="Enunciado" dica={<>Markdown. Fórmula entre $…$ (química em \ce&#123;…&#125;). Figura que ainda vai entrar: ![](figura:pendente).</>}>
               {(cid) => <textarea id={cid} required rows={8} disabled={travada} value={form.enunciado} onChange={(e) => muda("enunciado", e.target.value)} className="campo" />}
             </Campo>
-            <fieldset className="flex flex-col gap-3" disabled={travada}>
-              <legend className="mb-1 text-sm font-semibold text-tinta-2">Alternativas e gabarito</legend>
+            <fieldset className="flex flex-col gap-4">
+              <legend className="mb-1 text-sm font-semibold text-tinta-2">Alternativas, gabarito e comentários</legend>
+              <p className="-mt-2 text-[13px] text-suave">
+                Clique na letra para marcar o gabarito. Embaixo de cada alternativa, diga em uma ou duas frases por que o aluno costuma marcá-la e onde está o erro; na correta, por que é ela. O aluno lê o comentário da que marcou, logo depois de responder. É opcional, mas é o que transforma a correção em explicação.
+              </p>
               {LETRAS.map((letra) => (
                 <div key={letra} className="flex items-start gap-2">
-                  <label className={`mt-1.5 flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-full border text-sm font-semibold ${form.gabarito === letra ? "border-sucesso bg-sucesso text-white" : "border-borda-campo text-tinta-2"}`}>
-                    <input type="radio" name="gabarito" value={letra} checked={form.gabarito === letra} onChange={() => muda("gabarito", letra)} className="sr-only" />
+                  <label className={`mt-1.5 flex size-8 shrink-0 items-center justify-center rounded-full border text-sm font-semibold ${travada ? "cursor-not-allowed" : "cursor-pointer"} ${form.gabarito === letra ? "border-sucesso bg-sucesso text-white" : "border-borda-campo text-tinta-2"}`}>
+                    <input type="radio" name="gabarito" value={letra} disabled={travada} checked={form.gabarito === letra} onChange={() => muda("gabarito", letra)} className="sr-only" />
                     <span aria-hidden="true">{letra}</span>
                     <span className="sr-only">Gabarito {letra}</span>
                   </label>
-                  <textarea
-                    aria-label={letra === "E" ? "Alternativa E (opcional)" : `Alternativa ${letra}`}
-                    placeholder={letra === "E" ? "Opcional: em branco, a questão vai de A a D" : undefined}
-                    required={letra !== "E"}
-                    rows={2}
-                    value={form.alternativas[letra]}
-                    onChange={(e) => setForm((f) => ({ ...f, alternativas: { ...f.alternativas, [letra]: e.target.value } }))}
-                    className="campo min-h-0"
-                  />
+                  <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+                    <textarea
+                      aria-label={letra === "E" ? "Alternativa E (opcional)" : `Alternativa ${letra}`}
+                      placeholder={letra === "E" ? "Opcional: em branco, a questão vai de A a D" : undefined}
+                      required={letra !== "E"}
+                      disabled={travada}
+                      rows={2}
+                      value={form.alternativas[letra]}
+                      onChange={(e) => setForm((f) => ({ ...f, alternativas: { ...f.alternativas, [letra]: e.target.value } }))}
+                      className="campo min-h-0"
+                    />
+                    {(letra !== "E" || form.alternativas.E.trim()) && (
+                      <textarea
+                        aria-label={`Comentário da alternativa ${letra}`}
+                        placeholder={form.gabarito === letra ? `Comentário: por que a ${letra} é a correta` : `Comentário: por que alguém marca a ${letra}, e onde está o erro`}
+                        rows={1}
+                        maxLength={1000}
+                        value={form.comentarios[letra]}
+                        onChange={(e) => setForm((f) => ({ ...f, comentarios: { ...f.comentarios, [letra]: e.target.value } }))}
+                        className="campo min-h-0 border-borda bg-canvas/60 font-sans text-[14px]"
+                      />
+                    )}
+                  </div>
                 </div>
               ))}
-              <p className="text-[13px] text-suave">Clique na letra para marcar o gabarito.</p>
             </fieldset>
           </Cartao>
 
@@ -308,7 +338,10 @@ function Previa({ form }: { form: Formulario }) {
         {LETRAS.filter((letra) => letra !== "E" || form.alternativas.E?.trim()).map((letra) => (
           <li key={letra} className={`flex items-start gap-3 rounded-cartao border px-3 py-2 ${form.gabarito === letra ? "border-sucesso-borda bg-sucesso-fundo" : "border-borda"}`}>
             <span className="mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-full border border-borda-campo text-xs font-semibold">{letra}</span>
-            <TextoFormatado texto={form.alternativas[letra] || " "} compacto className="min-w-0 flex-1" />
+            <div className="min-w-0 flex-1">
+              <TextoFormatado texto={form.alternativas[letra] || " "} compacto />
+              {form.comentarios[letra]?.trim() && <p className="mt-1 border-t border-borda pt-1 text-[13px] text-suave">{form.comentarios[letra]}</p>}
+            </div>
           </li>
         ))}
       </ul>

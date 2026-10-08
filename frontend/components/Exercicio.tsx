@@ -89,6 +89,12 @@ export function Exercicio({ item, aoResponder }: { item: number; aoResponder?: (
                       {gabarito && letra === dados.marcada ? "Gabarito · sua resposta" : gabarito ? `Gabarito (${letra})` : `Sua resposta (${letra})`}
                     </p>
                   )}
+                  {/* O comentário da que ele marcou e o da certa: é a devolutiva na hora do erro. */}
+                  {(gabarito || letra === dados.marcada) && dados.comentarios?.[letra] && (
+                    <div className="mt-1.5 border-t border-current/10 pt-1.5 text-tinta-2">
+                      <TextoFormatado texto={dados.comentarios[letra]} compacto />
+                    </div>
+                  )}
                 </div>
               </li>
             );

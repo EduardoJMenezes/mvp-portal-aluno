@@ -79,7 +79,8 @@ public class QuestoesServico {
             Dificuldade dificuldade, Status status, List<Etiqueta> assuntos,
             List<Etiqueta> classificacao, boolean imagemPendente, Integer videoResolucaoId,
             Letra gabarito, String resolucaoComentada, List<FiguraNaQuestao> figuras,
-            ResolucaoEmVideo resolucao, List<SimuladoDaQuestao> simulados, List<String> aulas) {}
+            ResolucaoEmVideo resolucao, List<SimuladoDaQuestao> simulados, List<String> aulas,
+            Map<Letra, String> comentarios) {}
 
     @Transactional(readOnly = true)
     public QuestaoDescrita descrever(Questao q, boolean incluirGabarito) {
@@ -120,7 +121,7 @@ public class QuestoesServico {
                         .map(s -> new SimuladoDaQuestao(
                                 s.getId(), s.getTitulo(), SimuladosServico.situacao(s, agora)))
                         .toList(),
-                base.aulas());
+                base.aulas(), q.comentarios());
     }
 
     // --- busca ---------------------------------------------------------------
@@ -191,7 +192,7 @@ public class QuestoesServico {
     public record Alteracao(
             String enunciado, Map<String, String> alternativas, String gabarito, String dificuldade,
             Boolean imagemPendente, String assunto, String subassunto, DadosDoVideo resolucao,
-            String resolucaoComentada) {}
+            String resolucaoComentada, Map<String, String> comentarios) {}
 
     public record DadosDoVideo(String vimeoId, String titulo, String url, String embedUrl,
             String thumbnailUrl, Integer duracaoSegundos, String pasta) {}
@@ -228,6 +229,12 @@ public class QuestoesServico {
         if (nova.gabarito() != null || nova.alternativas() != null) {
             exigirGabaritoEntreAsAlternativas(q.getGabarito(), q.getAlternativas().stream()
                     .map(Alternativa::getLetra).toList());
+        }
+
+        // O comentário é como a resolução: o aluno só o lê depois de responder, então muda mesmo
+        // com a prova aberta.
+        if (nova.comentarios() != null) {
+            q.comentarAlternativas(comentarios(nova.comentarios()));
         }
 
         if (nova.dificuldade() != null) {
@@ -287,7 +294,16 @@ public class QuestoesServico {
     public record DadosDaQuestaoNova(
             String enunciado, Map<String, String> alternativas, String gabarito, String assunto,
             String subassunto, String dificuldade, DadosDoVideo resolucao, Boolean imagemPendente,
-            String resolucaoComentada, Integer numero) {}
+            String resolucaoComentada, Integer numero, Map<String, String> comentarios) {
+
+        /** Sem comentário por alternativa: é como a importação monta a questão. */
+        public DadosDaQuestaoNova(String enunciado, Map<String, String> alternativas, String gabarito,
+                String assunto, String subassunto, String dificuldade, DadosDoVideo resolucao,
+                Boolean imagemPendente, String resolucaoComentada, Integer numero) {
+            this(enunciado, alternativas, gabarito, assunto, subassunto, dificuldade, resolucao,
+                    imagemPendente, resolucaoComentada, numero, null);
+        }
+    }
 
     /**
      * Uma questão nova, em rascunho.
@@ -326,6 +342,9 @@ public class QuestoesServico {
         questao.marcarImagemPendente(Boolean.TRUE.equals(dados.imagemPendente()) || marcada);
         questao.mudarVideo(video);
         questao.ajustarAlternativas(letras);
+        if (dados.comentarios() != null) {
+            questao.comentarAlternativas(comentarios(dados.comentarios()));
+        }
         questao.tocar(ident);
         var salva = questoes.save(questao);
 
@@ -648,6 +667,22 @@ public class QuestoesServico {
      * De A a D são obrigatórias; a E é opcional, e vazia é o mesmo que não ter. Devolve o mesmo
      * mapa, já sem a E vazia.
      */
+    /** O comentário não é enunciado: é um texto breve, para o aluno ler logo depois de errar. */
+    static final int TAMANHO_DO_COMENTARIO = 1000;
+
+    private static Map<Letra, String> comentarios(Map<String, String> crus) {
+        var saida = new LinkedHashMap<Letra, String>();
+        crus.forEach((k, v) -> {
+            var texto = v == null ? "" : v.strip();
+            if (texto.length() > TAMANHO_DO_COMENTARIO) {
+                throw new RegraDeNegocio("O comentário da alternativa %s tem %d caracteres; o limite é %d."
+                        .formatted(letra(k), texto.length(), TAMANHO_DO_COMENTARIO));
+            }
+            saida.put(letra(k), texto);
+        });
+        return saida;
+    }
+
     static Map<Letra, String> exigirAlternativas(Map<Letra, String> alternativas) {
         var e = alternativas.get(Letra.E);
         if (e != null && e.isBlank()) {

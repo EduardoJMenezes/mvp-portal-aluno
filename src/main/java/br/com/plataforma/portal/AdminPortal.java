@@ -418,11 +418,11 @@ public class AdminPortal {
 
     public record QuestaoIn(@NotBlank String enunciado, @NotNull Map<String, String> alternativas,
             @NotBlank String gabarito, String assunto, String subassunto, String dificuldade, String vimeoId,
-            Boolean imagemPendente, String resolucaoComentada) {}
+            Boolean imagemPendente, String resolucaoComentada, Map<String, String> comentarios) {}
 
     public record EdicaoQuestaoIn(String enunciado, Map<String, String> alternativas, String gabarito,
             String dificuldade, Boolean imagemPendente, String assunto, String subassunto, String vimeoId,
-            String resolucaoComentada) {}
+            String resolucaoComentada, Map<String, String> comentarios) {}
 
     /** Uma questão avulsa. É o professor cadastrando: entra no acervo já publicada. */
     @PostMapping("/questoes")
@@ -432,7 +432,8 @@ public class AdminPortal {
         var rascunho = rascunhosComandos.criarQuestaoRascunho(ident, new RascunhosComandos.CriarQuestaoRascunho(
                 dados.enunciado(), dados.alternativas(), dados.gabarito(), dados.assunto(), dados.subassunto(),
                 dados.dificuldade(), vimeoImportacao.resolucao(dados.vimeoId()),
-                dados.imagemPendente() != null && dados.imagemPendente(), dados.resolucaoComentada()));
+                dados.imagemPendente() != null && dados.imagemPendente(), dados.resolucaoComentada(),
+                dados.comentarios()));
         publicacao.publicarPeloPortal(ident, rascunho.rascunhoId(), Instant.now());
         return rascunhos.detalhar(ident, rascunho.rascunhoId(), Instant.now());
     }
@@ -448,7 +449,8 @@ public class AdminPortal {
             @PathVariable String questaoId, @RequestBody EdicaoQuestaoIn dados) {
         return questoesComandos.editarQuestao(ident, new QuestoesComandos.EditarQuestao(questaoId, dados.enunciado(),
                 dados.alternativas(), dados.gabarito(), dados.dificuldade(), dados.imagemPendente(), dados.assunto(),
-                dados.subassunto(), vimeoImportacao.resolucao(dados.vimeoId()), dados.resolucaoComentada()));
+                dados.subassunto(), vimeoImportacao.resolucao(dados.vimeoId()), dados.resolucaoComentada(),
+                dados.comentarios()));
     }
 
     @DeleteMapping("/questoes/{questaoId}")

@@ -259,7 +259,15 @@ function Conteudo({ r, recarregar }: { r: Rascunho; recarregar: () => Promise<vo
                   {LETRAS.filter((letra) => letra in q.alternativas).map((letra) => (
                     <li key={letra} className={`flex items-start gap-2 rounded-md border px-3 py-2 ${letra === q.gabarito ? "border-sucesso-borda bg-sucesso-fundo" : "border-borda"}`}>
                       <span className="font-semibold">{letra}</span>
-                      <TextoFormatado texto={q.alternativas[letra] ?? ""} compacto className="min-w-0 flex-1" />
+                      <div className="min-w-0 flex-1">
+                        <TextoFormatado texto={q.alternativas[letra] ?? ""} compacto />
+                        {q.comentarios?.[letra] && (
+                          <p className="mt-1 text-[13px] text-suave">
+                            <span className="font-semibold text-tinta-2">Comentário para quem marcar: </span>
+                            {q.comentarios[letra]}
+                          </p>
+                        )}
+                      </div>
                     </li>
                   ))}
                 </ul>

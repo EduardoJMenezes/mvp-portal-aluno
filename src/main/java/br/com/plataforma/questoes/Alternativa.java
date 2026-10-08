@@ -31,6 +31,10 @@ public class Alternativa {
     @Column(nullable = false)
     private String texto;
 
+    /** Por que alguém marca esta alternativa, e por que ela está certa ou errada. Opcional. */
+    @Column
+    private String comentario;
+
     protected Alternativa() {}
 
     Alternativa(Questao questao, Letra letra, String texto) {
@@ -47,7 +51,15 @@ public class Alternativa {
         return texto;
     }
 
+    public String getComentario() {
+        return comentario;
+    }
+
     void mudarTexto(String texto) {
         this.texto = texto;
+    }
+
+    void comentar(String comentario) {
+        this.comentario = comentario;
     }
 }

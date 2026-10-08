@@ -77,7 +77,9 @@ public class QuestoesComandos {
              * privacidade, e sem ele um vídeo unlisted não toca. `vimeo_id` vazio tira a
              * resolução. */
             QuestoesServico.DadosDoVideo resolucao,
-            String resolucaoComentada) {}
+            String resolucaoComentada,
+            /** Por letra: o que o aluno lê se marcar aquela alternativa. Vazio tira o comentário. */
+            Map<String, String> comentarios) {}
 
     /**
      * Altera a questão direto — o preview é no chat, antes da chamada.
@@ -95,7 +97,7 @@ public class QuestoesComandos {
                 new QuestoesServico.Alteracao(pedido.enunciado(), pedido.alternativas(),
                         pedido.gabarito(), pedido.dificuldade(), pedido.imagemPendente(),
                         pedido.assunto(), pedido.subassunto(), pedido.resolucao(),
-                        pedido.resolucaoComentada()),
+                        pedido.resolucaoComentada(), pedido.comentarios()),
                 agora);
 
         return questoes.detalhar(ident, String.valueOf(alterada.getId()), agora);

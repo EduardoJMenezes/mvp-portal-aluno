@@ -324,7 +324,7 @@ public class RascunhosServico {
             Integer questaoId, String enunciado, Map<Letra, String> alternativas, Letra gabarito,
             boolean completa, String resolucaoComentada,
             br.com.plataforma.questoes.Dificuldade dificuldade, List<Etiqueta> classificacao,
-            boolean imagemPendente, VideoDoItem video) {}
+            boolean imagemPendente, VideoDoItem video, Map<Letra, String> comentarios) {}
 
     /** {@code aulas}: onde a questão também está no curso. */
     public record QuestaoNaProva(
@@ -373,7 +373,9 @@ public class RascunhosServico {
                     q.isImagemPendente(),
                     q.getVideo() == null
                             ? null
-                            : new VideoDoItem(q.getVideo().getVimeoId(), q.getVideo().getTitulo()));
+                            : new VideoDoItem(q.getVideo().getVimeoId(), q.getVideo().getTitulo()),
+                    // Quem aprova o rascunho lê o que o aluno vai ler ao errar.
+                    q.comentarios());
         }).toList();
 
         var s = simuladoDoRascunho(r.getId());
