@@ -11,6 +11,10 @@ interface SubModuloRepositorio extends JpaRepository<SubModulo, Integer> {
 
     List<SubModulo> findByModuloOrderByOrdemAsc(Modulo modulo);
 
+    /** Os sub-módulos de vários módulos numa ida só ao banco: é assim que a árvore do curso os pede. */
+    @Query("select s from SubModulo s where s.modulo in :modulos order by s.ordem, s.id")
+    List<SubModulo> dosModulos(java.util.Collection<Modulo> modulos);
+
     @Query("select coalesce(max(s.ordem), 0) from SubModulo s where s.modulo = :modulo")
     int maiorOrdem(Modulo modulo);
 }

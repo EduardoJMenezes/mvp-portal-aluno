@@ -14,6 +14,12 @@ spring:
   # O banco vem de DATABASE_URL (postgresql://usuario:senha@host/banco, como o
   # Railway entrega — ver UrlDoBanco) ou das SPRING_DATASOURCE_*. Sem nenhuma
   # das duas, a aplicação não sobe: não há banco padrão a adivinhar.
+  datasource:
+    hikari:
+      # O padrão é 10, e era o teto do portal: a turma entrando junta esperava conexão em fila.
+      # As ociosas acima de 5 são devolvidas, para o Postgres não pagar memória por elas.
+      maximum-pool-size: 30
+      minimum-idle: 5
   jpa:
     # O schema é do Flyway. O Hibernate só confere se as entidades batem com ele.
     # Nunca `update`: ele não conhece o índice parcial nem o storage EXTERNAL do PDF.
@@ -22,6 +28,11 @@ spring:
     # Sem sessão aberta até a view: carregamento preguiçoso fora da transação
     # tem que falhar alto, não consultar escondido.
     open-in-view: false
+    properties:
+      hibernate:
+        # O que é preguiçoso carrega em lote: a turma de cada linha e o vídeo de cada linha vêm
+        # numa consulta para cem linhas, em vez de uma consulta por linha.
+        default_batch_fetch_size: 100
   flyway:
     # Produção já tem o schema: marca como V1 sem executar. Banco vazio roda a V1.
     # Tem que ser 1 — com 0, a V1 rodaria em produção e bateria nas tabelas existentes.

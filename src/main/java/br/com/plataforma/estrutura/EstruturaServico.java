@@ -130,6 +130,31 @@ public class EstruturaServico {
         return turmas.stream().map(Turma::getNome).toList();
     }
 
+    /** Os sub-módulos de cada módulo e as linhas de cada sub-módulo, já na ordem da tela. */
+    private record Ramos(java.util.Map<Integer, List<SubModulo>> submodulos, java.util.Map<Integer, List<Item>> itens) {
+
+        List<SubModulo> de(Modulo modulo) {
+            return submodulos.getOrDefault(modulo.getId(), List.of());
+        }
+
+        List<Item> de(SubModulo submodulo) {
+            return itens.getOrDefault(submodulo.getId(), List.of());
+        }
+    }
+
+    /**
+     * Tudo o que está debaixo destes módulos, em duas idas ao banco. Uma consulta por módulo e
+     * outra por sub-módulo fazia a árvore custar centenas de consultas — e ela é pedida por toda
+     * aba aberta, de minuto em minuto.
+     */
+    private Ramos ramos(List<Modulo> daArvore) {
+        var subs = daArvore.isEmpty() ? List.<SubModulo>of() : submodulos.dosModulos(daArvore);
+        var linhas = subs.isEmpty() ? List.<Item>of() : itens.dosSubmodulos(subs);
+        return new Ramos(
+                subs.stream().collect(java.util.stream.Collectors.groupingBy(s -> s.getModulo().getId())),
+                linhas.stream().collect(java.util.stream.Collectors.groupingBy(i -> i.getSubmodulo().getId())));
+    }
+
     /**
      * Módulos › sub-módulos › itens como uma turma os enxerga: os módulos que ela recebe e os que
      * têm aula só dela (decisão 0011).
@@ -147,11 +172,13 @@ public class EstruturaServico {
         var agenda = doAluno ? liberacao.das(List.of(turma.getId()))
                 : br.com.plataforma.agenda.LiberacaoServico.Liberacoes.NENHUMA;
 
-        for (var modulo : modulos.daTurma(turma)) {
+        var daTurma = modulos.daTurma(turma);
+        var ramos = ramos(daTurma);
+        for (var modulo : daTurma) {
             var galhos = new java.util.ArrayList<SubModuloNaArvore>();
 
-            for (var sub : submodulos.findByModuloOrderByOrdemAsc(modulo)) {
-                var lista = itens.findBySubmoduloOrderByOrdemAsc(sub).stream()
+            for (var sub : ramos.de(modulo)) {
+                var lista = ramos.de(sub).stream()
                         .filter(i -> !doAluno || (i.getStatus() == Status.PUBLICADO && i.visivelPara(turma)
                                 && agenda.liberado(turma.getId(), modulo.getId(), i.getId(), agora)))
                         // A linha só de PDF ou só de questão que perdeu o conteúdo não tem o que mostrar.
@@ -180,12 +207,14 @@ public class EstruturaServico {
     /** A biblioteca inteira, com todos os itens: é a tela "Aulas" do professor. */
     @Transactional(readOnly = true)
     public List<ModuloNaArvore> arvoreDaBiblioteca() {
-        return modulos.findAllByOrderByOrdemAscIdAsc().stream()
+        var todos = modulos.findAllByOrderByOrdemAscIdAsc();
+        var ramos = ramos(todos);
+        return todos.stream()
                 .map(modulo -> new ModuloNaArvore(modulo.getId(), modulo.getNome(), modulo.getOrdem(),
                         modulo.getCategoria(), null, nomes(modulo.getTurmas()),
-                        submodulos.findByModuloOrderByOrdemAsc(modulo).stream()
+                        ramos.de(modulo).stream()
                                 .map(sub -> new SubModuloNaArvore(sub.getId(), sub.getNome(), sub.getTipo(),
-                                        sub.getOrdem(), itens.findBySubmoduloOrderByOrdemAsc(sub).stream()
+                                        sub.getOrdem(), ramos.de(sub).stream()
                                                 .map(ItemNaArvore::de).toList()))
                                 .toList(),
                         modulo.getIcone(), modulo.getFotoVersao()))

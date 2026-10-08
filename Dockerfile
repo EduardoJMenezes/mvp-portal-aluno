@@ -31,6 +31,9 @@ WORKDIR /app
 COPY --from=build /build/target/api-*.jar ./api.jar
 COPY --from=frontend-build /app/frontend/out ./frontend/out
 ENV FRONTEND_DIR=/app/frontend/out
+# Sem teto, a JVM toma até um quarto da memória do contêiner (2 GB dos 8) e não devolve — e a
+# conta do Railway é memória. Uma variável JAVA_TOOL_OPTIONS no serviço vale mais que esta.
+ENV JAVA_TOOL_OPTIONS="-Xmx768m"
 
 # O Flyway roda na partida com baseline-version 1: banco que já tem o schema é
 # marcado sem executar nada, banco vazio recebe a V1. Se a migração falhar, a

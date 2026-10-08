@@ -385,8 +385,10 @@ export function LeitorPdf({ materialId }: { materialId: number }) {
         ).toString();
         const tarefa = pdfjs.getDocument({
           url: api.enderecoDoMaterial(materialId),
-          // Pede o arquivo em faixas: abrir a página 180 não baixa as 179 antes.
+          // Pede o arquivo em faixas: abrir a página 180 não baixa as 179 antes. Sem o
+          // disableStream, o pdf.js ignora o disableAutoFetch e arrasta o arquivo inteiro por trás.
           rangeChunkSize: 1 << 18,
+          disableStream: true,
           disableAutoFetch: true,
         });
         leitura = tarefa;

@@ -13,6 +13,19 @@ interface ItemRepositorio extends JpaRepository<Item, Integer> {
 
     List<Item> findBySubmoduloOrderByOrdemAsc(SubModulo submodulo);
 
+    /**
+     * As linhas de vários sub-módulos numa ida só ao banco, já com o PDF e a questão de cada uma:
+     * sem o {@code join fetch}, cada linha buscaria os seus numa consulta à parte. É
+     * {@code left join} para a linha sem PDF ou sem questão não sumir.
+     */
+    @Query("""
+            select i from Item i
+              left join fetch i.material
+              left join fetch i.questao
+             where i.submodulo in :submodulos
+             order by i.ordem, i.id""")
+    List<Item> dosSubmodulos(java.util.Collection<SubModulo> submodulos);
+
     List<Item> findBySubmoduloAndStatusOrderByOrdemAsc(SubModulo submodulo, Status status);
 
     Optional<Item> findFirstBySubmoduloAndVideo(SubModulo submodulo, Video video);
