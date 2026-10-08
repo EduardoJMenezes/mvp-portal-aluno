@@ -148,6 +148,25 @@ export function Vazio({ titulo, children }: { titulo: string; children?: ReactNo
   );
 }
 
+/** A barra de progresso do guia: trilho claro, preenchimento azul; completa, fica verde. */
+export function Progresso({ feitos, total, rotulo, className = "" }: { feitos: number; total: number; rotulo: string; className?: string }) {
+  const completo = total > 0 && feitos >= total;
+  return (
+    // É <span> para poder morar dentro de um link, como no cartão do módulo.
+    <span
+      role="progressbar"
+      aria-label={rotulo}
+      aria-valuemin={0}
+      aria-valuemax={total}
+      aria-valuenow={Math.min(feitos, total)}
+      aria-valuetext={`${feitos} de ${total}`}
+      className={`block h-1.5 overflow-hidden rounded-full bg-gelo ${className}`}
+    >
+      <span className={`block h-full rounded-full transition-[width] duration-500 ${completo ? "bg-sucesso-vivo" : "bg-acento"}`} style={{ width: `${total ? Math.min(100, (feitos / total) * 100) : 0}%` }} />
+    </span>
+  );
+}
+
 export function Carregando({ linhas = 3 }: { linhas?: number }) {
   return (
     <div aria-busy="true" aria-label="Carregando" className="flex flex-col gap-3">

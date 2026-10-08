@@ -52,6 +52,26 @@ seção "Em aberto", no fim.
 > olhando por uma turma, que não vê tudo —, e a ordem sai renumerada de 1 a n.
 > O sub-módulo também ganhou nome editável (`PATCH /api/admin/submodulos/{id}`).
 > Pelo Claude nada mudou: `editar_item` e `editar_modulo` seguem com `ordem`.
+>
+> **Mudou em 07/10/2026 (migração V12): aula assistida.** A plataforma guarda o
+> que cada aluno já fez do curso (`item_progress`, pacote `progresso/`), e cada
+> tipo de item se conclui do seu jeito:
+>
+> * **vídeo**: o player do Vimeo avisa a posição de tempos em tempos
+>   (`POST /api/aluno/itens/{id}/progresso`) e, ao **cruzar 90%**, o vídeo fica
+>   concluído. A posição fica guardada: o aluno continua de onde parou;
+> * **PDF**: quando o aluno marca (`PUT .../concluido`) — o portal marca ao
+>   abrir o PDF;
+> * **questão**: quando ele responde. Não tem linha em `item_progress`: quem
+>   diz é `item_answers`, e questão não se marca nem desmarca à mão.
+>
+> O aluno pode marcar e desmarcar vídeo e PDF. O total de cada aluno é o que a
+> turma dele vê **hoje** (publicado, da turma, liberado pela agenda): publicar
+> uma aula nova baixa o percentual de todo mundo, de propósito. A árvore do
+> aluno (`/api/aluno/conteudo`) leva só `concluido` por item — a posição não,
+> para o ETag dela não mudar a cada aviso do player. O professor vê por turma
+> (`GET /api/admin/turmas/{turma}/progresso`) e por aluno, item a item
+> (`GET /api/admin/alunos/{aluno}/progresso`).
 > Pelo Claude vai só o ícone (`criar_modulo`, `editar_modulo`) — arquivo não
 > passa pelo chat.
 

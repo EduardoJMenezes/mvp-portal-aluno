@@ -2,6 +2,7 @@
 
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense } from "react";
+import { CursoDoAluno } from "@/components/CursoDoAluno";
 import { OndeRevisar } from "@/components/Resultado";
 import { Anel } from "@/components/Resultado";
 import { Aviso, Campo, Cartao, Estado, Etiqueta, Pagina, TituloDeSecao } from "@/components/ui";
@@ -25,11 +26,13 @@ function DesempenhoDoAluno() {
   const simulados = useDados(() => api.simuladosDoProfessor());
 
   return (
-    <Pagina titulo={desempenho.dados?.aluno ?? "Desempenho do aluno"} legenda="Como foi em cada simulado — a qualquer momento, inclusive antes de fechar." voltar={{ href: "/admin/turmas/", rotulo: "Turmas" }}>
+    <Pagina titulo={desempenho.dados?.aluno ?? "Desempenho do aluno"} legenda="O que já fez do curso e como foi em cada simulado, a qualquer momento, inclusive antes de fechar." voltar={{ href: "/admin/turmas/", rotulo: "Turmas" }}>
       {!aluno ? (
         <Aviso tom="atencao">Abra o desempenho a partir da lista de alunos ou do ranking.</Aviso>
       ) : (
         <>
+          <CursoDoAluno aluno={aluno} />
+          <TituloDeSecao>Nos simulados</TituloDeSecao>
           <Campo rotulo="Simulado" className="max-w-md">
             {(id) => (
               <select

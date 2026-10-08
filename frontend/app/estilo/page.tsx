@@ -159,7 +159,11 @@ export default function PaginaDeEstilo() {
       <Bloco titulo="Cartão de módulo" nota="A capa é o ícone ou a foto que o professor escolhe ao criar o módulo; sem escolha, o ícone sai do nome do capítulo. O código da apostila (K01) vira a etiqueta. A barra de progresso do guia entra quando a plataforma registrar as aulas assistidas.">
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           <CartaoDoModulo modulo={EXEMPLO} />
-          <CartaoDoModulo modulo={{ ...EXEMPLO, id: -1, nome: "K03 - Estequiometria", submodulos: [EXEMPLO.submodulos[0]] }} />
+          {/* Com o progresso do aluno: os dez primeiros itens já feitos. */}
+          <CartaoDoModulo
+            comProgresso
+            modulo={{ ...EXEMPLO, id: -1, nome: "K03 - Estequiometria", submodulos: EXEMPLO.submodulos.map((s) => ({ ...s, itens: s.itens.map((i, n) => ({ ...i, concluido: n < 9 })) })) }}
+          />
           <CartaoDoModulo modulo={{ ...EXEMPLO, id: -2, nome: "K05 - Separação de misturas", icone: "gota" }} />
         </div>
       </Bloco>

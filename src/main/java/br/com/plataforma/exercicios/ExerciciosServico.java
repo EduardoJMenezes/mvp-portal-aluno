@@ -106,6 +106,22 @@ public class ExerciciosServico {
         return saida;
     }
 
+    public record Resposta(Integer alunoId, Integer itemId, boolean correta, Instant respondidoEm) {}
+
+    /** As respostas de um aluno nestes itens, com a data: é a linha do tempo dele no curso. */
+    @Transactional(readOnly = true)
+    public List<Resposta> respostasDoAluno(Integer alunoId, Collection<Integer> itens) {
+        return itens.isEmpty() ? List.of() : respostas.findByAlunoIdAndItemIdIn(alunoId, itens).stream()
+                .map(r -> new Resposta(r.getAlunoId(), r.getItemId(), r.isCorreta(), r.getRespondidoEm())).toList();
+    }
+
+    /** As respostas de todos os alunos nestes itens: é o que o progresso da turma conta. */
+    @Transactional(readOnly = true)
+    public List<Resposta> respostasNosItens(Collection<Integer> itens) {
+        return itens.isEmpty() ? List.of() : respostas.findByItemIdIn(itens).stream()
+                .map(r -> new Resposta(r.getAlunoId(), r.getItemId(), r.isCorreta(), r.getRespondidoEm())).toList();
+    }
+
     private static RegraDeNegocio jaRespondida() {
         return new RegraDeNegocio("Você já respondeu esta questão: vale a primeira resposta.");
     }

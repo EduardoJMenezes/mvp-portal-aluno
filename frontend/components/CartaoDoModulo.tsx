@@ -4,19 +4,24 @@ import type { AulaNoCurso, Modulo } from "@/lib/api";
 import { contarAulas, emBrasilia } from "@/lib/formato";
 import { partesDoNome } from "@/lib/icones";
 import { CapaDoModulo } from "./CapaDoModulo";
+import { Progresso } from "./ui";
 
 // O cartão do capítulo em "Meu curso", como no guia: a capa (ícone ou foto), o código da apostila,
-// o título e o que tem dentro. A barra de progresso do guia entra quando a plataforma souber
-// o que o aluno já assistiu — até lá, um número aqui seria inventado.
+// o título, o que tem dentro e, para o aluno, a barra do que ele já fez.
 
-export function CartaoDoModulo({ modulo }: { modulo: Modulo }) {
+/** `comProgresso`: só para o aluno — o professor que abre "Meu curso" não tem o que mostrar na barra. */
+export function CartaoDoModulo({ modulo, comProgresso = false }: { modulo: Modulo; comProgresso?: boolean }) {
   const { codigo, titulo } = partesDoNome(modulo.nome);
   const itens = modulo.submodulos.flatMap((s) => s.itens);
   const soVideos = itens.length > 0 && itens.every((i) => i.video_id != null);
+  const feitos = itens.filter((i) => i.concluido).length;
+  const completo = itens.length > 0 && feitos === itens.length;
+  // Quem já começou cai direto na primeira aula que falta.
+  const proxima = comProgresso && feitos > 0 ? itens.find((i) => !i.concluido) : undefined;
 
   return (
     <Link
-      href={`/curso/aula/?modulo=${modulo.id}`}
+      href={`/curso/aula/?modulo=${modulo.id}${proxima ? `&item=${proxima.id}` : ""}`}
       className="group flex h-full gap-4 rounded-cartao border border-borda/70 bg-papel p-5 shadow-suave transition-colors hover:border-acento/50"
     >
       <CapaDoModulo modulo={modulo} />
@@ -35,8 +40,16 @@ export function CartaoDoModulo({ modulo }: { modulo: Modulo }) {
           })}
         </span>
         <ProximaAula aulas={modulo.submodulos.flatMap((s) => s.aulas ?? [])} />
-        <span className="mt-auto inline-flex items-center gap-1.5 pt-1 text-sm font-semibold text-acento group-hover:text-acento-forte">
-          {itens.length === 0 ? "Ver capítulo" : `${soVideos ? "Assistir" : "Abrir"} • ${contarAulas(itens)}`}
+        {comProgresso && itens.length > 0 && (
+          <span className="mt-auto flex flex-col gap-1.5 pt-1">
+            <Progresso feitos={feitos} total={itens.length} rotulo={`Progresso em ${modulo.nome}`} />
+            <span className={`text-[13px] tabular-nums ${completo ? "font-semibold text-sucesso" : "text-suave"}`}>
+              {completo ? "Concluído" : feitos === 0 ? "Ainda não começou" : `${feitos} de ${itens.length} concluídos`}
+            </span>
+          </span>
+        )}
+        <span className={`${comProgresso && itens.length > 0 ? "" : "mt-auto pt-1"} inline-flex items-center gap-1.5 text-sm font-semibold text-acento group-hover:text-acento-forte`}>
+          {itens.length === 0 ? "Ver capítulo" : comProgresso && feitos > 0 && !completo ? "Continuar" : `${soVideos ? "Assistir" : "Abrir"} • ${contarAulas(itens)}`}
           <ArrowRight aria-hidden="true" className="size-4 transition-transform group-hover:translate-x-0.5" />
         </span>
       </span>

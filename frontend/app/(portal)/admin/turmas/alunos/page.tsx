@@ -3,8 +3,9 @@
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useState, type FormEvent } from "react";
-import { Aviso, Botao, Campo, Cartao, Estado, Etiqueta, Pagina, SegredoUmaVez, Vazio, useConfirmar } from "@/components/ui";
+import { Aviso, Botao, Campo, Cartao, Estado, Etiqueta, Pagina, Progresso, SegredoUmaVez, Vazio, useConfirmar } from "@/components/ui";
 import { api, useDados, type Aluno } from "@/lib/api";
+import { emBrasilia, haQuantoTempo } from "@/lib/formato";
 
 export default function PaginaDosAlunos() {
   return (
@@ -19,6 +20,9 @@ type Segredo = { titulo: string; valor: string; para: string };
 function Alunos() {
   const turma = Number(useSearchParams().get("turma"));
   const alunos = useDados(() => api.alunosDaTurma(turma), [turma]);
+  // O progresso vem à parte: se falhar, a lista de alunos continua de pé.
+  const progresso = useDados(() => api.progressoDaTurma(turma).catch(() => null), [turma]);
+  const noCurso = new Map(progresso.dados?.alunos.map((a) => [a.id, a]));
   const [segredo, setSegredo] = useState<Segredo | null>(null);
   const [erro, setErro] = useState("");
   const [dialogo, confirmar] = useConfirmar();
@@ -60,7 +64,7 @@ function Alunos() {
   return (
     <Pagina
       titulo={alunos.dados ? `Alunos · ${alunos.dados.turma}` : "Alunos"}
-      legenda="Quem está matriculado vê o curso publicado e os simulados desta turma."
+      legenda={`Quem está matriculado vê o curso publicado e os simulados desta turma.${progresso.dados ? ` Hoje o curso dela tem ${progresso.dados.total} ${progresso.dados.total === 1 ? "item publicado" : "itens publicados"}.` : ""}`}
       voltar={{ href: "/admin/turmas/", rotulo: "Turmas" }}
     >
       {dialogo}
@@ -77,11 +81,12 @@ function Alunos() {
             <Vazio titulo="Nenhum aluno nesta turma">Matricule pelo e-mail acima.</Vazio>
           ) : (
             <Cartao className="overflow-x-auto">
-              <table className="tabela min-w-[40rem]">
+              <table className="tabela min-w-[52rem]">
                 <thead>
                   <tr>
                     <th scope="col">Aluno</th>
                     <th scope="col">E-mail</th>
+                    <th scope="col">No curso</th>
                     <th scope="col">Acesso</th>
                     <th scope="col"><span className="sr-only">Ações</span></th>
                   </tr>
@@ -91,10 +96,13 @@ function Alunos() {
                     <tr key={a.id}>
                       <td className="font-medium">{a.nome}</td>
                       <td className="break-all text-suave">{a.email}</td>
+                      <td className="min-w-44">
+                        <NoCurso aluno={noCurso.get(a.id)} carregando={progresso.carregando} />
+                      </td>
                       <td>{a.senha_temporaria ? <Etiqueta tom="atencao">Senha temporária</Etiqueta> : <Etiqueta tom="sucesso">Ativo</Etiqueta>}</td>
                       <td>
                         <div className="flex flex-wrap justify-end gap-x-3 gap-y-1 text-sm">
-                          <Link href={`/admin/alunos/?aluno=${a.id}`} className="font-semibold text-acento hover:underline">Desempenho</Link>
+                          <Link href={`/admin/alunos/?aluno=${a.id}`} className="font-semibold text-acento hover:underline">Acompanhar</Link>
                           <button type="button" onClick={() => void redefinir(a)} className="font-semibold text-acento hover:underline">Nova senha</button>
                           <button type="button" onClick={() => void tirar(a)} className="font-semibold text-erro hover:underline">Tirar da turma</button>
                         </div>
@@ -108,6 +116,24 @@ function Alunos() {
         }
       </Estado>
     </Pagina>
+  );
+}
+
+/** Quanto do curso o aluno já fez e quando apareceu pela última vez. */
+function NoCurso({ aluno, carregando }: { aluno?: { nome: string; concluidos: number; total: number; ultima_atividade: string | null }; carregando: boolean }) {
+  if (!aluno) return <span className="text-suave">{carregando ? "…" : "—"}</span>;
+  if (aluno.total === 0) return <span className="text-suave">Sem itens publicados</span>;
+  return (
+    <div className="flex flex-col gap-1">
+      <span className="flex items-baseline justify-between gap-2">
+        <span className="font-medium tabular-nums text-tinta">{aluno.concluidos} de {aluno.total}</span>
+        <span className="text-[13px] tabular-nums text-suave">{Math.round((aluno.concluidos / aluno.total) * 100)}%</span>
+      </span>
+      <Progresso feitos={aluno.concluidos} total={aluno.total} rotulo={`Progresso de ${aluno.nome} no curso`} />
+      <span className="text-[13px] text-suave" title={aluno.ultima_atividade ? emBrasilia(aluno.ultima_atividade) : undefined}>
+        {aluno.ultima_atividade ? `Última atividade ${haQuantoTempo(aluno.ultima_atividade)}` : "Ainda não começou"}
+      </span>
+    </div>
   );
 }
 

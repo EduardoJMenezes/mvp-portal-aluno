@@ -22,11 +22,13 @@ public class CatalogoServico {
     private final br.com.plataforma.acervo.AcessoServico acesso;
     private final br.com.plataforma.aulas.AulasServico aulas;
     private final br.com.plataforma.exercicios.ExerciciosServico exercicios;
+    private final br.com.plataforma.progresso.ProgressoServico progresso;
 
     public CatalogoServico(TurmaRepositorio turmas, EstruturaServico estrutura,
             br.com.plataforma.contas.ContasServico contas, br.com.plataforma.acervo.AcervoServico acervo,
             br.com.plataforma.acervo.AcessoServico acesso, br.com.plataforma.aulas.AulasServico aulas,
-            br.com.plataforma.exercicios.ExerciciosServico exercicios) {
+            br.com.plataforma.exercicios.ExerciciosServico exercicios,
+            br.com.plataforma.progresso.ProgressoServico progresso) {
         this.turmas = turmas;
         this.estrutura = estrutura;
         this.contas = contas;
@@ -34,6 +36,7 @@ public class CatalogoServico {
         this.acesso = acesso;
         this.aulas = aulas;
         this.exercicios = exercicios;
+        this.progresso = progresso;
     }
 
     /** As turmas que a identidade enxerga: operador, todas; aluno, as dele. */
@@ -145,12 +148,14 @@ public class CatalogoServico {
 
     /**
      * {@code video} null: a linha é só o PDF de {@code material} (decisão 0013), ou a
-     * {@code questao} que o aluno responde ali.
+     * {@code questao} que o aluno responde ali. {@code concluido}: o aluno já assistiu, abriu ou
+     * respondeu — a posição em que parou no vídeo não vem aqui, para a árvore não mudar a cada
+     * aviso do player (ela tem ETag).
      */
     public record ItemComVideo(
             Integer id, String nome, Integer ordem, Status status, Integer videoId,
             br.com.plataforma.acervo.AcessoServico.VideoDescrito video,
-            br.com.plataforma.materiais.MaterialLigado material, QuestaoNaAula questao) {}
+            br.com.plataforma.materiais.MaterialLigado material, QuestaoNaAula questao, boolean concluido) {}
 
     public record SubModuloComVideos(
             Integer id, String nome, br.com.plataforma.estrutura.TipoSubModulo tipo, Integer ordem,
@@ -200,6 +205,9 @@ public class CatalogoServico {
             var feitas = exercicios.feitasPeloAluno(ident.usuarioId(), modulos.stream()
                     .flatMap(m -> m.submodulos().stream()).flatMap(s -> s.itens().stream())
                     .filter(i -> i.questao() != null).map(EstruturaServico.ItemNaArvore::id).toList());
+            var vistos = ident.eAluno() ? progresso.concluidosPeloAluno(ident.usuarioId(), modulos.stream()
+                    .flatMap(m -> m.submodulos().stream()).flatMap(s -> s.itens().stream())
+                    .filter(i -> i.questao() == null).map(EstruturaServico.ItemNaArvore::id).toList()) : java.util.Set.<Integer>of();
 
             saida.add(new ConteudoDaTurma(turma.getNome(), turma.getId(), modulos.stream()
                     .map(m -> new ModuloComVideos(m.id(), m.nome(), m.ordem(), m.categoria(), m.turma(),
@@ -214,7 +222,8 @@ public class CatalogoServico {
                                                     i.material(),
                                                     i.questao() == null ? null : new QuestaoNaAula(
                                                             i.questao().questaoId(), feitas.containsKey(i.id()),
-                                                            feitas.containsKey(i.id()) ? feitas.get(i.id()).correta() : null)))
+                                                            feitas.containsKey(i.id()) ? feitas.get(i.id()).correta() : null),
+                                                    i.questao() == null ? vistos.contains(i.id()) : feitas.containsKey(i.id())))
                                             .toList(),
                                     aoVivo.getOrDefault(s.id(), List.of())))
                                     .toList(),

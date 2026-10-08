@@ -1,14 +1,16 @@
 "use client";
 
+import { Check, CircleCheck } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useMemo, useState } from "react";
 import { Exercicio } from "@/components/Exercicio";
 import { Player } from "@/components/Player";
 import { LinkDoPdf } from "@/components/Pdf";
-import { Aviso, Botao, BotaoLink, Estado, Pagina } from "@/components/ui";
-import { abrirEmNovaAba, api, useDados, type AulaNoCurso, type ConteudoDaTurma } from "@/lib/api";
+import { Aviso, Botao, Estado, Pagina, Progresso, botao } from "@/components/ui";
+import { abrirEmNovaAba, api, useDados, type AulaNoCurso, type ConteudoDaTurma, type ItemCurso } from "@/lib/api";
 import { duracao, emBrasilia } from "@/lib/formato";
+import { useUsuario } from "@/lib/sessao";
 
 export default function PaginaDaAula() {
   return (
@@ -38,6 +40,11 @@ function Modulo({ turmas }: { turmas: ConteudoDaTurma[] }) {
   const itens = useMemo(() => modulo?.submodulos.flatMap((s) => s.itens) ?? [], [modulo]);
   // A resposta dada agora: a lista marca a questão sem esperar a árvore do curso ser relida.
   const [feitasAgora, setFeitasAgora] = useState<Record<number, boolean>>({});
+  // O mesmo para a aula assistida: o que mudou nesta visita vale por cima do que a árvore trouxe.
+  const [concluidosAgora, setConcluidosAgora] = useState<Record<number, boolean>>({});
+  const [erroAoMarcar, setErroAoMarcar] = useState("");
+  // Só o aluno tem progresso: o professor abre esta tela para conferir, e nada é gravado.
+  const acompanha = useUsuario().papel === "ALUNO";
 
   if (!modulo) {
     return (
@@ -49,6 +56,20 @@ function Modulo({ turmas }: { turmas: ConteudoDaTurma[] }) {
 
   const indice = Math.max(0, itens.findIndex((i) => i.id === itemId));
   const atual = itens[indice];
+  const concluido = (item: ItemCurso) => (item.questao ? item.id in feitasAgora || !!item.questao.respondida : (concluidosAgora[item.id] ?? !!item.concluido));
+  const feitos = itens.filter(concluido).length;
+  const anotar = (item: number, valor: boolean) => setConcluidosAgora((c) => (c[item] === valor ? c : { ...c, [item]: valor }));
+
+  async function marcar(item: ItemCurso, valor: boolean) {
+    setErroAoMarcar("");
+    anotar(item.id, valor);
+    try {
+      anotar(item.id, (await api.marcarConcluido(item.id, valor)).concluido);
+    } catch (ex) {
+      anotar(item.id, !valor);
+      setErroAoMarcar(ex instanceof Error ? ex.message : "Não foi possível salvar.");
+    }
+  }
   const ir = (novo: number) => router.push(`/curso/aula/?modulo=${modulo.id}&item=${itens[novo].id}`, { scroll: false });
 
   return (
@@ -62,12 +83,21 @@ function Modulo({ turmas }: { turmas: ConteudoDaTurma[] }) {
           ) : atual.questao ? (
             <Exercicio item={atual.id} aoResponder={(correta) => setFeitasAgora((f) => ({ ...f, [atual.id]: correta }))} />
           ) : atual.video ? (
-            <Player video={atual.video} />
+            <VideoDaAula key={atual.id} item={atual} acompanha={acompanha} aoMudar={(valor) => anotar(atual.id, valor)} />
           ) : atual.material ? (
             <Aviso tom="info" titulo="Esta aula é um PDF">
               Abra no leitor: dá para riscar por cima, e o que você marcar fica salvo.
               <div className="mt-3">
-                <BotaoLink variante="primario" href={`/materiais/ler/?id=${atual.material.material_id}`}>Abrir o PDF</BotaoLink>
+                {/* Abrir o PDF já conta como visto; o aluno desmarca se quiser voltar depois. */}
+                <Link
+                  href={`/materiais/ler/?id=${atual.material.material_id}`}
+                  onClick={() => {
+                    if (acompanha && !concluido(atual)) void marcar(atual, true);
+                  }}
+                  className={botao("primario")}
+                >
+                  Abrir o PDF
+                </Link>
               </div>
             </Aviso>
           ) : (
@@ -81,19 +111,42 @@ function Modulo({ turmas }: { turmas: ConteudoDaTurma[] }) {
               ) : null}
               {atual.video && atual.material && <LinkDoPdf material={atual.material} className="mt-1" />}
             </div>
-            <div className="flex gap-2">
+            <div className="flex flex-wrap items-center gap-2">
+              {acompanha && !atual.questao && !(atual.video?.bloqueado) && (
+                <Botao
+                  variante={concluido(atual) ? "secundario" : "neutro"}
+                  aria-pressed={concluido(atual)}
+                  onClick={() => void marcar(atual, !concluido(atual))}
+                  title={concluido(atual) ? "Clique para desmarcar" : undefined}
+                >
+                  {concluido(atual) && <CircleCheck aria-hidden="true" className="size-[18px] text-sucesso-vivo" strokeWidth={2.4} />}
+                  {concluido(atual) ? (atual.video ? "Assistida" : "Lido") : atual.video ? "Marcar como assistida" : "Marcar como lido"}
+                </Botao>
+              )}
               <Botao disabled={indice === 0} onClick={() => ir(indice - 1)}>Anterior</Botao>
               <Botao variante="primario" disabled={indice >= itens.length - 1} onClick={() => ir(indice + 1)}>Próximo</Botao>
             </div>
           </div>}
+          {erroAoMarcar && <Aviso tom="erro">{erroAoMarcar}</Aviso>}
         </div>
 
         <aside aria-label="Aulas do módulo" className="flex flex-col gap-3 lg:sticky lg:top-20 lg:max-h-[calc(100dvh-6rem)] lg:overflow-y-auto">
+          {acompanha && itens.length > 0 && (
+            <div className="rounded-cartao border border-borda bg-papel px-4 py-3">
+              <p className="flex items-baseline justify-between gap-2 text-sm">
+                <span className="font-semibold text-tinta">{feitos === itens.length ? "Capítulo concluído" : "Seu progresso"}</span>
+                <span className="tabular-nums text-suave">{feitos} de {itens.length}</span>
+              </p>
+              <Progresso feitos={feitos} total={itens.length} rotulo="Progresso neste capítulo" className="mt-2" />
+            </div>
+          )}
           {modulo.submodulos.map((sub) => (
             <details key={sub.id} open className="rounded-cartao border border-borda bg-papel">
               <summary className="flex cursor-pointer items-center justify-between px-4 py-3 font-semibold text-tinta">
                 {sub.nome}
-                <span className="text-sm font-normal tabular-nums text-suave">{sub.itens.length}</span>
+                <span className="text-sm font-normal tabular-nums text-suave">
+                  {acompanha && sub.itens.length > 0 ? `${sub.itens.filter(concluido).length}/${sub.itens.length}` : sub.itens.length}
+                </span>
               </summary>
               <ol className="border-t border-borda py-1">
                 {sub.itens.map((item) => {
@@ -114,6 +167,8 @@ function Modulo({ turmas }: { turmas: ConteudoDaTurma[] }) {
                             <svg width="12" height="12" viewBox="0 0 24 24"><path d="M7 10V7a5 5 0 0 1 10 0v3" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" /><rect x="4.5" y="10" width="15" height="11" rx="2.5" fill="currentColor" /></svg>
                           ) : acertou !== undefined ? (
                             <span className={`font-bold ${acertou ? "text-sucesso" : "text-erro"}`}>{acertou ? "✓" : "✗"}</span>
+                          ) : !item.questao && concluido(item) ? (
+                            <Check className="size-4 text-sucesso-vivo" strokeWidth={3} />
                           ) : selecionado ? (
                             "▶"
                           ) : item.questao ? (
@@ -124,6 +179,7 @@ function Modulo({ turmas }: { turmas: ConteudoDaTurma[] }) {
                         </span>
                         <span className="truncate">{item.nome}</span>
                         {bloqueado && <span className="sr-only">(bloqueado)</span>}
+                        {!item.questao && concluido(item) && <span className="sr-only">({item.video ? "assistida" : "lido"})</span>}
                         {item.questao && <span className="sr-only">{acertou === undefined ? "(questão para responder)" : acertou ? "(questão: você acertou)" : "(questão: você errou)"}</span>}
                       </Link>
                     </li>
@@ -136,6 +192,32 @@ function Modulo({ turmas }: { turmas: ConteudoDaTurma[] }) {
         </aside>
       </div>
     </Pagina>
+  );
+}
+
+/**
+ * O vídeo da aula, que continua de onde o aluno parou e conta ao backend até onde ele foi. Quem usa
+ * dá uma `key` por aula: cada aula tem o seu player e o seu ponto de retomada.
+ */
+function VideoDaAula({ item, acompanha, aoMudar }: { item: ItemCurso; acompanha: boolean; aoMudar: (concluido: boolean) => void }) {
+  const video = item.video!;
+  const registra = acompanha && !video.bloqueado && !!video.embed_url;
+  // Sem o ponto de retomada o vídeo abre do começo: não é motivo para não tocar.
+  const parou = useDados(() => (registra ? api.progressoDoItem(item.id).catch(() => null) : Promise.resolve(null)), [item.id, registra]);
+
+  if (!registra) return <Player video={video} />;
+  if (parou.carregando) return <div aria-busy="true" aria-label="Carregando o vídeo" className="aspect-video w-full animate-pulse rounded-cartao bg-tinta/10" />;
+
+  const total = video.duracao_segundos ?? 0;
+  const p = parou.dados;
+  // Quem já terminou, ou parou nos últimos instantes, recomeça do início.
+  const inicio = p && !p.concluido && p.posicao_segundos >= 10 && (!total || p.posicao_segundos < total * 0.95) ? p.posicao_segundos : 0;
+  return (
+    <Player
+      video={video}
+      inicio={inicio}
+      aoAssistir={(posicao, duracaoDoVideo) => void api.registrarProgresso(item.id, posicao, duracaoDoVideo).then((r) => aoMudar(r.concluido), () => {})}
+    />
   );
 }
 

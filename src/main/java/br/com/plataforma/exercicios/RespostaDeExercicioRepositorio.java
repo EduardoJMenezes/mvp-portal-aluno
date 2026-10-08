@@ -10,4 +10,6 @@ interface RespostaDeExercicioRepositorio extends JpaRepository<RespostaDeExercic
     Optional<RespostaDeExercicio> findByItemIdAndAlunoId(Integer itemId, Integer alunoId);
 
     List<RespostaDeExercicio> findByAlunoIdAndItemIdIn(Integer alunoId, Collection<Integer> itens);
+
+    List<RespostaDeExercicio> findByItemIdIn(Collection<Integer> itens);
 }

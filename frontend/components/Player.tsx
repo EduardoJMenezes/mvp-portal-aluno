@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Video } from "@/lib/api";
 import { duracao } from "@/lib/formato";
 import { Botao } from "./ui";
@@ -9,12 +9,99 @@ import { Botao } from "./ui";
 // recusa tocar vídeo unlisted (docs/VIMEO.md). Vídeo bloqueado chega só com o
 // nome e o aviso — não há o que o devtools libere.
 
-export function Player({ video }: { video: Video }) {
-  if (video.bloqueado || !video.embed_url) return <VideoBloqueado titulo={video.titulo} motivo={video.motivo} />;
+const VIMEO = "https://player.vimeo.com";
+/** De quanto em quanto tempo o player conta onde o aluno está. */
+const INTERVALO_MS = 15_000;
+/** O mesmo limiar do backend: passou daqui, avisa na hora, para o "assistida" aparecer sem esperar. */
+const PERTO_DO_FIM = 0.9;
+
+/**
+ * `inicio`: de onde o vídeo começa, em segundos (o aluno continua de onde parou).
+ * `aoAssistir`: chamado de tempos em tempos, ao pausar, ao terminar e ao sair, com a posição e a
+ * duração em segundos. Quem usa os dois dá uma `key` por aula: trocar de aula tem que desmontar o
+ * player, para o último aviso sair com a aula certa.
+ */
+export function Player({ video, inicio = 0, aoAssistir }: { video: Video; inicio?: number; aoAssistir?: (posicao: number, duracao: number) => void }) {
+  const quadro = useRef<HTMLIFrameElement>(null);
+  const avisar = useRef(aoAssistir);
+  useEffect(() => {
+    avisar.current = aoAssistir;
+  });
+  // O ponto de partida é o do primeiro desenho: se ele mudasse depois, o `src` mudaria junto e o
+  // vídeo recarregaria no meio da aula. Outro vídeo no mesmo player começa do início.
+  const [partida] = useState(() => ({ video: video.id, inicio: Math.floor(inicio) }));
+  const comeco = partida.video === video.id ? partida.inicio : 0;
+  const src = video.embed_url && comeco > 0 ? `${video.embed_url}#t=${comeco}s` : video.embed_url;
+  const ouve = !!aoAssistir && !!src?.startsWith(VIMEO);
+
+  // O player do Vimeo conversa por postMessage: pedimos os eventos e ele manda { seconds, duration }.
+  useEffect(() => {
+    if (!ouve) return;
+    const janela = () => quadro.current?.contentWindow;
+    let ultima: { posicao: number; duracao: number } | null = null;
+    let pendente = false;
+    let enviadoEm = 0;
+    let pertoDoFim = false;
+
+    const enviar = () => {
+      if (!ultima || !pendente) return;
+      pendente = false;
+      enviadoEm = Date.now();
+      avisar.current?.(Math.floor(ultima.posicao), Math.round(ultima.duracao));
+    };
+    const pedirEventos = () => {
+      for (const evento of ["timeupdate", "pause", "ended"]) janela()?.postMessage(JSON.stringify({ method: "addEventListener", value: evento }), VIMEO);
+    };
+    const ouvir = (e: MessageEvent) => {
+      if (e.origin !== VIMEO || e.source !== janela()) return;
+      let recado: { event?: string; data?: { seconds?: number; duration?: number } };
+      try {
+        recado = typeof e.data === "string" ? JSON.parse(e.data) : e.data;
+      } catch {
+        return;
+      }
+      if (recado?.event === "ready") return pedirEventos();
+      const { seconds, duration } = recado?.data ?? {};
+      if (typeof seconds !== "number" || typeof duration !== "number" || duration <= 0) return;
+      if (recado.event === "ended") {
+        ultima = { posicao: duration, duracao: duration };
+        pendente = true;
+        enviar();
+      } else if (recado.event === "pause") {
+        ultima = { posicao: seconds, duracao: duration };
+        pendente = true;
+        enviar();
+      } else if (recado.event === "timeupdate") {
+        ultima = { posicao: seconds, duracao: duration };
+        pendente = true;
+        const agoraPerto = seconds >= duration * PERTO_DO_FIM;
+        if (Date.now() - enviadoEm >= INTERVALO_MS || (agoraPerto && !pertoDoFim)) enviar();
+        pertoDoFim = agoraPerto;
+      }
+    };
+    const aoEsconder = () => {
+      if (document.visibilityState === "hidden") enviar();
+    };
+
+    const elemento = quadro.current;
+    window.addEventListener("message", ouvir);
+    document.addEventListener("visibilitychange", aoEsconder);
+    // O "ready" pode passar antes de começarmos a ouvir: ao carregar, pedimos de novo (não faz mal).
+    elemento?.addEventListener("load", pedirEventos);
+    return () => {
+      enviar();
+      window.removeEventListener("message", ouvir);
+      document.removeEventListener("visibilitychange", aoEsconder);
+      elemento?.removeEventListener("load", pedirEventos);
+    };
+  }, [ouve]);
+
+  if (video.bloqueado || !src) return <VideoBloqueado titulo={video.titulo} motivo={video.motivo} />;
   return (
     <div className="aspect-video w-full overflow-hidden rounded-cartao bg-tinta">
       <iframe
-        src={video.embed_url}
+        ref={quadro}
+        src={src}
         title={video.titulo}
         allow="fullscreen; picture-in-picture"
         allowFullScreen

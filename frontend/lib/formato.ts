@@ -46,6 +46,20 @@ export function paraCampoDataHora(iso?: string | null): string {
   return `${partes.year}-${partes.month}-${partes.day}T${partes.hour}:${partes.minute}`;
 }
 
+const RELATIVO = new Intl.RelativeTimeFormat("pt-BR", { numeric: "auto" });
+
+/** "há 3 dias", "ontem", "há 2 horas": quando foi, para quem só quer saber se é recente. */
+export function haQuantoTempo(iso?: string | null): string {
+  if (!iso) return "nunca";
+  const minutos = Math.round((new Date(iso).getTime() - Date.now()) / 60_000);
+  if (Number.isNaN(minutos)) return "—";
+  if (Math.abs(minutos) < 1) return "agora há pouco";
+  if (Math.abs(minutos) < 60) return RELATIVO.format(minutos, "minute");
+  if (Math.abs(minutos) < 60 * 24) return RELATIVO.format(Math.round(minutos / 60), "hour");
+  if (Math.abs(minutos) < 60 * 24 * 30) return RELATIVO.format(Math.round(minutos / (60 * 24)), "day");
+  return RELATIVO.format(Math.round(minutos / (60 * 24 * 30)), "month");
+}
+
 export function relogio(segundos: number): string {
   const dois = (n: number) => String(n).padStart(2, "0");
   const h = Math.floor(segundos / 3600);

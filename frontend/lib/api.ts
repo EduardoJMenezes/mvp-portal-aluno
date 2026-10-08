@@ -165,8 +165,38 @@ export type MaterialLigado = { material_id: number; titulo: string };
  * respondeu e se acertou — o enunciado vem quando ele abre a linha.
  */
 export type QuestaoDaLinha = { questao_id: number; resumo?: string; status?: StatusConteudo; respondida?: boolean; correta?: boolean | null };
-/** Sem `video_id`, a linha é só o PDF de `material` ou a `questao` que o aluno responde ali. */
-export type ItemCurso = { id: number; nome: string; ordem: number; status: StatusConteudo; video_id: number | null; video?: Video | null; turmas?: string[]; material?: MaterialLigado | null; questao?: QuestaoDaLinha | null };
+/**
+ * Sem `video_id`, a linha é só o PDF de `material` ou a `questao` que o aluno responde ali.
+ * `concluido` só vem para o aluno: ele já assistiu o vídeo, abriu o PDF ou respondeu a questão.
+ */
+export type ItemCurso = { id: number; nome: string; ordem: number; status: StatusConteudo; video_id: number | null; video?: Video | null; turmas?: string[]; material?: MaterialLigado | null; questao?: QuestaoDaLinha | null; concluido?: boolean };
+
+/** Aula assistida. `posicao_segundos`: de onde o vídeo continua. */
+export type ProgressoDoItem = { item_id: number; concluido: boolean; posicao_segundos: number };
+export type AlunoNoProgresso = { id: number; nome: string; email: string; concluidos: number; total: number; ultima_atividade: string | null };
+export type ProgressoDaTurma = { turma_id: number; turma: string; total: number; alunos: AlunoNoProgresso[] };
+export type ItemDoProgresso = {
+  id: number;
+  nome: string;
+  tipo: "VIDEO" | "PDF" | "QUESTAO";
+  concluido: boolean;
+  concluido_em: string | null;
+  posicao_segundos: number | null;
+  duracao_segundos: number | null;
+  correta: boolean | null;
+};
+export type ProgressoDoAluno = {
+  aluno_id: number;
+  aluno: string;
+  ultima_atividade: string | null;
+  turmas: {
+    turma_id: number;
+    turma: string;
+    concluidos: number;
+    total: number;
+    modulos: { id: number; nome: string; concluidos: number; total: number; submodulos: { nome: string; itens: ItemDoProgresso[] }[] }[];
+  }[];
+};
 /** A questão da aula. Gabarito e resolução só chegam depois da resposta (ou para o professor). */
 export type Exercicio = {
   item_id: number;
@@ -654,6 +684,12 @@ export const api = {
   // aluno
   conteudo: () => pedir<ConteudoDaTurma[]>("/aluno/conteudo"),
   questaoDaAula: (item: number) => pedir<Exercicio>(`/aluno/itens/${item}/questao`),
+  progressoDoItem: (item: number) => pedir<ProgressoDoItem>(`/aluno/itens/${item}/progresso`),
+  /** O aviso do player: onde o aluno está. Perto do fim, o backend conclui o vídeo sozinho. */
+  registrarProgresso: (item: number, posicao_segundos: number, duracao_segundos: number) =>
+    pedir<ProgressoDoItem>(`/aluno/itens/${item}/progresso`, { method: "POST", json: { posicao_segundos, duracao_segundos } }),
+  marcarConcluido: (item: number, concluido: boolean) =>
+    pedir<ProgressoDoItem>(`/aluno/itens/${item}/concluido`, { method: "PUT", json: { concluido } }),
   responderNaAula: (item: number, alternativa: string) =>
     pedir<Exercicio>(`/aluno/itens/${item}/responder`, { method: "POST", json: { alternativa } }),
   simulados: () => pedir<SimuladoResumo[]>("/aluno/simulados"),
@@ -718,6 +754,9 @@ export const api = {
     pedir<Questao[]>(`/admin/questoes${q(filtro)}`),
   desempenho: (aluno: string | number, simulado?: string | number) =>
     pedir<Desempenho>(`/admin/alunos/${seg(String(aluno))}/desempenho${q({ simulado })}`),
+
+  progressoDaTurma: (turma: number) => pedir<ProgressoDaTurma>(`/admin/turmas/${turma}/progresso`),
+  progressoDoAluno: (aluno: string | number) => pedir<ProgressoDoAluno>(`/admin/alunos/${seg(String(aluno))}/progresso`),
 
   // turmas e alunos
   criarTurma: (nome: string) => pedir<{ id: number; nome: string }>("/admin/turmas", { method: "POST", json: { nome } }),

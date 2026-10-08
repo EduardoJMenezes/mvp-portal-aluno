@@ -89,6 +89,7 @@ function Simulados({ simulados }: { simulados: SimuladoResumo[] }) {
 }
 
 function Curso({ conteudo }: { conteudo: ConteudoDaTurma[] }) {
+  const aluno = useUsuario().papel === "ALUNO";
   const modulos = conteudo.flatMap((t) => t.modulos);
   return (
     <section className="mt-4 flex flex-col gap-3" aria-labelledby="titulo-curso">
@@ -101,7 +102,7 @@ function Curso({ conteudo }: { conteudo: ConteudoDaTurma[] }) {
         <ul className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {modulos.slice(0, 6).map((m) => (
             <li key={m.id}>
-              <CartaoDoModulo modulo={m} />
+              <CartaoDoModulo modulo={m} comProgresso={aluno} />
             </li>
           ))}
         </ul>
