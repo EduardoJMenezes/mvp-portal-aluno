@@ -195,11 +195,15 @@ Ensaio geral dos quatro fluxos do §21, contra o servidor no ar:
   nossa, em coordenadas relativas, porque o editor embutido do pdf.js grava
   dentro do arquivo e ao reabrir vira desenho fixo. Ver
   [docs/MATERIAIS.md](docs/MATERIAIS.md).
-* **Um processo serve tudo, e isso é o teto.** O uvicorn sobe com
-  `WEB_CONCURRENCY` processos, hoje 1: são ~60 pedidos por segundo, um núcleo
-  de oito. Subir o número multiplica o teto **e quebra o MCP**, que guarda a
-  sessão do conector na memória do processo — antes de girar esse dial, separe
-  o `/mcp` do portal. Medições, gargalos e plano em
+* **A árvore do curso é pedida por toda aba, de minuto em minuto.** O custo de
+  `/api/aluno/conteudo` não pode crescer com o curso: `EstruturaServico.ramos`
+  traz sub-módulos e linhas em duas consultas e o `default_batch_fetch_size`
+  carrega o resto em lote. Repositório chamado dentro de laço por módulo ou por
+  linha é a regressão — ela já custou 176 consultas e 324 ms por pedido —, e o
+  `CustoDoConteudoTest` existe para travar isso. Medido em 08/10/2026 com 400
+  alunos ao mesmo tempo: zero erro, árvore em 27 ms de servidor, teto perto de
+  680 pedidos por segundo. A conta do Railway é memória, não CPU: o heap tem
+  teto (`JAVA_TOOL_OPTIONS` no Dockerfile). Medições e método em
   [docs/CARGA.md](docs/CARGA.md).
 * **Simulado: o relógio entra como parâmetro.** Os services de
   [simulados.py](mcp/app/services/simulados.py) recebem `agora`; não há job

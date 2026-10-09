@@ -1,372 +1,233 @@
 # Quantos alunos a plataforma aguenta
 
-Medido em produção contra `app-production-e5b7.up.railway.app`, com a apostila
-real de 37,5 MB no banco. A pergunta era direta: **aguenta 500 a 600 alunos ao
+Medido em produção em 08/10/2026, contra `rodrigomeloplataforma.up.railway.app`,
+com o curso real da turma EXTENSIVO Q1 (7 módulos, 150 linhas, árvore de 59 KB)
+e a apostila de 37,5 MB no banco. A pergunta era direta: **aguenta 400 alunos ao
 mesmo tempo?**
 
-**Em 17/09, não: aguentava uns 100.** Um processo só, usando um núcleo de oito.
-**Em 19/09, com o MCP separado e quatro processos no portal, sim — e sobra.**
-Abaixo estão as duas medições: primeiro o diagnóstico que levou à correção,
-depois os números do estado atual.
+**Aguenta, e sobra.** Quatrocentos alunos virtuais, cada um com conta e sessão
+próprias, fizeram 46,7 mil pedidos em sete minutos e nenhum voltou com erro. O
+servidor não chegou perto do limite em nenhum cenário de uso real.
 
-> **Resumo do estado de hoje (19/09/2026), com quatro processos**
+> **Resumo (tempo de servidor, sem a rede)**
 >
-> | caminho | teto medido | folga para 600 alunos |
-> |---|---|---|
-> | navegação (mix pesado) | ~150–185 req/s | é o mais apertado |
-> | abrir o portal (aba nova) | ~267 req/s | 600 entram em ~11 s |
-> | portal frio (13 arquivos, 667 KB) | ~80 abas/s, 55 MB/s | 600 em ~7,5 s |
-> | escrever anotação | **~560 gravações/s** | folga de 2,8× |
-> | ler apostila (faixas de 256 KB) | ~130 faixas/s, **40 MB/s** | limite vira banda, não CPU |
-> | login (bcrypt) | 40/s | 600 logins em 15 s, uma vez por dia |
+> | cenário | carga | árvore do curso (p50 / p95 / p99) | demais rotas (p50 / p95) |
+> |---|---|---|---|
+> | uso normal, 400 abas abertas | 50 req/s | 27 / 37 / 43 ms | 6–10 / 15–16 ms |
+> | 400 alunos entrando em 60 s | 54 req/s | 26 / 36 / 44 ms | 6–8 / 14–15 ms |
+> | 400 alunos entrando em 15 s | 160 req/s | 29 / 39 / 51 ms | 6–8 / 13–16 ms |
+> | apostila, 240 faixas de 256 KB em 6 s | 39 req/s, 10 MB/s | — | 14 / 22 ms |
 >
-> Com 600 alunos virtuais batendo de fora, **o servidor respondeu em p50 de
-> 12 ms e p95 de 82 ms**. Quem engasgou foi o meu notebook, não a plataforma:
-> não consegui achar o teto real de fora.
+> O teto da árvore do curso, a rota mais pedida, fica um pouco acima de
+> **680 pedidos por segundo**. Quatrocentos alunos pedem 7 por segundo em uso
+> normal e 53 no pior pico medido.
+
+Os números de setembro (60 pedidos por segundo, quatro processos) eram da versão
+em Python e não valem mais; estão no [histórico](#histórico), no fim.
 
 ## A infraestrutura de hoje
 
 | | |
 |---|---|
-| Contêiner | 8 vCPU, 8 GB (Railway, plano Hobby) — usando 258 MB |
-| Servidor | uvicorn, **1 processo**, rotas síncronas num pool de 40 threads |
-| Banco | Postgres 18.6, `max_connections` 500, banco de 50 MB |
+| Contêiner | Railway, plano Hobby, uma réplica em US East, limite de 8 vCPU e 8 GB |
+| Servidor | Spring Boot 4 em Java 25, threads virtuais, heap limitado a 768 MB (`JAVA_TOOL_OPTIONS` no Dockerfile) |
+| Conexões | HikariCP, até 30, 5 ociosas |
+| Banco | Postgres no mesmo projeto, rede privada, volume de 279 MB (limite de 5 GB no Hobby) |
 | Vídeo | **não passa por aqui**: o player é iframe do Vimeo |
 | Sessão | 12 h — o aluno faz login uma vez por dia |
 
-Vale registrar o que o vídeo significa: assistir aula não custa nada ao nosso
-servidor. Os bytes vêm do Vimeo. O que custa é apostila, simulado e navegação.
+Assistir aula não custa nada ao nosso servidor: os bytes vêm do Vimeo. O que
+custa é a aba aberta.
 
-## O que cada rota custa
+## O que uma aba aberta pede
 
-Medido de dentro do contêiner (sem rede, sem TLS), um pedido de cada vez:
+Vem do frontend, não de suposição:
 
-| rota | resposta | tempo |
+| o quê | quando | de onde |
 |---|---|---|
-| `/api/eu` | 0,1 KB | 8,6 ms |
-| `/api/aluno/conteudo` | 48,7 KB | 29,5 ms |
-| `/api/aluno/materiais` | 0,3 KB | 10,8 ms |
-| `/api/aluno/simulados` | 0,6 KB | 14,6 ms |
-| `/api/aluno/simulados/3` | 0,3 KB | 11,8 ms |
-| `/api/aluno/simulados/3/resultado` | 34,8 KB | 55,7 ms |
-| `/api/aluno/desempenho` | 0,4 KB | 38,3 ms |
-| `/api/aluno/figuras/1` | 30,3 KB | 8,0 ms |
-| `/api/aluno/materiais/1/arquivo` (faixa de 256 KB) | 256 KB | 17,3 ms |
-| `/api/aluno/materiais/1/arquivo` (faixa de 1 MB) | 1 MB | 24,4 ms |
+| `GET /api/aluno/menu` | a cada 60 s, em toda tela do aluno | `AppShell.tsx` |
+| `GET /api/aluno/conteudo` (a árvore do curso) | a cada 60 s, nas telas do curso e da aula | `useDados(..., 60)` |
+| `POST /api/aluno/itens/{id}/progresso` | a cada 15 s, com o vídeo tocando | `Player.tsx` |
+| navegação (simulados, agenda, desempenho…) | quando o aluno clica | — |
 
-Nenhuma rota é lenta. A apostila de 323 páginas entrega uma faixa de 256 KB em
-17 ms — a decisão de guardar o PDF no Postgres com `substring` se sustentou.
+Quatrocentas abas numa aula são, portanto, uns **50 pedidos por segundo**: 7 da
+árvore, 7 do menu, 27 de progresso e o resto de navegação. Foi exatamente isso
+que a fase de uso normal reproduziu.
 
-## Onde quebra
+## A medição
 
-Carga de dentro do contêiner, mistura realista de navegação, 15 s por nível:
+Sete minutos, das 23:24 às 23:31 UTC, com um gerador de carga em Python num Mac
+no Brasil. Dois relógios mediram cada pedido, e eles contam histórias
+diferentes:
 
-| pedidos em voo | req/s | p50 | p95 | erros |
-|---|---|---|---|---|
-| 5 | 69 | 39 ms | 228 ms | 0 |
-| 15 | 55 | 151 ms | 856 ms | 0 |
-| 30 | 56 | 452 ms | 1,1 s | 0 |
-| 60 | 9 | 1,0 s | **30,7 s** | sim |
-| 120 | 3 | **40 s** | 40 s | tudo |
+* **o do cliente** inclui a viagem até US East, que sozinha custa uns 180 ms por
+  pedido;
+* **o do servidor** é o `upstreamRqDuration` dos logs HTTP do Railway: só o
+  tempo que a aplicação levou.
 
-O teto é **~60 pedidos por segundo**, e acima de ~30 pedidos em voo a fila
-explode. De fora, com alunos virtuais de verdade (sessão própria, pausa entre
-uma ação e outra), o mesmo limite aparece assim:
+As tabelas abaixo trazem os dois. Para saber se o servidor aguenta, vale o
+segundo; para saber o que o aluno sente, o primeiro.
 
-| alunos simultâneos | como ficou |
-|---|---|
-| 25 | p50 de 300 a 500 ms — bom |
-| 100 | p50 900 ms, p99 14 s — passa, mas já raspa |
-| 300 | 78% de erro, tudo estourando os 30 s |
+### Uso normal — 400 abas por 3 minutos
 
-E o log do servidor dizia o que era, em letras garrafais:
-`sqlalchemy.exc.TimeoutError` em `pool._do_get()`.
+| rota | pedidos | cliente p50 / p95 | servidor p50 / p95 / p99 |
+|---|---|---|---|
+| árvore do curso | 1 200 | 213 / 523 ms | 27 / 37 / 43 ms |
+| progresso do vídeo | 4 800 | 190 / 372 ms | 10 / 16 / 21 ms |
+| menu, simulados, agenda, desempenho, aulas, perfil | 2 991 | 184–197 / 208–351 ms | 6 / 15 / 22 ms |
+| **total** | **8 991** (50 req/s) | 191 / 367 ms | zero erro |
 
-### Os dois gargalos, em ordem
+### A turma entrando
 
-1. **Um processo só.** O uvicorn subia com um worker. Python roda um bytecode
-   de cada vez por processo (o GIL), então sete dos oito núcleos ficavam vendo
-   o oitavo trabalhar. É o teto de 60 req/s.
-2. **A fila do banco era de escritório.** O pool do SQLAlchemy vinha no padrão
-   de script: 5 conexões, mais 10 de transbordo, e 30 segundos de espera antes
-   de desistir. Quando o pico chegava, cada aluno ficava meio minuto pendurado
-   para no fim receber erro — o pior dos dois mundos.
+Cada aluno abre o portal (6 chamadas), vai ao curso e abre a aula: 9 pedidos,
+3 deles da árvore do curso, a primeira sem cache (59 KB).
 
-Não são gargalos do banco (50 MB, 500 conexões, quase ocioso), nem de memória
-(258 MB de 8 GB), nem de rede.
+| janela | carga | árvore, servidor p50 / p95 / p99 | portal aberto, no cliente |
+|---|---|---|---|
+| 400 em 60 s | 54 req/s | 26 / 36 / 44 ms | 1,5 s |
+| 400 em 15 s | 160 req/s (53 da árvore) | 29 / 39 / 51 ms | 1,5 s |
 
-## O que já foi corrigido
+Sem fila em nenhuma das duas. O segundo e meio que o aluno espera para ver o
+portal são seis chamadas em sequência atravessando o continente, com uns 60 ms
+de servidor no total: é distância, não carga.
 
-Commit `484c632`, no ar:
+### O teto da árvore do curso
 
-* **Pool de 20 + 20, espera de 5 s.** Não aumenta o teto — aumenta a dignidade
-  de quem passa dele: 503 na hora em vez de 30 s pendurado. Medido: a 60
-  pedidos em voo, o p95 caiu de 30,7 s para 2,6 s e a vazão subiu de 9 para 47
-  req/s.
-* **Cache imutável no portal.** Os arquivos de `/_next/static` têm o hash do
-  conteúdo no nome e vinham sem `Cache-Control`: cada aba aberta revalidava 25
-  arquivos, 1,1 MB. Agora valem um ano. Seiscentos alunos entrando na aula
-  faziam **15 mil pedidos e 660 MB** só para ouvir "não mudou"; na segunda
-  visita, agora, fazem zero.
-* **`WEB_CONCURRENCY` no Dockerfile**, ainda em 1. É o dial do item 1 do plano.
+Sem pausa entre um pedido e outro, com N pedidos em voo, 20 s por nível:
 
-## O plano, para você revisar
-
-### 1. Separar o MCP do portal — e então ligar os processos
-
-**Por que os dois juntos:** o ganho está em rodar 4 a 8 processos. Medi, subindo
-uma cópia com 4 processos dentro do próprio contêiner:
-
-| pedidos em voo | 1 processo | 4 processos |
+| em voo | vazão | servidor p50 / p95 / p99 |
 |---|---|---|
-| 15 | 55 req/s, p50 159 ms | **239 req/s, p50 22 ms** |
-| 30 | 51 req/s, p50 375 ms | **194 req/s, p50 22 ms** |
-| 60 | 47 req/s, p50 1,0 s | **179 req/s, p50 167 ms** |
-| 120 | 21 req/s, p50 6,2 s | **138 req/s, p50 232 ms** |
+| 25 | 120 req/s | 24 / 33 / 40 ms |
+| 50 | 233 req/s | 28 / 41 / 65 ms |
+| 100 | 450 req/s | 32 / 50 / 64 ms |
+| 200 | 680 req/s | 94 / 161 / 211 ms |
 
-**4,4× de vazão e p50 sete vezes menor** — e os 239 req/s são o limite do meu
-medidor, não do servidor. Com isso, 600 alunos cabem com folga de quatro vezes.
-
-**O que impede de girar o dial hoje:** o MCP guarda a sessão do conector na
-memória do processo. Conferido no FastMCP 4.0.4 instalado:
-`self._server_instances: dict[str, StreamableHTTPServerTransport] = {}`. Com
-dois ou mais processos, um pedido do conector cai no processo errado e a sessão
-some. O portal não tem esse problema (a sessão dele é o JWT no cookie).
-
-Dois caminhos, e a escolha é sua:
-
-* **(a) Dois serviços na Railway, a partir da mesma imagem.** `app` serve o
-  portal e a API com `WEB_CONCURRENCY=4`; `mcp` serve o `/mcp` com um processo.
-  O endereço do conector muda, e você o adiciona de novo no claude.ai — coisa
-  que já faz quando uma tool muda de descrição. É a solução limpa, e ainda
-  isola o LibreOffice do importador do caminho dos alunos.
-* **(b) MCP sem sessão (`stateless_http=True`), um serviço só.** Mudança de uma
-  linha, mas muda o transporte do conector — e quem testa isso é você, com o
-  claude.ai aberto. Se funcionar, é o caminho barato.
-
-Eu recomendo o **(a)**: mais previsível, e separa dois tipos de carga que não
-têm nada a ver um com o outro.
-
-#### Não, isso não é trocar de linguagem
-
-O teto de 60 req/s é de **um processo**, não do Python. Um processo Python
-executa um bytecode por vez (o GIL), e a resposta para isso não é reescrever
-nada: é rodar oito processos, um por núcleo, que é exatamente o que PHP, Ruby e
-Node fazem há vinte anos. Node, aliás, tem o mesmo laço único por processo e
-precisaria do mesmo `cluster`.
-
-E o número diz que a linguagem não é o gargalo: as rotas custam de **8 a 55 ms**
-de servidor, o banco está ocioso, a memória em 258 MB de 8 GB. Não há trabalho
-pesado de CPU aqui para uma linguagem compilada economizar — há fila. Reescrever
-em Go trocaria meses de trabalho e todos os testes por um ganho que uma linha no
-Dockerfile já dá.
-
-Quando eu levantaria a mão para trocar alguma coisa: se um dia o gargalo virar
-transcodificar vídeo, processar imagem em escala ou algo assim — e mesmo aí o
-certo seria tirar **aquele pedaço** do caminho do aluno, não reescrever o
-portal.
-
-### 1b. A escrita da anotação: medida, e não é problema
-
-Medo legítimo: a turma inteira riscando a apostila **durante a aula**, cem mãos
-ao mesmo tempo. Fui medir, de dentro do contêiner, no processo único de hoje:
-
-| escritas simultâneas | gravações/s | p50 | p95 | erros |
-|---|---|---|---|---|
-| 10 | 100 | 93 ms | 136 ms | 0 |
-| 25 | 109 | 209 ms | 382 ms | 0 |
-| 50 | 92 | 493 ms | 787 ms | 0 |
-| 100 | 52 | 939 ms | 6,6 s | 42 |
-
-Antes de ler a tabela, desfazer um mal-entendido que muda tudo: **o PDF nunca é
-reescrito**. O arquivo de 37 MB é só leitura; o que a anotação grava é uma linha
-de **2,2 KB** — a página que mudou, em JSON. E o leitor espera 1,5 s depois do
-último traço para mandar.
-
-Então a tradução da tabela é esta: um aluno riscando manda, no pior caso, uma
-gravação a cada três segundos. Cem alunos riscando ao mesmo tempo são **33
-gravações por segundo** — um terço do que o processo único já faz hoje, com p50
-abaixo de 200 ms. O momento que assusta é justamente o que já está folgado.
-
-**Fila (RabbitMQ) não entra agora, e o motivo não é preguiça:** ela transformaria
-o "Salvo 20:02" numa mentira — o aluno lê que salvou enquanto a linha ainda está
-na fila. Para o caderno de alguém, durabilidade agora vale mais que vazão
-depois. E, se um dia a escrita apertar, há dois degraus mais baratos antes de um
-broker: mandar as páginas sujas numa requisição só (o leitor já sabe quais são)
-e os processos do item 1.
-
-**Onde uma fila é a ferramenta certa nesta plataforma:** o cano da gravação
-(Zoom → Vimeo), que dura minutos, falha no meio e precisa de nova tentativa. E
-mesmo lá, uma tabela de trabalhos no Postgres com um cron resolve sem subir
-broker nenhum.
-
-### 2. Um CDN na frente do portal
-
-Mesmo com o cache imutável, o **primeiro** acesso de cada aluno baixa 1,1 MB do
-nosso contêiner: 660 MB no primeiro dia de aula, servidos por Python. Cloudflare
-na frente (plano grátis) tira isso do servidor e absorve o tranco da entrada.
-É configuração, não código.
-
-### 3. Deixar o `conteudo` mais barato
-
-É a rota mais chamada e a segunda mais cara (48,7 KB, 29,5 ms): toda aba de
-portal pede a árvore inteira do curso. Um `ETag` (304 quando nada mudou) ou um
-cache de 60 s por turma corta boa parte do pico de entrada. O preço é conteúdo
-novo aparecer com até um minuto de atraso — por isso não fiz sozinho.
-
-### 4. Login: 40 por segundo, e está bom
-
-O bcrypt custa 192 ms e usa os oito núcleos: o teto é **40 logins/s**, ou 15
-segundos para 600 alunos entrarem. Como a sessão dura 12 h, isso acontece uma
-vez por dia. Não mexeria — a não ser que você queira baixar o custo do bcrypt
-de 12 para 10 (quatro vezes mais rápido, ainda forte para portal). Fica de
-registro, não de recomendação.
-
-### 5. Um detalhe de segurança que os processos trazem junto
-
-A trava de tentativas de login (5 por conta, 20 por IP) vive na memória do
-processo. Com 4 processos ela vira, na prática, 20 por conta e 80 por IP. Não é
-impeditivo — é uma linha para mover o contador para o banco quando o portal
-sair do piloto.
-
-### 6. Enxergar sem precisar de teste de carga
-
-Hoje o servidor não registra tempo de resposta. Um log de acesso com duração,
-ou um middleware de dez linhas, responde a próxima pergunta dessas com dados do
-dia a dia em vez de uma madrugada de medição.
-
-## Depois dos quatro processos — a medição completa (19/09/2026)
-
-Com o MCP num serviço próprio e o portal em `python -m app.servir portal
---workers 4`. Carga gerada **de dentro do contêiner** (sem rede, sem TLS) por
-vários processos geradores, porque um gerador sozinho virava o gargalo e a
-medida seria do medidor.
-
-Um aviso de método: o gerador divide os mesmos 8 núcleos com o servidor, então
-estes tetos são **piso**, não teto. Rodando de fora, o servidor mal transpirou.
-
-### Navegação — o caminho mais apertado
-
-Mix realista: `conteudo` (duas vezes, é a rota mais pedida), `materiais`,
-`simulados`, abrir simulado, resultado, desempenho, aulas, figura, `eu`.
-
-| em voo | req/s | p50 | p95 | erros |
-|---|---|---|---|---|
-| 20 | 184 | 46 ms | 417 ms | 0 |
-| 60 | 153 | 211 ms | 1,3 s | 0 |
-| 120 | 143 | 479 ms | 2,9 s | 0 |
-
-Subir o número de geradores de 1 para 6 mudou pouco (129 → 148 req/s): o teto
-é do servidor, não do medidor. **Este é o número que limita a plataforma hoje.**
-
-### Entrar no portal e carregar a página
-
-| cenário | resultado |
-|---|---|
-| burst de aba nova (5 chamadas de API) | 267 req/s a 198 em voo, p50 597 ms, zero erro |
-| portal frio: 13 arquivos, 667 KB | **83 abas/s** a 10 em voo (p50 116 ms); 70/s a 60 em voo |
-
-Seiscentos alunos entrando na aula: ~7,5 s para servir o portal de todos e
-~11 s para as chamadas de API. Somado ao login, a turma inteira está dentro em
-menos de um minuto — e na segunda visita o portal nem é baixado, por causa do
-cache imutável.
-
-### Escrever anotação — o medo da aula, medido
-
-| em voo | gravações/s | p50 | p95 | erros |
-|---|---|---|---|---|
-| 24 | **562** | 40 ms | 69 ms | 0 |
-| 99 | 478 | 121 ms | 526 ms | 0 |
-| 198 | 369 | 343 ms | 778 ms | 0,9% |
-
-Cem alunos riscando ao mesmo tempo pedem ~33 gravações/s; seiscentos, ~200.
-Contra 560/s, é folga de quase três vezes. Com um processo eram 100/s.
+Até 100 em voo quem limitava era a rede do gerador, não o servidor. Com 200 o
+tempo de servidor triplicou: é o pool de 30 conexões enchendo e o Postgres a
+1,9 vCPU. **O teto fica um pouco acima de 680 req/s**, ainda sem erro.
 
 ### Ler a apostila
 
-| em voo | faixas/s | MB/s | p50 | erros |
-|---|---|---|---|---|
-| 18 | 133 | 45 | 78 ms | 0 |
-| 60 | 124 | 39 | 283 ms | 0 |
-| 120 | 129 | 40 | 711 ms | 0 |
-
-Quarenta MB por segundo saindo do Postgres, sem erro. Aqui o limite deixa de
-ser nosso: vira banda de saída e a internet do aluno.
+Sessenta alunos, quatro faixas de 256 KB cada, em posições sorteadas do arquivo
+de 37,5 MB: 240 faixas em 6 segundos (10 MB/s), servidor em p50 de 14 ms e p95
+de 22 ms. Aqui o limite é a banda de quem gera a carga.
 
 ### O que o contêiner mostrou
 
-| | antes (1 processo) | agora (4 processos) |
+| | parado | no teste |
 |---|---|---|
-| pico de CPU | **1,0 de 8 vCPU** | **4,1 de 8 vCPU** |
-| memória em repouso | 179 MB | 561 MB |
-| memória depois de horas de teste | — | 3,0 GB, **estável** |
+| CPU do app | ~0 | 0,2 a 0,4 vCPU em uso normal; pico de 1,05 no teto |
+| CPU do Postgres | ~0 | ~0,1 vCPU em uso normal; pico de 1,90 no teto |
+| memória do app | 798 MB | 900 MB |
+| memória do Postgres | 140 MB | 304 MB |
 
-A memória merece nota: depois de servir muita faixa de 256 KB, cada processo
-estaciona em ~750 MB e **não sobe mais** — conferido com duas rodadas extras,
-que a deixaram em 3058 MB, 3061 MB, 3067 MB. Não é vazamento; é o alocador do
-Python segurando o que já usou. Mas é o que decide o próximo passo: **oito
-processos não caberiam** nos 8 GB deste contêiner. Para ir além de quatro,
-primeiro um plano maior.
+As métricas por minuto do Railway são amostradas — a contagem de pedidos de lá
+veio menor que a do gerador —, então servem para CPU e memória, não para vazão.
 
-### O que não foi medido, e por quê
+## O que mudou antes do teste
 
-* **Responder simulado.** Os dois simulados publicados estão com a janela
-  fechada, e abrir um só para teste mexeria em conteúdo pedagógico. A escrita
-  da anotação (560/s) é a melhor aproximação que existe: mesma forma, uma linha
-  por chamada. Se quiser o número exato, dá para medir com um simulado
-  descartável, com sua autorização.
-* **Assistir vídeo.** Não passa por aqui: o player é iframe do Vimeo.
-* **MCP.** Fora do escopo por decisão sua — é um usuário só.
+Na véspera, com um usuário só em produção, a árvore do curso levava **324 ms de
+mediana** (de 160 a 700). Quatro ajustes entraram no commit `37d0d0b`:
 
-### Onde o próximo teto vai aparecer
+* **A árvore em consultas fixas.** Ela custava uma consulta por módulo, por
+  sub-módulo e por linha: 56 com dois módulos, 176 com oito. Agora os
+  sub-módulos e as linhas vêm em duas consultas (`EstruturaServico.ramos`) e o
+  que é preguiçoso carrega em lote (`default_batch_fetch_size: 100`). O
+  `CustoDoConteudoTest` falha se o número voltar a crescer com o curso.
+* **Pool de 10 para 30 conexões.** Com threads virtuais o Tomcat não limita
+  pedido em voo; o pool era o único teto.
+* **PDF só em faixas.** O leitor pedia faixas, mas sem `disableStream` o pdf.js
+  ignora o `disableAutoFetch` e baixa o arquivo inteiro por trás: 37,5 MB de
+  saída a cada abertura da apostila.
+* **Teto de heap.** A JVM subia sem `-Xmx` e tomaria até 2 GB dos 8 do
+  contêiner. Com 768 MB de heap, o processo para perto de 1 GB.
 
-1. **Navegação**, em ~150 req/s. É o caminho mais caro e o mais pedido. O ETag
-   do `conteudo` já alivia quem volta; se apertar, o passo seguinte é cache de
-   60 s por turma.
-2. **Memória**, se alguém dobrar os processos sem dobrar o plano.
-3. **Egresso**, quando a apostila (e depois a gravação das aulas) começar a
-   sair em gigabytes por aula. É o CDN.
+O efeito, ainda com um usuário só:
+
+| rota | antes | depois |
+|---|---|---|
+| árvore do curso | 324 ms | 61 ms |
+| agenda | 126 ms | 23 ms |
+| simulados | 68 ms | 27 ms |
+| menu | 24 ms | 15 ms |
+
+Sob carga a árvore ficou ainda mais rápida (27 ms), com a JVM aquecida.
+
+## O que não foi medido
+
+* **Login com senha.** As sessões do teste foram assinadas direto, então o
+  bcrypt ficou de fora. O que se sabe: um login de conta antiga (hash do Python)
+  levou ~400 ms em produção; conta criada pela API em Java usa o custo padrão
+  do `BCryptPasswordEncoder`, mais barato. Pela conta, 400 logins em um minuto
+  ocupam menos de três dos oito núcleos — mas é conta, não medição.
+* **Simulado.** Abrir a prova, responder, entregar e ler o resultado. É o
+  único fluxo em que a turma inteira chega no mesmo minuto por construção, e o
+  único em que falhar custa caro. **É o próximo teste a fazer**, com um
+  simulado descartável, antes do primeiro simulado de verdade.
+* **Anotação na apostila.** Uma linha de ~2 KB por página, como o progresso do
+  vídeo — que passou a 27 gravações por segundo com p50 de 10 ms.
+* **Telas do professor.** É um usuário só; o que pesa ali é volume de dado
+  (devolutiva de 400 alunos), não concorrência.
+* **Horas seguidas.** O teste durou sete minutos. Memória ao longo de um dia de
+  aula se acompanha nas métricas do Railway, sem teste.
+
+## Onde o próximo teto vai aparecer
+
+1. **Conexões e Postgres**, perto de 700 pedidos da árvore por segundo — cem
+   vezes o uso normal de 400 alunos. Não é problema deste ano.
+2. **A árvore crescendo.** Ela é montada inteira a cada pedido; o número de
+   consultas não cresce mais com o curso, mas o trabalho de montar e o JSON
+   crescem. Se um dia pesar, o degrau seguinte é cache por turma.
+3. **Memória**, que não é teto de desempenho e sim a conta: ver abaixo.
+4. **A distância.** O servidor responde em 30 ms e o aluno espera 200: a região
+   é US East. É o que mais aparece na tela hoje.
 
 ## Vale continuar na Railway?
 
-Com os números na mão, hoje a resposta é sim, e com folga:
+Sim. A conta é quase toda memória, e memória não cresce com aluno:
 
 | | |
 |---|---|
-| Conta do ciclo (10/09 a 10/10) | **US$ 0,75 gastos, US$ 1,43 estimados** — dentro dos US$ 5 que o plano Hobby já inclui |
-| CPU | 1% em média; **o pico foi exatamente 1,0 de 8 vCPU** — a métrica da própria Railway confirmando que o teto é de um processo, não da máquina |
-| Memória | 179 MB de 8 GB |
-| Egresso público | praticamente zero até agora |
+| Ciclo de 10/09 a 10/10/2026 | **US$ 6,73 gastos até 08/10, US$ 7,05 estimados** — memória US$ 6,52, CPU US$ 0,10, saída US$ 0,08, volume US$ 0,04 |
+| Preços | US$ 10 por GB de RAM ao mês, US$ 20 por vCPU ao mês, US$ 0,05 por GB de saída, US$ 0,15 por GB de volume |
+| Com 400 alunos | **US$ 17 a 21 por mês**: ~1 GB do app, 0,3 a 0,4 GB do Postgres e 0,1 GB do MCP em memória (US$ 13 a 16), CPU abaixo de US$ 2, saída de US$ 1 a 2 |
 
-Não existe problema de preço nem de escala para resolver mudando de casa: sair
-agora custaria dias de trabalho para economizar centavos. O que de fato vai
-mexer na conta é **egresso** — apostila hoje, gravação de aula amanhã — e a
-resposta para isso não é trocar de provedor, é o CDN do item 2, que é grátis no
-plano de entrada da Cloudflare e ainda absorve o tranco da entrada da aula.
+O Hobby inclui US$ 5 de uso; o Pro custa US$ 20 e inclui US$ 20, ou seja, no
+Pro a conta ficaria praticamente no mínimo do plano. Um servidor de preço fixo
+economizaria uns US$ 15 por mês em troca de cuidar de backup, deploy e TLS — não
+compensa nesta faixa.
 
-Quando eu reabriria esta pergunta: se um dia forem vários processos sempre
-ligados **mais** dezenas de GB de egresso por mês, um servidor de preço fixo
-(Hetzner e parecidos) fica mais barato que cobrança por uso. É conversa para
-quando a conta estiver em dezenas de dólares, não em US$ 1,43.
-
-## Se nada for feito
-
-600 alunos em uso normal pedem cerca de **60 requisições por segundo** —
-exatamente o teto de hoje. Ou seja: sem margem nenhuma, e qualquer pico (a aula
-começando, o simulado abrindo) derruba o portal por minutos. Com o item 1, o
-mesmo cenário usa um quarto da capacidade.
+Quando reabrir a pergunta: se a conta passar de dezenas de dólares por causa de
+**saída** (gravação de aula servida daqui, apostilas em volume) ou se o volume
+do Postgres encostar nos 5 GB do Hobby, que é onde os PDFs moram.
 
 ## Como repetir o teste
 
-O andaime não foi para o repositório (é medição, não produto), mas o método é:
+O andaime não está no repositório (é medição, não produto); fica em
+`~/Projects/carga-teste/`. O método:
 
-1. Sessões das 32 contas fictícias `@alunos-teste.invalid` emitidas **por
-   dentro** do contêiner, com `cria_jwt` — nenhuma senha foi digitada, criada
-   ou lida.
-2. Alunos virtuais em `httpx` assíncrono, cada um com sessão própria, mistura
-   de navegação, leitura de apostila em faixas de 256 KB, anotação salva,
-   simulado aberto e resultado lido, com pausa entre as ações.
-3. A mesma carga rodada de dentro do contêiner, contra `127.0.0.1`, para
-   separar o que é servidor do que é rede.
-4. As 116 anotações que o teste gravou nas contas fictícias foram apagadas ao
-   final; as 4 anotações reais (professor e Pedro) ficaram intactas.
+1. `carga.py` cria N contas `carga-<n>@alunos-teste.invalid`, sem senha
+   utilizável, matriculadas na turma que recebe mais módulos, e assina a sessão
+   de cada uma com o `JWT_SECRET` — emprestado por `railway run -s app`, nunca
+   impresso.
+2. Cada aluno virtual tem conexão própria, como um navegador, e manda o
+   `If-None-Match` da árvore do curso. As fases: aquecimento, uso normal,
+   entrada em 60 s e em 15 s, teto com 25, 50, 100 e 200 em voo, apostila.
+3. O teste só lê o curso e grava progresso de vídeo das contas de teste. Não
+   responde questão, não abre simulado, não anota apostila.
+4. No fim — e também se der erro no meio — apaga as contas, as matrículas e o
+   progresso. Conferido no banco depois: zero contas, zero progresso órfão.
+5. O banco de produção é privado: o caminho é `railway ssh -s Postgres`, que
+   pede uma chave SSH registrada na conta.
+
+Criar conta e assinar sessão em produção é decisão do dono do projeto: quem
+dispara o `rodar-producao.sh` é ele. Contra `localhost` (`carga.py --local`) o
+mesmo roteiro valida o andaime em um minuto.
+
+## Histórico
+
+As medições de 17/09 e 19/09/2026 foram feitas na versão em Python (uvicorn),
+e estão no histórico do git deste arquivo. Vinham de lá o teto de 60 pedidos
+por segundo com um processo, os ~150 a 185 com quatro, o pool do SQLAlchemy e a
+recomendação de separar o MCP do portal — que foi feita: o adaptador MCP hoje é
+outro serviço, em outro repositório.
