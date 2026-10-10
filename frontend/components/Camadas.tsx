@@ -8,7 +8,7 @@
 //
 // As duas são o mesmo <dialog> nativo: o foco fica preso lá dentro, o Esc fecha, o resto da página
 // fica inerte e, ao fechar, o foco volta para onde estava. O desenho e o movimento estão em
-// globals.css (.camada).
+// globals.css (.camada): animação de entrada ao abrir e, ao fechar, a de saída antes do close().
 //
 // Quem usa escolhe um de dois jeitos:
 //   - deixa montado e liga/desliga com `aberto`; o conteúdo é desmontado quando a saída termina;
@@ -38,8 +38,8 @@ type Conteudo = {
   children?: ReactNode;
 };
 
-/** O mesmo tempo da transição em globals.css. */
-const SAIDA_MS = 220;
+/** O mesmo tempo da animação de saída em globals.css. */
+const SAIDA_MS = 200;
 
 function Camada({
   aberto,
@@ -72,12 +72,17 @@ function Camada({
     if (!d) return;
     if (aberto) {
       setPresente(true);
+      delete d.dataset.saindo;
       if (!d.open) d.showModal();
       return;
     }
     if (!d.open) return;
-    d.close();
+    // Continua aberto enquanto a caixa sai; fechar antes tiraria o <dialog> da frente de tudo no
+    // meio do movimento.
+    d.dataset.saindo = "";
     const id = setTimeout(() => {
+      delete d.dataset.saindo;
+      d.close();
       setPresente(false);
       sumir.current?.();
     }, SAIDA_MS);
