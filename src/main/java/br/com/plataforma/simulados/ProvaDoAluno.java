@@ -142,8 +142,11 @@ public class ProvaDoAluno {
             var q = sq.getQuestao();
             var alternativas = new LinkedHashMap<Letra, String>();
             q.getAlternativas().forEach(a -> alternativas.put(a.getLetra(), a.getTexto()));
+            // A alternativa que o aluno marcou pode ter saído da questão numa correção: para ele, a
+            // questão volta a aparecer sem resposta.
+            var marcada = marcadas.get(q.getId());
             return new QuestaoDaProva(sq.getOrdem(), q.getId(), q.getEnunciado(), alternativas,
-                    marcadas.get(q.getId()));
+                    marcada != null && q.tem(marcada) ? marcada : null);
         }).toList();
         return prova(r, Estado.EM_ANDAMENTO, null, null, null, Relogio.iso(t.getPrazoEm()),
                 restantes(t, agora), questoes);
@@ -228,6 +231,16 @@ public class ProvaDoAluno {
         var t = tentativas.doAluno(s, ident.usuarioId())
                 .orElseThrow(() -> new RegraDeNegocio("Você ainda não começou este simulado."));
         if (!t.consolidar(agora)) {
+            // Resposta numa alternativa que não existe mais (a questão foi corrigida durante a prova):
+            // o aluno precisa marcar de novo. Só vale para quem entrega; se o tempo acabar, conta erro.
+            var invalida = s.getQuestoes().stream()
+                    .filter(sq -> t.getRespostas().stream().anyMatch(x -> x.getQuestaoId().equals(sq.getQuestao().getId())
+                            && !sq.getQuestao().tem(x.getAlternativaMarcada())))
+                    .map(SimuladoQuestao::getOrdem).findFirst();
+            if (invalida.isPresent()) {
+                throw new RegraDeNegocio("A questão %d está com uma resposta inválida. Volte a ela e marque de novo."
+                        .formatted(invalida.get()));
+            }
             t.entregar(agora);
         }
         return new Entregue(s.getId(), s.getTitulo(), true, t.isEntregueAutomaticamente(),

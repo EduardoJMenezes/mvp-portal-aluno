@@ -83,7 +83,10 @@ public class QuestoesServico {
             List<Etiqueta> classificacao, boolean imagemPendente, Integer videoResolucaoId,
             Letra gabarito, String resolucaoComentada, List<FiguraNaQuestao> figuras,
             ResolucaoEmVideo resolucao, List<SimuladoDaQuestao> simulados, List<String> aulas,
-            Map<Letra, String> comentarios) {}
+            Map<Letra, String> comentarios, int respostas, List<Mudanca> historico) {}
+
+    /** Uma correção feita na questão já publicada. {@code antes}: como o aluno a lia até ali. */
+    public record Mudanca(String quando, String quem, String resumo, String antes) {}
 
     @Transactional(readOnly = true)
     public QuestaoDescrita descrever(Questao q, boolean incluirGabarito) {
@@ -124,7 +127,37 @@ public class QuestoesServico {
                         .map(s -> new SimuladoDaQuestao(
                                 s.getId(), s.getTitulo(), SimuladosServico.situacao(s, agora)))
                         .toList(),
-                base.aulas(), q.comentarios());
+                base.aulas(), q.comentarios(), respostasDadas(q), historico(q));
+    }
+
+    /** Quantas vezes a questão já foi respondida, em simulado e em aula. */
+    private int respostasDadas(Questao q) {
+        return ((Number) em.createNativeQuery("""
+                SELECT (SELECT count(*) FROM exam_answers WHERE questao_id = :q)
+                     + (SELECT count(*) FROM item_answers WHERE questao_id = :q)""")
+                .setParameter("q", q.getId()).getSingleResult()).intValue();
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<Mudanca> historico(Questao q) {
+        List<Object[]> linhas = em.createNativeQuery("""
+                SELECT c.alterado_em, u.nome, c.resumo, c.antes
+                FROM question_changes c LEFT JOIN users u ON u.id = c.alterado_por_id
+                WHERE c.questao_id = :q ORDER BY c.alterado_em DESC, c.id DESC LIMIT 20""")
+                .setParameter("q", q.getId()).getResultList();
+        return linhas.stream()
+                .map(l -> new Mudanca(br.com.plataforma.comum.Relogio.emBrasilia(instante(l[0])),
+                        l[1] == null ? "alguém" : (String) l[1], (String) l[2], (String) l[3]))
+                .toList();
+    }
+
+    private static Instant instante(Object valor) {
+        return switch (valor) {
+            case Instant i -> i;
+            case java.time.OffsetDateTime o -> o.toInstant();
+            case java.sql.Timestamp t -> t.toInstant();
+            default -> throw new IllegalStateException("data inesperada: " + valor.getClass());
+        };
     }
 
     // --- busca ---------------------------------------------------------------
@@ -214,11 +247,11 @@ public class QuestoesServico {
         ident.exigirOperador();
         var q = resolver(referencia);
 
-        var mexeNoQueOAlunoJaViu = nova.enunciado() != null || nova.alternativas() != null
-                || nova.gabarito() != null || nova.imagemPendente() != null;
-        if (mexeNoQueOAlunoJaViu) {
-            simulados.exigirProvaFechadaParaMudancas(q, agora);
-        }
+        // Não há trava por simulado aberto: questão com erro se corrige na hora. O que muda do que o
+        // aluno lê deixa rastro, e o acerto de quem já respondeu é refeito (ver `registrarCorrecao`).
+        var publicada = q.getStatus() == Status.PUBLICADO;
+        var gabaritoAntes = q.getGabarito();
+        var antes = retrato(q);
 
         if (nova.enunciado() != null) {
             if (nova.enunciado().isBlank()) {
@@ -236,7 +269,7 @@ public class QuestoesServico {
             var juntas = new LinkedHashMap<Letra, String>();
             q.getAlternativas().forEach(a -> juntas.put(a.getLetra(), a.getTexto()));
             nova.alternativas().forEach((k, v) -> juntas.put(letra(k), v == null ? "" : v.strip()));
-            q.ajustarAlternativas(exigirAlternativas(juntas));
+            q.ajustarAlternativas(publicada ? exigirAoMenosDuas(juntas) : exigirAlternativas(juntas));
         }
         if (nova.gabarito() != null || nova.alternativas() != null) {
             exigirGabaritoEntreAsAlternativas(q.getGabarito(), q.getAlternativas().stream()
@@ -279,7 +312,80 @@ public class QuestoesServico {
         }
 
         q.tocar(ident);
-        return questoes.save(q);
+        var salva = questoes.save(q);
+        if (publicada) {
+            registrarCorrecao(ident, salva, antes, gabaritoAntes, agora);
+        }
+        return salva;
+    }
+
+    /** A questão como o aluno a lê: gabarito, enunciado e alternativas, em texto. */
+    private static Map<String, String> retrato(Questao q) {
+        var partes = new LinkedHashMap<String, String>();
+        partes.put("Gabarito", q.getGabarito().name());
+        partes.put("Enunciado", q.getEnunciado());
+        q.getAlternativas().stream().sorted(java.util.Comparator.comparing(Alternativa::getLetra))
+                .forEach(a -> partes.put(a.getLetra().name(), a.getTexto()));
+        return partes;
+    }
+
+    private static String emTexto(Map<String, String> retrato) {
+        var sb = new StringBuilder();
+        retrato.forEach((chave, valor) -> sb.append(chave.length() == 1 ? chave + ") " : chave + ": ").append(valor).append('\n'));
+        return sb.toString().stripTrailing();
+    }
+
+    /**
+     * Mudou o que o aluno lê numa questão publicada: grava o rastro e, se o gabarito é outro, refaz
+     * o acerto de quem já respondeu, no simulado e na aula. Nota, posição e desempenho por assunto
+     * são somados dessas respostas, então se ajustam sozinhos. O aluno não é avisado.
+     */
+    private void registrarCorrecao(Identidade ident, Questao q, Map<String, String> antes, Letra gabaritoAntes,
+            Instant agora) {
+        em.flush();
+        var depois = retrato(q);
+        if (depois.equals(antes)) {
+            return;
+        }
+        var mudou = new ArrayList<String>();
+        if (gabaritoAntes != q.getGabarito()) {
+            mudou.add("gabarito de %s para %s".formatted(gabaritoAntes, q.getGabarito()));
+        }
+        if (!antes.get("Enunciado").equals(depois.get("Enunciado"))) {
+            mudou.add("enunciado alterado");
+        }
+        for (var letra : Letra.values()) {
+            var era = antes.get(letra.name());
+            var ficou = depois.get(letra.name());
+            if (era != null && ficou == null) {
+                mudou.add("alternativa %s removida".formatted(letra));
+            } else if (era == null && ficou != null) {
+                mudou.add("alternativa %s incluída".formatted(letra));
+            } else if (era != null && !era.equals(ficou)) {
+                mudou.add("alternativa %s alterada".formatted(letra));
+            }
+        }
+
+        var recalculadas = 0;
+        if (gabaritoAntes != q.getGabarito()) {
+            for (var tabela : List.of("exam_answers", "item_answers")) {
+                recalculadas += em.createNativeQuery(
+                        "UPDATE " + tabela + " SET correta = (alternativa_marcada = :g)"
+                                + " WHERE questao_id = :q AND correta <> (alternativa_marcada = :g)")
+                        .setParameter("g", q.getGabarito().name()).setParameter("q", q.getId()).executeUpdate();
+            }
+        }
+        var resumo = Character.toUpperCase(String.join("; ", mudou).charAt(0)) + String.join("; ", mudou).substring(1)
+                + (recalculadas == 0 ? "." : "; %d %s.".formatted(recalculadas,
+                        recalculadas == 1 ? "resposta mudou de acerto" : "respostas mudaram de acerto"));
+        em.createNativeQuery("""
+                INSERT INTO question_changes (questao_id, alterado_por_id, alterado_em, resumo, antes, depois, respostas_recalculadas)
+                VALUES (:q, :quem, :quando, :resumo, :antes, :depois, :n)""")
+                .setParameter("q", q.getId()).setParameter("quem", ident.usuarioId())
+                .setParameter("quando", java.time.OffsetDateTime.ofInstant(agora, java.time.ZoneOffset.UTC))
+                .setParameter("resumo", resumo.length() > 500 ? resumo.substring(0, 500) : resumo)
+                .setParameter("antes", emTexto(antes)).setParameter("depois", emTexto(depois))
+                .setParameter("n", recalculadas).executeUpdate();
     }
 
     public record QuestaoRemovida(Integer questaoId, String enunciado, boolean reversivel) {}
@@ -440,9 +546,6 @@ public class QuestoesServico {
         ident.exigirOperador();
         var q = resolver(questaoRef);
         exigirRascunho(q);
-        if (parte != ParteDaQuestao.RESOLUCAO) {
-            simulados.exigirProvaFechadaParaMudancas(q, agora);
-        }
 
         var tipo = FigurasServico.tipoDaImagem(conteudo);
         var figuraId = figuras.guardar(conteudo, tipo, nome);
@@ -511,9 +614,6 @@ public class QuestoesServico {
         }
         exigirRascunho(q);
         var parte = ParteDaQuestao.valueOf(figura.getParte());
-        if (parte != ParteDaQuestao.RESOLUCAO) {
-            simulados.exigirProvaFechadaParaMudancas(q, agora);
-        }
 
         var tipo = FigurasServico.tipoDaImagem(conteudo);
         figuras.trocarBytes(figuraId, conteudo, tipo);
@@ -705,6 +805,19 @@ public class QuestoesServico {
         if (!faltando.isEmpty()) {
             throw new RegraDeNegocio("Faltam as alternativas %s. A questão precisa de A a D; a E é opcional."
                     .formatted(String.join(", ", faltando)));
+        }
+        return alternativas;
+    }
+
+    /**
+     * Na questão já publicada, alternativa em branco é alternativa removida, qualquer que seja a
+     * letra. As outras não mudam de letra: tirar a C deixa A, B, D e E, e a resposta de quem marcou
+     * a D continua sendo a D.
+     */
+    static Map<Letra, String> exigirAoMenosDuas(Map<Letra, String> alternativas) {
+        alternativas.values().removeIf(String::isBlank);
+        if (alternativas.size() < Questao.MINIMO_DEPOIS_DE_PUBLICADA) {
+            throw new RegraDeNegocio("A questão precisa de pelo menos duas alternativas.");
         }
         return alternativas;
     }

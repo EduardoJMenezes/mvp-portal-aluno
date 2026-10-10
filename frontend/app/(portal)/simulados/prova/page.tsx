@@ -76,13 +76,25 @@ function ProvaDoAluno() {
   );
 }
 
+/** O que o servidor tem marcado para cada questão. */
+const doServidor = (questoes: NonNullable<Prova["questoes"]>): Record<number, string> =>
+  Object.fromEntries(questoes.filter((q) => q.marcada).map((q) => [q.questao_id, q.marcada as string]));
+
 function EmAndamento({ prova, aoAcabar }: { prova: Prova; aoAcabar: () => Promise<void> }) {
-  const questoes = prova.questoes ?? [];
+  // As questões como o servidor as tem agora. Elas são relidas a cada troca de questão: se o
+  // professor corrigiu uma durante a prova, a versão nova aparece sem o aluno recarregar a página.
+  const [questoes, setQuestoes] = useState(prova.questoes ?? []);
   const total = questoes.length;
   const [indice, setIndice] = useState(() => Math.max(0, questoes.findIndex((q) => !q.marcada)));
-  const [marcadas, setMarcadas] = useState<Record<number, string>>(() =>
-    Object.fromEntries(questoes.filter((q) => q.marcada).map((q) => [q.questao_id, q.marcada as string])),
-  );
+  const [marcadas, setMarcadas] = useState<Record<number, string>>(() => doServidor(prova.questoes ?? []));
+  // Quando a página inteira relê a prova (uma marcação recusada, por exemplo), vale o que veio.
+  useEffect(() => {
+    setQuestoes(prova.questoes ?? []);
+    setMarcadas(doServidor(prova.questoes ?? []));
+  }, [prova]);
+  // Cada marcação do aluno soma um: a releitura que saiu antes dela não pode desfazê-la.
+  const marcacoes = useRef(0);
+  const salvando = useRef(new Set<Promise<unknown>>());
   const [restante, setRestante] = useState(prova.segundos_restantes ?? 0);
   const [erro, setErro] = useState("");
   const [entregando, setEntregando] = useState(false);
@@ -104,13 +116,33 @@ function EmAndamento({ prova, aoAcabar }: { prova: Prova; aoAcabar: () => Promis
     return () => clearInterval(tique);
   }, [prova, aoAcabar]);
 
+  /**
+   * Relê a prova por trás. A questão que o aluno está vendo não espera por isto: se a rede falhar
+   * (celular, tablet), ele segue com a versão que já tinha, sem erro na tela.
+   */
+  const reler = useCallback(async () => {
+    try {
+      // Primeiro o que ele acabou de marcar chega ao servidor; só então vale o que o servidor diz.
+      await Promise.allSettled([...salvando.current]);
+      const vez = marcacoes.current;
+      const nova = await api.prova(prova.simulado_id);
+      if (nova.estado !== "EM_ANDAMENTO") return void aoAcabar();
+      setQuestoes(nova.questoes ?? []);
+      // A alternativa marcada que saiu da questão já vem sem marca: a questão volta a ficar em branco.
+      if (vez === marcacoes.current) setMarcadas(doServidor(nova.questoes ?? []));
+    } catch {
+      // Sem rede, fica como está.
+    }
+  }, [prova.simulado_id, aoAcabar]);
+
   useEffect(() => {
     if (primeiraVez.current) {
       primeiraVez.current = false;
       return;
     }
     window.scrollTo({ top: 0, behavior: "smooth" });
-  }, [indice]);
+    void reler();
+  }, [indice, reler]);
 
   const questao = questoes[indice];
   const respondidas = Object.keys(marcadas).length;
@@ -122,8 +154,11 @@ function EmAndamento({ prova, aoAcabar }: { prova: Prova; aoAcabar: () => Promis
     if (antes === letra) return;
     setMarcadas((m) => ({ ...m, [questaoId]: letra }));
     setErro("");
+    marcacoes.current++;
+    const envio = api.responder(prova.simulado_id, questaoId, letra);
+    salvando.current.add(envio);
     try {
-      await api.responder(prova.simulado_id, questaoId, letra);
+      await envio;
     } catch (e) {
       setMarcadas((m) => {
         const volta = { ...m };
@@ -133,6 +168,8 @@ function EmAndamento({ prova, aoAcabar }: { prova: Prova; aoAcabar: () => Promis
       });
       setErro((e as Error).message);
       if (e instanceof ErroApi && e.status === 400) void aoAcabar();
+    } finally {
+      salvando.current.delete(envio);
     }
   }
 
@@ -153,6 +190,8 @@ function EmAndamento({ prova, aoAcabar }: { prova: Prova; aoAcabar: () => Promis
     } catch (e) {
       setErro((e as Error).message);
       setEntregando(false);
+      // O servidor pode ter recusado por causa de uma resposta que não vale mais: a tela se acerta com ele.
+      void reler();
     }
   }
 

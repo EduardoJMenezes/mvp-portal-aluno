@@ -123,24 +123,23 @@ class QuestoesComandosTest extends BaseDeComando {
         assertThat(contar("question_options WHERE questao_id = ?", q)).isEqualTo(5);
     }
 
-    /** Enunciado, alternativas e gabarito travam quando a prova já abriu. */
+    /** Questão com erro se corrige na hora, mesmo com a prova aberta, e por qualquer canal. */
     @Test
-    void oQueOAlunoJaViuNaoMudaComProvaAberta() throws Exception {
+    void oQueOAlunoJaViuMudaComProvaAbertaEDeixaRastro() throws Exception {
         var q = criarQuestao("Enunciado", "A", "MEDIA", "PUBLICADO");
         var prova = criarSimulado("Simulado 02", "PUBLICADO", "2020-01-01T10:00:00Z", "2090-01-01T10:00:00Z");
         porNaProva(prova, q, 1);
 
         comando("editar_questao", """
-                {"questao": "%d", "enunciado": "tentativa"}""".formatted(q))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.detail").value(org.hamcrest.Matchers.startsWith(
-                        "A questão %d está em simulado que já abriu: 'Simulado 02'".formatted(q))));
-
-        assertThat(jdbc.queryForObject("SELECT enunciado FROM questions WHERE id = ?", String.class, q))
-                .isEqualTo("Enunciado");
+                {"questao": "%d", "enunciado": "Enunciado corrigido"}""".formatted(q))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.enunciado").value("Enunciado corrigido"))
+                .andExpect(jsonPath("$.historico[0].resumo").value("Enunciado alterado."))
+                .andExpect(jsonPath("$.historico[0].quem").value("Professora Ana"))
+                .andExpect(jsonPath("$.historico[0].antes").value(org.hamcrest.Matchers.containsString("Enunciado: Enunciado")));
     }
 
-    /** Mas classificação, dificuldade e vídeo continuam livres — não mudam o que ele respondeu. */
+    /** Classificação, dificuldade e vídeo não mudam o que o aluno lê: não entram no histórico. */
     @Test
     void dificuldadeAindaMudaComProvaAberta() throws Exception {
         var q = criarQuestao("Enunciado", "A", "MEDIA", "PUBLICADO");

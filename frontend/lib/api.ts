@@ -470,6 +470,10 @@ export type QuestaoDetalhada = Questao & {
   figuras: { figura_id: number; parte: string }[];
   resolucao: { vimeo_id: string; titulo: string } | null;
   simulados: { simulado_id: number; titulo: string; situacao: Situacao }[];
+  /** Quantas vezes a questão já foi respondida, em simulado e em aula. */
+  respostas: number;
+  /** As correções feitas depois de publicada. `antes`: como o aluno a lia até ali. */
+  historico: { quando: string; quem: string; resumo: string; antes: string }[];
 };
 
 export type SimuladoDoProfessor = SimuladoResumo & {

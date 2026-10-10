@@ -126,30 +126,6 @@ public class SimuladosServico {
         return vinculos.simuladosDa(questao);
     }
 
-    /**
-     * Enunciado, alternativas, gabarito e imagem travam quando a prova já abriu.
-     *
-     * <p>Classificação, dificuldade e vídeo de resolução continuam livres: mudar a etiqueta não
-     * muda o que o aluno respondeu.
-     */
-    @Transactional(readOnly = true)
-    public void exigirProvaFechadaParaMudancas(Questao questao, Instant agora) {
-        var abertos = simuladosDa(questao).stream()
-                .filter(s -> situacao(s, agora) == Situacao.ABERTO
-                        || situacao(s, agora) == Situacao.ENCERRADO)
-                .toList();
-        if (abertos.isEmpty()) {
-            return;
-        }
-        var nomes = abertos.stream()
-                .map(s -> "'%s' (abriu em %s)".formatted(s.getTitulo(), Relogio.emBrasilia(s.getAbreEm())))
-                .collect(joining(", "));
-        throw new RegraDeNegocio(
-                ("A questão %d está em simulado que já abriu: %s. Enunciado, alternativas, gabarito e "
-                        + "imagem travaram; classificação, dificuldade e vídeo de resolução ainda mudam.")
-                        .formatted(questao.getId(), nomes));
-    }
-
     /** Remover a questão do acervo só depois que toda prova dela terminou. */
     @Transactional(readOnly = true)
     public void exigirNenhumaProvaPendente(Questao questao, Instant agora) {

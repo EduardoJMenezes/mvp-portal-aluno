@@ -141,8 +141,19 @@ public class Questao extends Rastreavel {
         return alternativas;
     }
 
-    /** Pronta para o aluno responder: de A a D pelo menos. A E é opcional. */
+    /** Uma questão publicada pode perder alternativas, mas nunca fica com menos que isto. */
+    public static final int MINIMO_DEPOIS_DE_PUBLICADA = 2;
+
+    /**
+     * Pronta para o aluno responder. A questão nasce com A a D pelo menos (a E é opcional): é o que
+     * acusa a que veio pela metade da importação. Depois de publicada ela pode ser corrigida e
+     * perder alternativas — uma "C" errada sai, e ficam A, B, D e E —, e continua valendo enquanto
+     * tiver duas e o gabarito entre elas.
+     */
     public boolean completa() {
+        if (status == Status.PUBLICADO) {
+            return alternativas.size() >= MINIMO_DEPOIS_DE_PUBLICADA && tem(gabarito);
+        }
         return OBRIGATORIAS.stream().allMatch(this::tem);
     }
 

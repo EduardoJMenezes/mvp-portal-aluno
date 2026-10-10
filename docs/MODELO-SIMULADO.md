@@ -65,7 +65,6 @@ consegue repassar o arquivo para a ferramenta, porque a chamada é texto.
 **Enquanto o portal não tem upload** (ver "O portal até o Next"), a imagem entra
 por uma sessão do Claude Code: lá o Claude acessa o PDF salvo na máquina,
 recorta a figura e envia pelo endpoint REST de anexo, com o mesmo token do MCP.
-A trava continua a mesma.
 
 ```bash
 curl -X POST -H "Authorization: Bearer $TOKEN_DO_MCP" -F arquivo=@figura.png \
@@ -94,9 +93,11 @@ A entrega automática não precisa de job agendado: a tentativa cujo prazo passo
 
 * **Horário de Brasília** (`America/Sao_Paulo`) para digitar e mostrar agenda e
   prazos; o banco guarda em UTC.
-* **Depois que o simulado abre, questões e gabarito travam.** Dá para estender o
-  fechamento, mas não para trocar questão com gente fazendo a prova. Anular
-  questão depois do resultado fica para quando aparecer o caso real.
+* **Depois que o simulado abre, trava a prova, não a questão.** Quais questões
+  entram, as turmas e o tempo de prova não mudam mais; dá para estender o
+  fechamento. O conteúdo de cada questão continua corrigível: ver
+  "[Corrigir questão com a prova aberta](#corrigir-questão-com-a-prova-aberta)".
+  Anular questão depois do resultado fica para quando aparecer o caso real.
 
 ### Resultado
 
@@ -227,3 +228,41 @@ vídeo e só ganha uma questão opcional.
 Resolvido pelos importadores: o .docx traz a figura como arquivo, e o print
 enviado pelo link tem a figura recortada de dentro dele. Ver
 [IMPORTADOR-SIMULADO.md](IMPORTADOR-SIMULADO.md).
+
+## Corrigir questão com a prova aberta
+
+Mudou em 10/10/2026 (migração V15). Antes, enunciado, alternativas, gabarito e
+figura travavam assim que um simulado com a questão abria. Questão com erro
+ficava errada até o fim. Agora a questão publicada se corrige a qualquer
+momento, pelo portal ou pelo Claude, e **o aluno não é avisado**: ele só vê a
+questão e o resultado já certos.
+
+* **O aluno recebe a versão nova ao trocar de questão.** A tela da prova relê a
+  prova inteira por trás a cada navegação (`reler`, em `simulados/prova`); a
+  questão aparece na hora com o que já estava carregado, e se a rede falhar ele
+  segue com a versão que tinha. A marcação dele continua: ela mora no servidor,
+  não no navegador.
+* **Gabarito novo refaz o acerto.** O acerto é gravado em cada resposta
+  (`exam_answers.correta`, `item_answers.correta`), e é dele que saem nota,
+  posição, desempenho por assunto e "Onde revisar". Ao mudar o gabarito,
+  `QuestoesServico.registrarCorrecao` regrava esse campo para todas as
+  respostas da questão, no simulado e na aula. Não há nota guardada para
+  recalcular.
+* **Alternativa em branco é alternativa removida**, qualquer letra, e as outras
+  não mudam de letra: tirar a C deixa A, B, D e E. Foi escolha pelo simples —
+  renomear exigiria migrar as respostas de todo mundo. Ficam pelo menos duas, e
+  o gabarito entre elas. Isso vale só para questão publicada: a questão ainda
+  **nasce** com A a D (`Questao.completa`), que é o que acusa a que veio pela
+  metade da importação.
+* **Quem tinha marcado a alternativa removida** vê a questão sem resposta. Se
+  tentar entregar assim, o servidor recusa com "A questão N está com uma
+  resposta inválida. Volte a ela e marque de novo." — sem falar em correção. Se
+  o tempo acabar, ou se ele já tinha entregado, conta erro.
+* **Cada correção deixa rastro** em `question_changes`: quem, quando, o resumo
+  ("Gabarito de A para C; 5 respostas mudaram de acerto.") e a questão como
+  estava. Aparece no editor, em "Correções", e em `detalhar_questao`. Só entra
+  o que muda o que o aluno lê; classificação, dificuldade, vídeo e comentários
+  ficam de fora.
+
+A estrutura do simulado aberto continua travada (`SimuladosServico.exigirEditavel`).
+

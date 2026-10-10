@@ -210,6 +210,13 @@ Ensaio geral dos quatro fluxos do §21, contra o servidor no ar:
   680 pedidos por segundo. A conta do Railway é memória, não CPU: o heap tem
   teto (`JAVA_TOOL_OPTIONS` no Dockerfile). Medições e método em
   [docs/CARGA.md](docs/CARGA.md).
+* **O acerto do aluno é gravado na resposta, não calculado na leitura.**
+  `exam_answers.correta` e `item_answers.correta` nascem quando ele responde, e
+  nota, posição e desempenho por assunto são somados delas. Quem muda o
+  gabarito de uma questão precisa regravar esse campo — é o que
+  `QuestoesServico.registrarCorrecao` faz. Questão publicada se corrige mesmo
+  com simulado aberto, em silêncio para o aluno; ver
+  [docs/MODELO-SIMULADO.md](docs/MODELO-SIMULADO.md#corrigir-questão-com-a-prova-aberta).
 * **A escrita idêntica repetida em seguida não roda de novo.** Em `/api/**`, o
   `FiltroDaRepeticao` devolve a resposta da primeira (cabeçalho `X-Repetida`)
   quando o mesmo pedido da mesma pessoa chega enquanto o primeiro roda, ou até

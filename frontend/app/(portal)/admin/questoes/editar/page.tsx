@@ -4,8 +4,9 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { CampoDeVideo, type VideoNoCampo } from "@/components/CampoDeVideo";
 import { proximoNome } from "@/components/curso/AdicionarQuestao";
-import { Aviso, Botao, Campo, Cartao, Carregando, Etiqueta, Pagina, TituloDeSecao, useConfirmar } from "@/components/ui";
+import { Aviso, Botao, Campo, Cartao, Carregando, Etiqueta, Pagina, Revelar, TituloDeSecao, useConfirmar } from "@/components/ui";
 import { api, useDados, type Assunto, type QuestaoDetalhada } from "@/lib/api";
+import { plural } from "@/lib/formato";
 import { DIFICULDADE, LETRAS } from "@/lib/rotulos";
 import { TextoFormatado } from "@/lib/texto";
 
@@ -106,7 +107,10 @@ function Editor() {
 
   // Questão de simulado que já abriu trava o que o aluno viu; classificação,
   // dificuldade e vídeo continuam editáveis.
-  const travada = !!questao.dados?.simulados.some((s) => s.situacao === "ABERTO" || s.situacao === "ENCERRADO");
+  // Questão publicada se corrige mesmo com simulado aberto: o aluno recebe a versão nova, e o acerto
+  // de quem já respondeu é refeito. Nela, alternativa em branco é alternativa removida.
+  const publicada = questao.dados?.status === "PUBLICADO";
+  const emProva = questao.dados?.simulados.filter((s) => s.situacao === "ABERTO" || s.situacao === "ENCERRADO") ?? [];
   const assuntoEscolhido = assuntos.dados?.find((a) => String(a.id) === form.assunto);
   // O backend aceita id ou nome; o nome deixa legível o resumo do rascunho.
   const nomeDoAssunto = assuntoEscolhido?.nome ?? "";
@@ -119,7 +123,23 @@ function Editor() {
     setAviso("");
     setCriada("");
     if (!form.gabarito) return setErro("Marque o gabarito.");
-    if (form.gabarito === "E" && !form.alternativas.E?.trim()) return setErro("O gabarito é a E, mas a alternativa E está em branco.");
+    if (!form.alternativas[form.gabarito]?.trim()) return setErro(`O gabarito é a ${form.gabarito}, mas a alternativa ${form.gabarito} está em branco.`);
+    // Mexer no que o aluno lê, numa questão que já tem resposta, pede um "tem certeza".
+    const respostas = questao.dados?.respostas ?? 0;
+    const removidas = LETRAS.filter((l) => original.alternativas[l]?.trim() && !form.alternativas[l]?.trim());
+    const mexeNoQueOAlunoLe = form.enunciado !== original.enunciado || form.gabarito !== original.gabarito || LETRAS.some((l) => form.alternativas[l] !== original.alternativas[l]);
+    if (id && respostas > 0 && mexeNoQueOAlunoLe) {
+      const sim = await confirmar({
+        titulo: "Corrigir uma questão já respondida?",
+        texto:
+          `${plural(respostas, "resposta já foi dada", "respostas já foram dadas")} a esta questão.` +
+          (form.gabarito !== original.gabarito ? ` O acerto de cada uma é refeito com o gabarito ${form.gabarito}.` : "") +
+          (removidas.length ? ` Quem marcou a ${removidas.join(" ou a ")} fica sem resposta nela.` : "") +
+          " O aluno não é avisado.",
+        confirmar: "Salvar correção",
+      });
+      if (!sim) return;
+    }
     setSalvando(true);
     try {
       if (!id) {
@@ -221,9 +241,9 @@ function Editor() {
       {dialogo}
       {questao.erro && <Aviso tom="erro">{questao.erro}</Aviso>}
       {criada && <Aviso tom="sucesso">{criada}</Aviso>}
-      {travada && (
-        <Aviso tom="atencao" titulo="Enunciado, alternativas, gabarito e imagem travaram">
-          Esta questão está em simulado que já abriu: {questao.dados?.simulados.filter((s) => s.situacao !== "RASCUNHO" && s.situacao !== "AGENDADO").map((s) => s.titulo).join(", ")}. Classificação, dificuldade e vídeo ainda mudam.
+      {emProva.length > 0 && (
+        <Aviso tom="info" titulo="Esta questão está em simulado que já abriu">
+          {emProva.map((s) => s.titulo).join(", ")}. Dá para corrigir: a mudança vale na hora, também para quem está fazendo a prova, e se o gabarito mudar o acerto de quem já respondeu é refeito. O aluno não é avisado.
         </Aviso>
       )}
 
@@ -244,7 +264,7 @@ function Editor() {
           )}
           <Cartao className="flex flex-col gap-4 p-5">
             <Campo rotulo="Enunciado" dica={<>Markdown. Fórmula entre $…$ (química em \ce&#123;…&#125;). Figura que ainda vai entrar: ![](figura:pendente).</>}>
-              {(cid) => <textarea id={cid} ref={enunciado} required rows={8} disabled={travada} value={form.enunciado} onChange={(e) => muda("enunciado", e.target.value)} className="campo" />}
+              {(cid) => <textarea id={cid} ref={enunciado} required rows={8} value={form.enunciado} onChange={(e) => muda("enunciado", e.target.value)} className="campo" />}
             </Campo>
             <fieldset className="flex flex-col gap-4">
               <legend className="mb-1 text-sm font-semibold text-tinta-2">Alternativas, gabarito e comentários</legend>
@@ -253,23 +273,22 @@ function Editor() {
               </p>
               {LETRAS.map((letra) => (
                 <div key={letra} className="flex items-start gap-2">
-                  <label className={`mt-1.5 flex size-8 shrink-0 items-center justify-center rounded-full border text-sm font-semibold ${travada ? "cursor-not-allowed" : "cursor-pointer"} ${form.gabarito === letra ? "border-sucesso bg-sucesso text-white" : "border-borda-campo text-tinta-2"}`}>
-                    <input type="radio" name="gabarito" value={letra} disabled={travada} checked={form.gabarito === letra} onChange={() => muda("gabarito", letra)} className="sr-only" />
+                  <label className={`mt-1.5 flex size-8 shrink-0 items-center justify-center rounded-full border text-sm font-semibold cursor-pointer ${form.gabarito === letra ? "border-sucesso bg-sucesso text-white" : "border-borda-campo text-tinta-2"}`}>
+                    <input type="radio" name="gabarito" value={letra} checked={form.gabarito === letra} onChange={() => muda("gabarito", letra)} className="sr-only" />
                     <span aria-hidden="true">{letra}</span>
                     <span className="sr-only">Gabarito {letra}</span>
                   </label>
                   <div className="flex min-w-0 flex-1 flex-col gap-1.5">
                     <textarea
                       aria-label={letra === "E" ? "Alternativa E (opcional)" : `Alternativa ${letra}`}
-                      placeholder={letra === "E" ? "Opcional: em branco, a questão vai de A a D" : undefined}
-                      required={letra !== "E"}
-                      disabled={travada}
+                      placeholder={publicada ? "Em branco, a alternativa sai da questão" : letra === "E" ? "Opcional: em branco, a questão vai de A a D" : undefined}
+                      required={letra !== "E" && !publicada}
                       rows={2}
                       value={form.alternativas[letra]}
                       onChange={(e) => setForm((f) => ({ ...f, alternativas: { ...f.alternativas, [letra]: e.target.value } }))}
                       className="campo min-h-0"
                     />
-                    {(letra !== "E" || form.alternativas.E.trim()) && (
+                    {(publicada ? form.alternativas[letra].trim() : letra !== "E" || form.alternativas.E.trim()) && (
                       <textarea
                         aria-label={`Comentário da alternativa ${letra}`}
                         placeholder={form.gabarito === letra ? `Comentário: por que a ${letra} é a correta` : `Comentário: por que alguém marca a ${letra}, e onde está o erro`}
@@ -297,7 +316,7 @@ function Editor() {
               )}
             </Campo>
             <label className="flex items-center gap-2 self-end pb-2 text-[15px]">
-              <input type="checkbox" disabled={travada} checked={form.imagem_pendente} onChange={(e) => muda("imagem_pendente", e.target.checked)} className="size-4 accent-acento" />
+              <input type="checkbox" checked={form.imagem_pendente} onChange={(e) => muda("imagem_pendente", e.target.checked)} className="size-4 accent-acento" />
               Imagem pendente
             </label>
             <Campo rotulo="Assunto">
@@ -347,15 +366,41 @@ function Editor() {
         </div>
 
         <div className="flex flex-col gap-4 lg:sticky lg:top-20 lg:self-start">
-          <Previa form={form} />
+          <Previa form={form} soPreenchidas={publicada} />
           {id && questao.dados && <Figuras questao={questao.dados} aoAnexar={() => void questao.recarregar()} />}
+          {!!questao.dados?.historico.length && <Correcoes mudancas={questao.dados.historico} />}
         </div>
       </form>
     </Pagina>
   );
 }
 
-function Previa({ form }: { form: Formulario }) {
+/** As correções feitas na questão depois de publicada: quem, quando, o que mudou e como estava. */
+function Correcoes({ mudancas }: { mudancas: QuestaoDetalhada["historico"] }) {
+  const [aberta, setAberta] = useState<number | null>(null);
+  return (
+    <Cartao className="flex flex-col gap-3 p-5">
+      <TituloDeSecao>Correções</TituloDeSecao>
+      <p className="-mt-1 text-[13px] text-suave">O que mudou no que o aluno lê depois que a questão foi publicada. Só a equipe vê.</p>
+      <ol className="flex flex-col divide-y divide-borda/70">
+        {mudancas.map((m, i) => (
+          <li key={i} className="flex flex-col gap-1 py-2.5 first:pt-0 last:pb-0">
+            <p className="text-[15px] text-tinta">{m.resumo}</p>
+            <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+              <p className="text-[13px] text-suave">{m.quem}, em {m.quando}</p>
+              <Revelar aberto={aberta === i} aoAlternar={() => setAberta(aberta === i ? null : i)} className="text-[13px]">
+                {aberta === i ? "Recolher" : "Ver como estava"}
+              </Revelar>
+            </div>
+            {aberta === i && <pre className="surge mt-1 whitespace-pre-wrap rounded-md bg-canvas p-3 font-sans text-[13px] text-tinta-2">{m.antes}</pre>}
+          </li>
+        ))}
+      </ol>
+    </Cartao>
+  );
+}
+
+function Previa({ form, soPreenchidas = false }: { form: Formulario; soPreenchidas?: boolean }) {
   const vazia = useMemo(() => !form.enunciado.trim(), [form.enunciado]);
   return (
     <Cartao className="flex flex-col gap-4 p-5">
@@ -365,7 +410,7 @@ function Previa({ form }: { form: Formulario }) {
       </div>
       {vazia ? <p className="text-[15px] text-suave">A prévia aparece enquanto você escreve.</p> : <TextoFormatado texto={form.enunciado} />}
       <ul className="flex flex-col gap-2">
-        {LETRAS.filter((letra) => letra !== "E" || form.alternativas.E?.trim()).map((letra) => (
+        {LETRAS.filter((letra) => (soPreenchidas ? form.alternativas[letra]?.trim() : letra !== "E" || form.alternativas.E?.trim())).map((letra) => (
           <li key={letra} className={`flex items-start gap-3 rounded-cartao border px-3 py-2 ${form.gabarito === letra ? "border-sucesso-borda bg-sucesso-fundo" : "border-borda"}`}>
             <span className="mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-full border border-borda-campo text-xs font-semibold">{letra}</span>
             <div className="min-w-0 flex-1">

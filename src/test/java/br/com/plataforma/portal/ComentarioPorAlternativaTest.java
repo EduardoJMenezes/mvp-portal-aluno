@@ -92,11 +92,11 @@ class ComentarioPorAlternativaTest extends BaseDoPortal {
         var aberto = criarSimulado("Simulado", "PUBLICADO", "2026-01-01T10:00:00Z", "2099-01-01T10:00:00Z");
         porNaProva(aberto, questao, 1);
 
-        // O enunciado trava; o comentário, que o aluno só lê depois, não.
-        patch("/api/admin/questoes/" + questao, "{\"enunciado\": \"Outro\"}", ADMIN).andExpect(status().isBadRequest());
+        // O comentário não é o que o aluno lê antes de responder: muda sem entrar no histórico.
         patch("/api/admin/questoes/" + questao, "{\"comentarios\": {\"D\": \"34 g é a massa do H2O2.\"}}", ADMIN)
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.comentarios.D").value("34 g é a massa do H2O2."));
+                .andExpect(jsonPath("$.comentarios.D").value("34 g é a massa do H2O2."))
+                .andExpect(jsonPath("$.historico.length()").value(0));
     }
 
     @Test
