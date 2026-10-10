@@ -74,10 +74,48 @@ public class AutenticacaoPortal {
                 .build();
     }
 
-    /** Atrás do proxy do Railway, o Tomcat lê o X-Forwarded-For: este é o IP de quem pediu. */
+    /** O cabeçalho em que a borda do Railway informa o endereço de quem conectou nela. */
+    static final String IP_DA_BORDA = "X-Real-IP";
+
+    /**
+     * O endereço de quem pediu, para as travas de abuso.
+     *
+     * <p>Vem do {@code X-Real-IP}, que a borda do Railway define a cada pedido, e nunca do
+     * {@code X-Forwarded-For}: este o cliente escreve como quiser, e o Tomcat (que confia em qualquer
+     * remetente, ver {@code application.yml}) repassaria a invenção como endereço remoto — bastava
+     * trocar o cabeçalho a cada tentativa para a trava por IP nunca contar. Havendo mais de um
+     * valor, vale o último, que é o que o proxy mais próximo acrescentou. Sem o cabeçalho (máquina
+     * local, sem borda), vale o endereço da conexão.
+     *
+     * <p>Só um IP literal vira chave. Qualquer outra coisa cai num balde único: um valor inventado
+     * não ganha contagem própria nem estoura a coluna da tabela de tentativas.
+     */
     static String ip(HttpServletRequest pedido) {
-        var ip = pedido.getRemoteAddr();
-        return ip == null || ip.isBlank() ? "desconhecido" : ip;
+        String candidato = null;
+        for (var valores = pedido.getHeaders(IP_DA_BORDA); valores != null && valores.hasMoreElements();) {
+            for (var parte : valores.nextElement().split(",")) {
+                if (!parte.isBlank()) {
+                    candidato = parte.strip();
+                }
+            }
+        }
+        if (candidato == null) {
+            candidato = pedido.getRemoteAddr();
+        }
+        return ipLiteral(candidato) ? candidato : "desconhecido";
+    }
+
+    /** IPv4 ou IPv6 escrito por extenso, sem resolver nome: 45 caracteres é o maior IPv6 possível. */
+    private static boolean ipLiteral(String texto) {
+        if (texto == null || texto.isBlank() || texto.length() > 45) {
+            return false;
+        }
+        try {
+            java.net.InetAddress.ofLiteral(texto);
+            return true;
+        } catch (IllegalArgumentException e) {
+            return false;
+        }
     }
 
     @PostMapping("/login")

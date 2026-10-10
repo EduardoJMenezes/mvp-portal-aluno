@@ -37,13 +37,22 @@ public interface EnvioAoVimeo {
             this.base = base.replaceAll("/$", "");
         }
 
+        /**
+         * Quem assiste à gravação no Vimeo: só quem tem o link com o hash, como o resto do curso.
+         * Vai dito no próprio envio — sem isso valeria o padrão da conta, que o portal não enxerga
+         * e que pode ser "qualquer pessoa".
+         */
+        static final String PRIVACIDADE = "unlisted";
+
         @Override
         public Enviado enviar(String titulo, String descricao, String linkDoArquivo) {
             var corpo = Map.of(
                     "upload", Map.of("approach", "pull", "link", linkDoArquivo),
                     "name", titulo,
-                    "description", descricao);
-            var pedido = HttpRequest.newBuilder(URI.create(base + "/me/videos?fields=uri,link,player_embed_url"))
+                    "description", descricao,
+                    "privacy", Map.of("view", PRIVACIDADE));
+            var pedido = HttpRequest.newBuilder(
+                            URI.create(base + "/me/videos?fields=uri,link,player_embed_url,privacy.view"))
                     .header("Authorization", "bearer " + token)
                     .header("Accept", "application/vnd.vimeo.*+json;version=3.4")
                     .header("Content-Type", "application/json")
@@ -65,6 +74,13 @@ public interface EnvioAoVimeo {
             }
             var video = json.readValue(resposta.body(), Map.class);
             var uri = String.valueOf(video.get("uri"));
+            // O Vimeo pode ignorar o pedido (plano sem "unlisted", token sem o escopo): confere o que
+            // ele gravou. Gravação pública não vira aula no portal — alguém precisa olhar o vídeo.
+            var privacidade = video.get("privacy") instanceof Map<?, ?> p ? String.valueOf(p.get("view")) : "não informada";
+            if (!PRIVACIDADE.equals(privacidade)) {
+                throw new ServicoExterno(("O Vimeo criou a gravação %s com privacidade '%s' em vez de '%s'. "
+                        + "Confira o vídeo no Vimeo antes de publicá-lo.").formatted(uri, privacidade, PRIVACIDADE));
+            }
             return new Enviado(uri.substring(uri.lastIndexOf('/') + 1), String.valueOf(video.get("link")),
                     String.valueOf(video.get("player_embed_url")));
         }

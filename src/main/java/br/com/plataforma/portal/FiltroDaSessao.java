@@ -10,12 +10,15 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.net.URI;
+import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.List;
 import java.util.Set;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.filter.OncePerRequestFilter;
+import org.springframework.web.util.UriUtils;
 
 /**
  * Identidade de quem chega pela API do portal.
@@ -36,6 +39,8 @@ import org.springframework.web.filter.OncePerRequestFilter;
 public class FiltroDaSessao extends OncePerRequestFilter {
 
     public static final String COOKIE = "sessao";
+    /** A autoridade que {@code Seguranca} exige em {@code /api/admin/**}: só o operador a recebe. */
+    public static final String OPERADOR = "OPERADOR";
     static final Set<String> PUBLICAS = Set.of(
             "/api/login", "/api/logout", "/api/sessao/config", "/api/demo/entrar", "/api/saude",
             // o Zoom não tem sessão: quem prova a origem é a assinatura, conferida no WebhookDoZoom
@@ -58,7 +63,7 @@ public class FiltroDaSessao extends OncePerRequestFilter {
 
     @Override
     protected boolean shouldNotFilter(HttpServletRequest pedido) {
-        var caminho = pedido.getRequestURI();
+        var caminho = caminho(pedido);
         // O link de envio é a própria credencial: a página abre sem sessão (EnvioProxy).
         return !caminho.startsWith("/api/") || PUBLICAS.contains(caminho) || caminho.startsWith("/api/importacoes/")
                 || caminho.startsWith("/api/vendas/")
@@ -115,22 +120,37 @@ public class FiltroDaSessao extends OncePerRequestFilter {
                 Respostas.erro(resposta, 401, "A senha mudou. Entre de novo.");
                 return;
             }
-            if (usuario.isSenhaTemporaria() && !LIVRES_COM_SENHA_TEMPORARIA.contains(pedido.getRequestURI())) {
+            if (usuario.isSenhaTemporaria() && !LIVRES_COM_SENHA_TEMPORARIA.contains(caminho(pedido))) {
                 Respostas.erro(resposta, 403, "Troque a senha temporária para continuar.");
                 return;
             }
             ident = identidade(usuario, Canal.PORTAL);
         }
 
-        if (pedido.getRequestURI().startsWith("/api/admin/") && !ident.eOperador()) {
+        if (caminho(pedido).startsWith("/api/admin/") && !ident.eOperador()) {
             Respostas.erro(resposta, 403, "Área restrita a ADMIN/GERENCIADOR.");
             return;
         }
 
         var contexto = SecurityContextHolder.createEmptyContext();
-        contexto.setAuthentication(UsernamePasswordAuthenticationToken.authenticated(ident, null, List.of()));
+        contexto.setAuthentication(UsernamePasswordAuthenticationToken.authenticated(ident, null,
+                ident.eOperador() ? List.of(new SimpleGrantedAuthority(OPERADOR)) : List.of()));
         SecurityContextHolder.setContext(contexto);
         cadeia.doFilter(pedido, resposta);
+    }
+
+    /**
+     * O caminho como o roteador o enxerga: decodificado. A URI crua não serve para decidir acesso —
+     * {@code /api/%61dmin/turmas} não começa com {@code /api/admin/} e mesmo assim cai no handler de
+     * admin, porque o Spring casa a rota pelo caminho decodificado.
+     */
+    static String caminho(HttpServletRequest pedido) {
+        var cru = pedido.getRequestURI();
+        try {
+            return UriUtils.decode(cru, StandardCharsets.UTF_8);
+        } catch (IllegalArgumentException e) {
+            return cru;
+        }
     }
 
     private static Identidade identidade(Usuario u, Canal canal) {

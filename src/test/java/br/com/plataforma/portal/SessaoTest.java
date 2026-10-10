@@ -8,9 +8,13 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import br.com.plataforma.contas.Senhas;
 import jakarta.servlet.http.Cookie;
+import java.net.URI;
 import java.time.Instant;
+import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.test.web.servlet.ResultActions;
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders;
 
 /** Entrar, sair, trocar a senha, e as duas credenciais que abrem a API. */
 class SessaoTest extends BaseDoPortal {
@@ -125,6 +129,59 @@ class SessaoTest extends BaseDoPortal {
         get("/api/admin/turmas", ALUNO).andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.detail").value("Área restrita a ADMIN/GERENCIADOR."));
         get("/api/admin/turmas", ADMIN).andExpect(status().isOk()).andExpect(jsonPath("$[0].nome").value("Extensivo 2027"));
+    }
+
+    /**
+     * O roteador casa a rota pelo caminho decodificado; o portão tem de olhar o mesmo caminho. Com a
+     * URI crua, {@code /api/%61dmin/...} passava pelo teste de prefixo e caía no handler de admin.
+     */
+    @Test
+    void caminhoCodificadoNaoFuraAAreaDoProfessor() throws Exception {
+        for (var rota : List.of("/api/%61dmin/simulados", "/api/%61dmin/vimeo/videos", "/api/%61dmin/vimeo/pastas",
+                "/api/%61dmin/assuntos", "/api/admi%6e/turmas", "/%61pi/admin/assuntos")) {
+            var status = mvc.perform(MockMvcRequestBuilders.get(URI.create(rota)).cookie(sessao(ALUNO)))
+                    .andReturn().getResponse().getStatus();
+            assertThat(status).as("aluno em %s", rota).isIn(401, 403, 404);
+        }
+        get("/api/admin/assuntos", ADMIN).andExpect(status().isOk());
+        get("/api/admin/simulados", ADMIN).andExpect(status().isOk());
+        mvc.perform(MockMvcRequestBuilders.get(URI.create("/api/%61dmin/assuntos")).cookie(sessao(ADMIN)))
+                .andExpect(status().isOk());
+    }
+
+    /**
+     * A trava por endereço usa o IP que a borda informa (X-Real-IP), não o X-Forwarded-For, que o
+     * cliente escreve à vontade: trocar o cabeçalho a cada tentativa não zera a contagem.
+     */
+    @Test
+    void aTravaPorEnderecoNaoSeguraOQueOClienteEscreve() throws Exception {
+        for (int i = 0; i < 20; i++) {
+            loginDe("ninguem%d@teste.invalid".formatted(i), "errada-errada", "203.0.113.9", "198.51.100." + i)
+                    .andExpect(status().isUnauthorized());
+        }
+        loginDe("bruno@teste.invalid", SENHA, "203.0.113.9", "198.51.100.200").andExpect(status().isTooManyRequests());
+        loginDe("bruno@teste.invalid", SENHA, "203.0.113.10", "198.51.100.200").andExpect(status().isOk());
+    }
+
+    /** Endereço que não é um IP não vira chave: cai num balde só, e a falha da conta continua gravada. */
+    @Test
+    void enderecoMalformadoNaoDerrubaATravaDaConta() throws Exception {
+        var estranho = "x".repeat(200);
+        for (int i = 0; i < 5; i++) {
+            mvc.perform(post("/api/login").with(pedido -> {
+                pedido.setRemoteAddr(estranho);
+                return pedido;
+            }).contentType(APPLICATION_JSON).content("{\"email\": \"bruno@teste.invalid\", \"senha\": \"errada-errada\"}"))
+                    .andExpect(status().isUnauthorized());
+        }
+        login("bruno@teste.invalid", SENHA).andExpect(status().isTooManyRequests());
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM login_attempts WHERE chave LIKE 'conta:%'", Integer.class))
+                .isEqualTo(5);
+    }
+
+    private ResultActions loginDe(String email, String senha, String ipDaBorda, String encaminhado) throws Exception {
+        return mvc.perform(post("/api/login").header("X-Real-IP", ipDaBorda).header("X-Forwarded-For", encaminhado)
+                .contentType(APPLICATION_JSON).content("{\"email\": \"%s\", \"senha\": \"%s\"}".formatted(email, senha)));
     }
 
     /** O token do MCP abre a API — com o canal MCP, que não aprova nem emite token. */

@@ -1,8 +1,11 @@
 server:
   # O Railway roteia e faz o healthcheck na porta que ele põe em PORT.
   port: ${PORT:8080}
-  # Atrás do proxy do Railway: o esquema (https) e o IP do cliente vêm dos X-Forwarded-*. O
-  # container só é alcançado pelo proxy, então todo remetente é proxy de confiança.
+  # Atrás do proxy do Railway: o esquema (https) e o host público vêm dos X-Forwarded-*. O Railway
+  # não publica a faixa de endereços da borda, então todo remetente é tratado como proxy — e por
+  # isso o endereço remoto que o Tomcat monta a partir do X-Forwarded-For NÃO serve para decidir
+  # nada: o cliente escreve esse cabeçalho. As travas de abuso leem o X-Real-IP, que a borda define
+  # (AutenticacaoPortal.ip).
   forward-headers-strategy: native
   tomcat:
     remoteip:

@@ -34,11 +34,27 @@ public class Sessoes {
     private final Duration validade;
     private final ObjectMapper json;
 
+    /** HS256 pede uma chave do tamanho do hash: menos que isso é adivinhável fora de linha. */
+    static final int SEGREDO_MINIMO_BYTES = 32;
+
+    /**
+     * Com o cookie Secure — isto é, em produção — o portal não sobe com o segredo de
+     * desenvolvimento, que está publicado no repositório, nem com um curto: quem o conhece assina a
+     * sessão de qualquer usuário. É a mesma regra do {@code SERVICO_TOKEN}: melhor um deploy que
+     * falha do que uma porta aberta. Em http local e nos testes ({@code cookie-seguro=false}) o
+     * padrão continua valendo, com o aviso.
+     */
     public Sessoes(ConfigDoPortal config, ObjectMapper json) {
         this.segredo = config.jwtSecret().getBytes(StandardCharsets.UTF_8);
         this.validade = Duration.ofHours(config.jwtExpiraHoras());
         this.json = json;
-        if (config.jwtSecret().equals(ConfigDoPortal.SEGREDO_DE_DESENVOLVIMENTO)) {
+        var deDesenvolvimento = config.jwtSecret().equals(ConfigDoPortal.SEGREDO_DE_DESENVOLVIMENTO);
+        if (config.cookieSeguro() && (deDesenvolvimento || segredo.length < SEGREDO_MINIMO_BYTES)) {
+            throw new IllegalStateException(
+                    "defina JWT_SECRET com pelo menos %d caracteres aleatórios: é ele que assina a sessão"
+                            .formatted(SEGREDO_MINIMO_BYTES));
+        }
+        if (deDesenvolvimento) {
             LoggerFactory.getLogger(Sessoes.class)
                     .warn("JWT_SECRET é o valor de desenvolvimento: defina um segredo aleatório fora da máquina local");
         }

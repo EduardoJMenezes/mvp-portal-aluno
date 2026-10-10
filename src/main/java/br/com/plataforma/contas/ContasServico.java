@@ -171,8 +171,10 @@ public class ContasServico {
     @Transactional(noRollbackFor = CredenciaisInvalidas.class) // a falha fica gravada: é ela que trava
     public Usuario entrar(String email, String senha, String ip, Instant agora) {
         var conta = email == null ? "" : email.strip().toLowerCase(Locale.ROOT);
+        var chaveDaConta = chave("conta:", conta);
+        var chaveDoIp = chave("ip:", ip);
 
-        var espera = Math.max(espera(conta, FALHAS_POR_CONTA, agora), espera(ip, FALHAS_POR_IP, agora));
+        var espera = Math.max(espera(chaveDaConta, FALHAS_POR_CONTA, agora), espera(chaveDoIp, FALHAS_POR_IP, agora));
         if (espera > 0) {
             throw new MuitasTentativas(espera);
         }
@@ -180,12 +182,28 @@ public class ContasServico {
         var usuario = usuarios.findFirstByEmailIgnoreCase(conta).orElse(null);
         var confere = Senhas.confere(senha, usuario == null ? HASH_DE_NINGUEM : usuario.getSenhaHash());
         if (usuario == null || !confere) {
-            registrarFalha(List.of(conta, ip), agora);
+            registrarFalha(List.of(chaveDaConta, chaveDoIp), agora);
             throw new CredenciaisInvalidas();
         }
 
-        tentativas.apagarChave(conta);
+        tentativas.apagarChave(chaveDaConta);
         return usuario;
+    }
+
+    /** O maior valor que entra por extenso na chave; a coluna {@code login_attempts.chave} tem 180. */
+    private static final int CHAVE_POR_EXTENSO = 120;
+
+    /**
+     * A chave da trava, com o tipo na frente e sempre do tamanho da coluna.
+     *
+     * <p>As duas linhas de uma falha (conta e endereço) são gravadas na mesma transação: se uma não
+     * coubesse, o INSERT falharia e levaria a outra junto, e a tentativa não contaria para ninguém.
+     * Por isso o valor comprido demais entra pelo hash. O prefixo impede que um e-mail e um endereço
+     * iguais dividam a contagem.
+     */
+    static String chave(String tipo, String valor) {
+        var texto = valor == null ? "" : valor;
+        return tipo + (texto.length() <= CHAVE_POR_EXTENSO ? texto : "sha256:" + Senhas.sha256(texto));
     }
 
     /** Segundos até a chave poder tentar de novo; 0 quando está livre. */
@@ -385,11 +403,12 @@ public class ContasServico {
      */
     @Transactional(noRollbackFor = MuitasTentativas.class)
     public void limitar(String chave, int limite, Instant agora) {
-        var espera = espera(chave, limite, agora);
+        var cabe = chave("", chave);
+        var espera = espera(cabe, limite, agora);
         if (espera > 0) {
             throw new MuitasTentativas(espera);
         }
-        registrarFalha(List.of(chave), agora);
+        registrarFalha(List.of(cabe), agora);
     }
 
     // --- tokens do MCP -------------------------------------------------------

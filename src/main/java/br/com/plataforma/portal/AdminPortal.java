@@ -210,7 +210,8 @@ public class AdminPortal {
     }
 
     @GetMapping("/assuntos")
-    public List<TaxonomiaServico.AssuntoNaLista> assuntos() {
+    public List<TaxonomiaServico.AssuntoNaLista> assuntos(@AuthenticationPrincipal Identidade ident) {
+        ident.exigirOperador();
         return taxonomia.listarAssuntos();
     }
 
@@ -356,14 +357,17 @@ public class AdminPortal {
             @NotEmpty List<ImportacaoVimeo.Destino> destinos) {}
 
     @GetMapping("/vimeo/pastas")
-    public ImportacaoVimeo.Pastas vimeoPastas(@RequestParam(required = false) String busca,
-            @RequestParam(defaultValue = "60") int limite) {
+    public ImportacaoVimeo.Pastas vimeoPastas(@AuthenticationPrincipal Identidade ident,
+            @RequestParam(required = false) String busca, @RequestParam(defaultValue = "60") int limite) {
+        ident.exigirOperador();
         return vimeoImportacao.listarPastas(busca, limite);
     }
 
     @GetMapping("/vimeo/videos")
-    public List<Vimeo.Video> vimeoVideos(@RequestParam(required = false) String pasta,
-            @RequestParam(required = false) String busca, @RequestParam(defaultValue = "25") int limite) {
+    public List<Vimeo.Video> vimeoVideos(@AuthenticationPrincipal Identidade ident,
+            @RequestParam(required = false) String pasta, @RequestParam(required = false) String busca,
+            @RequestParam(defaultValue = "25") int limite) {
+        ident.exigirOperador();
         return vimeo.listarVideos(pasta, busca, limite);
     }
 
@@ -576,6 +580,8 @@ public class AdminPortal {
     @GetMapping("/simulados")
     public List<SimuladosServico.ResumoDoSimulado> listaSimulados(@AuthenticationPrincipal Identidade ident,
             @RequestParam(required = false) String turma) {
+        // O serviço também lista para o aluno (ProvaDoAluno): quem fecha esta rota ao operador é ela.
+        ident.exigirOperador();
         return simulados.listar(ident, turma == null ? null : catalogo.resolverTurma(turma), Instant.now());
     }
 

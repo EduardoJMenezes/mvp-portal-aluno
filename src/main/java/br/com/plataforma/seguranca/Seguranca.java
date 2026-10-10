@@ -73,11 +73,18 @@ class Seguranca {
                                 "/api/saude", "/api/importacoes/**", "/api/zoom/webhook", "/api/asaas/webhook",
                                 "/api/vendas/**").permitAll()
                         .requestMatchers(org.springframework.http.HttpMethod.OPTIONS, "/api/**").permitAll()
+                        // A segunda tranca da área do professor: quem decide é o casador de rotas do
+                        // próprio Spring, o mesmo que escolhe o handler — sem comparar texto de URL.
+                        .requestMatchers("/api/admin/**").hasAuthority(FiltroDaSessao.OPERADOR)
                         .anyRequest().authenticated())
                 .exceptionHandling(e -> e.authenticationEntryPoint((pedido, resposta, erro) -> {
                     resposta.setStatus(401);
                     resposta.setContentType("application/json;charset=UTF-8");
                     resposta.getWriter().write("{\"detail\":\"Faça login para continuar.\"}");
+                }).accessDeniedHandler((pedido, resposta, erro) -> {
+                    resposta.setStatus(403);
+                    resposta.setContentType("application/json;charset=UTF-8");
+                    resposta.getWriter().write("{\"detail\":\"Área restrita a ADMIN/GERENCIADOR.\"}");
                 }))
                 .build();
     }

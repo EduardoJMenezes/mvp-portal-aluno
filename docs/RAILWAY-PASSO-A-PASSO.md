@@ -42,7 +42,7 @@ não recebe deploy.
 ```bash
 DATABASE_URL=${{Postgres.DATABASE_URL}}   # a aplicação entende o formato postgresql://usuario:senha@host/banco
 SERVICO_TOKEN=<32+ caracteres aleatórios; o mesmo vai no mcp>
-JWT_SECRET=<o mesmo de antes: os cookies dos professores continuam valendo>
+JWT_SECRET=<32+ caracteres aleatórios; sem ele, ou com menos, a aplicação não sobe em produção>
 MCP_BASE_URL=https://mcp-production-041f.up.railway.app   # o domínio público do serviço mcp
 CORS_ORIGINS=https://app-production-e5b7.up.railway.app
 VIMEO_ACCESS_TOKEN=...
@@ -79,7 +79,8 @@ SERVICO_TOKEN=<o mesmo do app>
 MCP_BASE_URL=https://mcp-production-041f.up.railway.app
 PORTAL_URL=https://app-production-e5b7.up.railway.app   # para onde vai o "aprove no portal"
 VIMEO_ACCESS_TOKEN=...
-MCP_OAUTH_GITHUB_CLIENT_ID=... MCP_OAUTH_GITHUB_CLIENT_SECRET=... MCP_OAUTH_OPERADORES=...
+MCP_OAUTH_GITHUB_CLIENT_ID=... MCP_OAUTH_GITHUB_CLIENT_SECRET=...
+MCP_OAUTH_OPERADORES=<id numérico da conta do GitHub>=<e-mail do operador>   # ver docs/MCP-OAUTH.md
 DATABASE_URL=${{Postgres.DATABASE_URL}}   # só o registro OAuth
 ```
 

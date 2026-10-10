@@ -16,6 +16,14 @@ const escapar = (texto: string) => texto.replace(/[&<>"']/g, (c) => `&#${c.charC
 const markdown = new Marked({
   gfm: true,
   breaks: true,
+  // Depois de um <code>, <kbd>, <pre> ou <script> escrito no texto, o marked marca
+  // o que vem em seguida como "já escapado" e solta cru na saída — até em outro
+  // item de lista ou célula de tabela. Como aqui a tag nem é renderizada (vira
+  // texto, ver `html` abaixo), nada está escapado de verdade: `<code> <img onerror=…`
+  // chegava inteiro ao innerHTML. Nenhum token entra como "já escapado".
+  walkTokens(token) {
+    if ("escaped" in token) token.escaped = false;
+  },
   renderer: {
     html({ text }) {
       return escapar(text);
