@@ -3,18 +3,20 @@
 // Um sub-módulo na tela de montar o curso: a fila das linhas (vídeo, PDF ou questão), o botão
 // único de "Adicionar" e o que cada linha deixa fazer.
 
-import { ArrowDown, ArrowUp, CornerDownRight, ExternalLink, Paperclip, Pencil, Plus, SquarePen, Tags, Trash2, Users } from "lucide-react";
+import { ArrowDown, ArrowUp, CornerDownRight, ExternalLink, Paperclip, Pencil, Play, Plus, SquarePen, Tags, Trash2, Users } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
+import { OffCanvas } from "@/components/Camadas";
 import { EscolherTurmas } from "@/components/EscolherTurmas";
 import { Menu, type ItemDoMenu } from "@/components/Menu";
-import { EscolherPdf } from "@/components/Pdf";
+import { PassarVideos, TelaDoVideo } from "@/components/PreviaDoVideo";
 import { Botao, Etiqueta, botao } from "@/components/ui";
 import { api, type Assunto, type Aula, type ItemCurso, type Modulo, type SubModulo } from "@/lib/api";
+import { duracao } from "@/lib/formato";
 import { Alca, Azulejo, BIBLIOTECA, Marca, TIPOS, composicao, tipoDaLinha, useArrastar, type Arrastar, type Confirmar, type Executar, type Tipo } from "./comum";
 import { AdicionarVideos } from "./AdicionarVideos";
-import { AdicionarQuestao, AulasDoSubmodulo, Classificar, NovaAulaAoVivo, Painel } from "./Paineis";
+import { AdicionarPdf, AdicionarQuestao, AulasDoSubmodulo, Classificar, NovaAulaAoVivo } from "./Paineis";
 
 type Adicionando = "video" | "pdf" | "questao" | "aovivo" | "classificar" | null;
 
@@ -59,6 +61,17 @@ export function SecaoDoSubmodulo({
   const outros = modulo.submodulos.filter((s) => s.id !== sub.id);
   const arrastar = useArrastar(sub.itens.map((i) => i.id), Object.fromEntries(sub.itens.map((i) => [i.id, i.nome])), aoReordenar);
   const fechar = () => setAdicionando(null);
+  // A prévia do vídeo cru: qual linha está aberta, e se o painel está na tela (ao fechar, a linha
+  // continua guardada enquanto ele sai).
+  const [previa, setPrevia] = useState<number | null>(null);
+  const [vendoPrevia, setVendoPrevia] = useState(false);
+  const videos = sub.itens.filter((i) => tipoDaLinha(i) === "video");
+  const naPrevia = videos.findIndex((i) => i.id === previa);
+  const videoDaPrevia = naPrevia >= 0 ? videos[naPrevia] : null;
+  const ver = (item: ItemCurso) => {
+    setPrevia(item.id);
+    setVendoPrevia(true);
+  };
 
   async function remover() {
     const sim = await confirmar({
@@ -131,13 +144,14 @@ export function SecaoDoSubmodulo({
               todasAsTurmas={todasAsTurmas}
               executar={executar}
               confirmar={confirmar}
+              aoVer={() => ver(item)}
             />
           ))}
         </ol>
       )}
       <p aria-live="polite" className="sr-only">{arrastar.anuncio}</p>
 
-      {vazio && (!adicionando || adicionando === "video") && (
+      {vazio && (
         <div className="px-4 py-5 sm:px-5">
           <p className="text-[15px] text-suave">
             {nomeDaTurma ? `${nomeDaTurma} não vê nada em ${sub.nome}.` : `${sub.nome} ainda está vazio.`} Comece por:
@@ -156,26 +170,49 @@ export function SecaoDoSubmodulo({
         </div>
       )}
 
-      {/* Os vídeos abrem num off-canvas, por cima da página; o resto abre aqui, dentro do sub-módulo. */}
-      {adicionando === "video" && <AdicionarVideos modulo={modulo} sub={sub} executar={executar} aoFechar={fechar} />}
+      <OffCanvas
+        aberto={vendoPrevia && !!videoDaPrevia}
+        aoFechar={() => setVendoPrevia(false)}
+        lado="direita"
+        tamanho="grande"
+        titulo={videoDaPrevia?.nome ?? ""}
+        legenda={`${sub.nome}, em ${modulo.nome}`}
+        rodape={
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <PassarVideos posicao={naPrevia} total={videos.length} aoPassar={(passo) => setPrevia(videos[naPrevia + passo]?.id ?? previa)} />
+            <Botao onClick={() => setVendoPrevia(false)}>Fechar</Botao>
+          </div>
+        }
+      >
+        {videoDaPrevia && (
+          <div className="flex flex-col gap-3">
+            <TelaDoVideo video={{ vimeo_id: videoDaPrevia.vimeo_id, titulo: videoDaPrevia.nome, embed_url: videoDaPrevia.embed_url }} />
+            <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px] text-suave">
+              {videoDaPrevia.status !== "PUBLICADO" && <Etiqueta tom="atencao">Rascunho</Etiqueta>}
+              {videoDaPrevia.duracao_segundos ? <span className="tabular-nums">{duracao(videoDaPrevia.duracao_segundos)}</span> : null}
+              {videoDaPrevia.vimeo_id && (
+                <a href={`https://vimeo.com/${videoDaPrevia.vimeo_id}`} target="_blank" rel="noreferrer" className="font-semibold text-acento hover:underline">
+                  Abrir no Vimeo
+                </a>
+              )}
+            </p>
+          </div>
+        )}
+      </OffCanvas>
 
-      {adicionando && adicionando !== "video" && (
-        <div className="px-3 pb-4 pt-3 sm:px-4">
-          {adicionando === "pdf" && (
-            <Painel tipo="pdf" titulo="Adicionar PDF" legenda={`Entra em ${sub.nome}, já publicado. Para o PDF que acompanha um vídeo, use "Anexar PDF" no menu do vídeo.`} aoFechar={fechar}>
-              <EscolherPdf
-                abertoDeInicio
-                moldura={false}
-                aoEscolher={(id) => executar(() => api.pdfNoSubmodulo(sub.id, id), `PDF adicionado em ${sub.nome}, já publicado.`)}
-                aoFechar={fechar}
-              />
-            </Painel>
-          )}
-          {adicionando === "questao" && <AdicionarQuestao modulo={modulo} sub={sub} executar={executar} aoFechar={fechar} />}
-          {adicionando === "aovivo" && <NovaAulaAoVivo turmas={modulo.turmas ?? []} sub={sub} categorias={categoriasDeAula} executar={executar} aoFechar={fechar} />}
-          {adicionando === "classificar" && <Classificar modulo={modulo} sub={sub} assuntos={assuntos} executar={executar} aoFechar={fechar} />}
-        </div>
+      {/* Tudo o que se adiciona abre por cima da página: a lista do sub-módulo não sai do lugar. */}
+      {adicionando === "video" && <AdicionarVideos modulo={modulo} sub={sub} executar={executar} aoFechar={fechar} />}
+      {adicionando === "pdf" && (
+        <AdicionarPdf
+          titulo="Adicionar PDF"
+          legenda={`Entra em ${sub.nome}, já publicado. Para o PDF que acompanha um vídeo, use "Anexar PDF" no menu do vídeo.`}
+          aoEscolher={(id) => executar(() => api.pdfNoSubmodulo(sub.id, id), `PDF adicionado em ${sub.nome}, já publicado.`)}
+          aoFechar={fechar}
+        />
       )}
+      {adicionando === "questao" && <AdicionarQuestao modulo={modulo} sub={sub} executar={executar} aoFechar={fechar} />}
+      {adicionando === "aovivo" && <NovaAulaAoVivo turmas={modulo.turmas ?? []} sub={sub} categorias={categoriasDeAula} executar={executar} aoFechar={fechar} />}
+      {adicionando === "classificar" && <Classificar modulo={modulo} sub={sub} assuntos={assuntos} executar={executar} aoFechar={fechar} />}
     </section>
   );
 }
@@ -193,6 +230,7 @@ function Linha({
   todasAsTurmas,
   executar,
   confirmar,
+  aoVer,
 }: {
   item: ItemCurso;
   modulo: Modulo;
@@ -204,6 +242,7 @@ function Linha({
   todasAsTurmas: string[];
   executar: Executar;
   confirmar: Confirmar;
+  aoVer: () => void;
 }) {
   const router = useRouter();
   const [modo, setModo] = useState<"nome" | "pdf" | "turmas" | null>(null);
@@ -229,6 +268,7 @@ function Linha({
   }
 
   const acoes: (ItemDoMenu | false)[] = [
+    tipo === "video" && { rotulo: "Ver o vídeo", icone: Play, aoEscolher: aoVer },
     { rotulo: "Renomear", icone: Pencil, aoEscolher: () => { setNome(item.nome); setModo("nome"); } },
     tipo === "questao" && { rotulo: "Editar a questão", icone: SquarePen, aoEscolher: () => router.push(`/admin/questoes/editar/?id=${item.questao!.questao_id}&modulo=${modulo.id}`) },
     tipo === "pdf" && !!item.material && { rotulo: "Abrir o PDF", icone: ExternalLink, aoEscolher: () => router.push(`/materiais/ler/?id=${item.material!.material_id}`) },
@@ -252,7 +292,13 @@ function Linha({
       <Marca onde={arrastar.marca(item.id)} />
       <div className="flex items-start gap-2 py-2.5 pl-2 pr-3 sm:pl-3 pointer-coarse:pl-4">
         <Alca arrastar={arrastar} id={item.id} nome={item.nome} className="sm:opacity-40 sm:group-focus-within:opacity-100 sm:group-hover:opacity-100" />
-        <Azulejo tipo={tipo} />
+        {tipo === "video" ? (
+          <button type="button" onClick={aoVer} aria-label={`Ver o vídeo ${item.nome}`} title="Ver o vídeo" className="group/ver shrink-0 rounded-[10px]">
+            <Azulejo tipo="video" className="transition-colors group-hover/ver:bg-acento group-hover/ver:text-white" />
+          </button>
+        ) : (
+          <Azulejo tipo={tipo} />
+        )}
         <div className="min-w-0 flex-1 self-center">
           {modo === "nome" ? (
             <form onSubmit={renomear} className="flex flex-wrap items-center gap-2">
@@ -276,26 +322,24 @@ function Linha({
       </div>
 
       {modo === "pdf" && (
-        <div className="pb-3 pl-[4.75rem] pr-3 sm:pl-[5.25rem]">
-          <EscolherPdf
-            abertoDeInicio
-            aoEscolher={(id) => executar(() => api.materialDoItem(item.id, id), `PDF de "${item.nome}" salvo.`)}
-            aoFechar={voltar}
-          />
-        </div>
+        <AdicionarPdf
+          titulo={item.material ? "Trocar o PDF" : "Anexar PDF"}
+          legenda={`O PDF que acompanha "${item.nome}". O aluno abre ao lado da aula.`}
+          aoEscolher={(id) => executar(() => api.materialDoItem(item.id, id), `PDF de "${item.nome}" salvo.`)}
+          aoFechar={voltar}
+        />
       )}
       {modo === "turmas" && (
-        <div className="pb-3 pl-[4.75rem] pr-3 sm:pl-[5.25rem]">
-          <p className="mb-2 text-[13px] font-semibold text-tinta-2">Quem vê &quot;{item.nome}&quot;</p>
-          <EscolherTurmas
-            abertoDeInicio
-            turmas={todasAsTurmas}
-            marcadas={item.turmas ?? []}
-            vazio="Todas as turmas do módulo"
-            aoSalvar={(t) => executar(() => api.turmasDoItem(item.id, t), `Turmas de "${item.nome}" salvas.`)}
-            aoFechar={voltar}
-          />
-        </div>
+        <EscolherTurmas
+          abertoDeInicio
+          semResumo
+          modal={`Quem vê "${item.nome}"`}
+          turmas={todasAsTurmas}
+          marcadas={item.turmas ?? []}
+          vazio="Todas as turmas do módulo"
+          aoSalvar={(t) => executar(() => api.turmasDoItem(item.id, t), `Turmas de "${item.nome}" salvas.`)}
+          aoFechar={voltar}
+        />
       )}
     </li>
   );

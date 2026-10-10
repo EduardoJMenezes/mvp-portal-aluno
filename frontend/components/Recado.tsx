@@ -2,15 +2,21 @@
 
 import { CircleCheck, CircleX, X } from "lucide-react";
 import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
+import { useCamadaDeCima } from "./Camadas";
 
 type Recado = { tom: "sucesso" | "erro"; texto: ReactNode; chave: number };
 
 /**
  * O recado do que acabou de acontecer, preso ao pé da tela: numa página comprida, o aviso no
  * topo fica fora de vista. O de sucesso some sozinho; o de erro espera ser lido e fechado.
+ *
+ * Com um modal ou off-canvas aberto, o recado vai morar dentro dele: a página atrás fica inerte e
+ * no escuro, e um erro mostrado lá ninguém leria.
  */
 export function useRecado(): [ReactNode, { sucesso: (texto: ReactNode) => void; erro: (texto: ReactNode) => void; limpar: () => void }] {
   const [recado, setRecado] = useState<Recado | null>(null);
+  const camada = useCamadaDeCima();
 
   useEffect(() => {
     if (recado?.tom !== "sucesso") return;
@@ -43,5 +49,5 @@ export function useRecado(): [ReactNode, { sucesso: (texto: ReactNode) => void; 
     </div>
   );
 
-  return [elemento, { sucesso, erro, limpar }];
+  return [camada ? createPortal(elemento, camada) : elemento, { sucesso, erro, limpar }];
 }

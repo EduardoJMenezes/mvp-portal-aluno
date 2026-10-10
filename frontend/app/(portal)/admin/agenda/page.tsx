@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useId, useState, type FormEvent } from "react";
 import { LinhaDoEvento, porMes } from "@/components/Agenda";
+import { Modal, useSaida } from "@/components/Camadas";
 import { CampoCategoria, categoriasDe } from "@/components/Categoria";
 import { Aviso, Botao, Campo, Cartao, Estado, Pagina, TituloDeSecao, Vazio, useConfirmar } from "@/components/ui";
 import { api, useDados, type EventoDaAgenda, type TipoDeLigacao } from "@/lib/api";
@@ -65,6 +66,10 @@ export default function AgendaDoProfessor() {
     if (sim) await executar(() => api.removerEvento(e.evento_id));
   }
 
+  const emEdicao = editando === null ? undefined : dados.dados?.eventos.find((e) => e.evento_id === editando);
+  // Com o modal aberto, o erro aparece dentro dele; o do alto da página é o de tirar um evento.
+  const noModal = novo || !!emEdicao;
+
   return (
     <Pagina
       titulo="Agenda"
@@ -72,7 +77,7 @@ export default function AgendaDoProfessor() {
       acoes={<Botao variante="primario" onClick={() => setNovo(true)}>Novo evento</Botao>}
     >
       {dialogo}
-      {erro && <Aviso tom="erro">{erro}</Aviso>}
+      {erro && !noModal && <Aviso tom="erro">{erro}</Aviso>}
       <div className="flex flex-wrap items-center gap-2">
         <label htmlFor="filtro-turma" className="text-sm font-semibold text-tinta-2">Turma</label>
         <select id="filtro-turma" value={turma} onChange={(e) => setTurma(e.target.value)} className="campo w-auto">
@@ -82,17 +87,31 @@ export default function AgendaDoProfessor() {
           ))}
         </select>
       </div>
+      {/* O evento, novo ou em edição, abre num modal: a agenda atrás não sai do lugar. */}
       {novo && dados.dados && (
         <FormularioDoEvento
           turmas={dados.dados.turmas}
           opcoes={dados.dados.opcoes}
           categorias={categoriasDe(dados.dados.eventos)}
+          erro={erro}
           aoSalvar={(d) => executar(() => api.criarEvento(d))}
-          aoFechar={() => setNovo(false)}
+          aoFechar={() => { setNovo(false); setErro(""); }}
+        />
+      )}
+      {emEdicao && dados.dados && (
+        <FormularioDoEvento
+          key={emEdicao.evento_id}
+          evento={emEdicao}
+          turmas={dados.dados.turmas}
+          opcoes={dados.dados.opcoes}
+          categorias={categoriasDe(dados.dados.eventos)}
+          erro={erro}
+          aoSalvar={(d) => executar(() => api.editarEvento(emEdicao.evento_id, d))}
+          aoFechar={() => { setEditando(null); setErro(""); }}
         />
       )}
       <Estado {...dados} linhas={4} forma="lista">
-        {({ eventos, turmas, opcoes }) =>
+        {({ eventos }) =>
           eventos.length === 0 ? (
             <Vazio titulo="A agenda está vazia">Crie o primeiro evento aqui, ou mande a foto do calendário ao Claude.</Vazio>
           ) : (
@@ -101,19 +120,7 @@ export default function AgendaDoProfessor() {
                 <TituloDeSecao>{mes}</TituloDeSecao>
                 <Cartao>
                   <ul className="divide-y divide-borda">
-                    {doMes.map((e) =>
-                      editando === e.evento_id ? (
-                        <li key={e.evento_id} className="p-3">
-                          <FormularioDoEvento
-                            evento={e}
-                            turmas={turmas}
-                            opcoes={opcoes}
-                            categorias={categoriasDe(eventos)}
-                            aoSalvar={(d) => executar(() => api.editarEvento(e.evento_id, d))}
-                            aoFechar={() => setEditando(null)}
-                          />
-                        </li>
-                      ) : (
+                    {doMes.map((e) => (
                         <LinhaDoEvento
                           key={e.evento_id}
                           evento={{ ...e, liberado: true }}
@@ -127,8 +134,7 @@ export default function AgendaDoProfessor() {
                             </span>
                           }
                         />
-                      ),
-                    )}
+                    ))}
                   </ul>
                 </Cartao>
               </section>
@@ -145,6 +151,7 @@ function FormularioDoEvento({
   turmas,
   opcoes,
   categorias,
+  erro,
   aoSalvar,
   aoFechar,
 }: {
@@ -152,9 +159,13 @@ function FormularioDoEvento({
   turmas: string[];
   opcoes: Opcoes;
   categorias: string[];
+  /** O que o servidor recusou: aparece dentro do modal. */
+  erro: string;
   aoSalvar: (d: Parameters<typeof api.criarEvento>[0]) => Promise<boolean>;
   aoFechar: () => void;
 }) {
+  const saida = useSaida(aoFechar);
+  const idDoFormulario = useId();
   const [titulo, setTitulo] = useState(evento?.titulo ?? "");
   const [inicio, setInicio] = useState(paraCampoDataHora(evento?.inicio_em));
   const [fim, setFim] = useState(paraCampoDataHora(evento?.fim_em));
@@ -179,14 +190,28 @@ function FormularioDoEvento({
       ligacao: tipo ? { tipo, id: Number(alvo) } : { tipo: "NENHUMA" },
     });
     setSalvando(false);
-    if (ok) aoFechar();
+    if (ok) saida.fechar();
   }
 
   return (
-    <Cartao className="p-5">
-      <form onSubmit={salvar} className="flex flex-col gap-3">
-        <h2 className="text-lg font-semibold text-tinta">{evento ? "Editar evento" : "Novo evento"}</h2>
-        <div className="grid gap-3 sm:grid-cols-[2fr_1fr_1fr]">
+    <Modal
+      {...saida}
+      aoFechar={() => !salvando && saida.fechar()}
+      fechaClicandoFora={false}
+      tamanho="grande"
+      titulo={evento ? "Editar evento" : "Novo evento"}
+      legenda="Vale para as turmas marcadas. Ligado a uma aula ou módulo, leva o aluno até lá."
+      rodape={
+        <div className="flex flex-wrap justify-end gap-2">
+          <Botao onClick={saida.fechar} disabled={salvando}>Cancelar</Botao>
+          <Botao type="submit" form={idDoFormulario} variante="primario" disabled={salvando || !titulo.trim() || !inicio || !escolhidas.length || (!!tipo && !alvo)}>
+            {salvando ? "Salvando…" : "Salvar"}
+          </Botao>
+        </div>
+      }
+    >
+      <form id={idDoFormulario} onSubmit={salvar} className="flex flex-col gap-3">
+        <div className="grid gap-3 sm:grid-cols-[2fr_1fr_1fr]" data-foco-inicial>
           <Campo rotulo="Título">
             {(id) => <input id={id} required maxLength={200} value={titulo} onChange={(e) => setTitulo(e.target.value)} placeholder="K03 - Estequiometria" className="campo" />}
           </Campo>
@@ -250,13 +275,8 @@ function FormularioDoEvento({
             {(id) => <input id={id} maxLength={2000} value={descricao} onChange={(e) => setDescricao(e.target.value)} className="campo" />}
           </Campo>
         </div>
-        <div className="flex gap-2">
-          <Botao type="submit" variante="primario" disabled={salvando || !titulo.trim() || !inicio || !escolhidas.length || (!!tipo && !alvo)}>
-            {salvando ? "Salvando…" : "Salvar"}
-          </Botao>
-          <Botao onClick={aoFechar}>Cancelar</Botao>
-        </div>
+        {erro && <Aviso tom="erro">{erro}</Aviso>}
       </form>
-    </Cartao>
+    </Modal>
   );
 }

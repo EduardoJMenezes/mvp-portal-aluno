@@ -62,6 +62,20 @@ class PastaDoVimeoNoCursoTest extends BaseDoPortal {
     }
 
     @Test
+    void oEnderecoDoPlayerSoSaiNaArvoreDoProfessor() throws Exception {
+        post(itens(), PASTA, ADMIN).andExpect(status().isOk());
+
+        org.assertj.core.api.Assertions.assertThat(
+                comando("listar_modulos", "{}", ADMIN).andReturn().getResponse().getContentAsString())
+                .contains("https://player.vimeo.com/video/920000201");
+        // A porta de comandos entrega a árvore a quem o MCP disser. Para o aluno, quem libera o vídeo
+        // é o AcessoServico, na tela dele: esta árvore não pode ser um atalho por fora.
+        org.assertj.core.api.Assertions.assertThat(
+                comando("listar_modulos", "{}", ALUNO).andReturn().getResponse().getContentAsString())
+                .doesNotContain("player.vimeo.com");
+    }
+
+    @Test
     void oAlunoNaoLeOVimeo() throws Exception {
         get("/api/admin/vimeo/pastas/demo-2/videos", ALUNO).andExpect(status().isForbidden());
     }
@@ -95,6 +109,9 @@ class PastaDoVimeoNoCursoTest extends BaseDoPortal {
 
         get("/api/admin/biblioteca/arvore", ADMIN)
                 .andExpect(jsonPath("$[0].submodulos[0].itens.length()").value(3))
-                .andExpect(jsonPath("$[0].submodulos[0].itens[2].vimeo_id").value("920000203"));
+                .andExpect(jsonPath("$[0].submodulos[0].itens[2].vimeo_id").value("920000203"))
+                // A linha leva o endereço do player: é a prévia do vídeo na tela de montar o curso.
+                .andExpect(jsonPath("$[0].submodulos[0].itens[0].embed_url")
+                        .value("https://player.vimeo.com/video/920000201"));
     }
 }

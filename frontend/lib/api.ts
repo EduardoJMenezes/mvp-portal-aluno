@@ -169,7 +169,7 @@ export type QuestaoDaLinha = { questao_id: number; resumo?: string; status?: Sta
  * Sem `video_id`, a linha é só o PDF de `material` ou a `questao` que o aluno responde ali.
  * `concluido` só vem para o aluno: ele já assistiu o vídeo, abriu o PDF ou respondeu a questão.
  */
-export type ItemCurso = { id: number; nome: string; ordem: number; status: StatusConteudo; video_id: number | null; vimeo_id?: string | null; video?: Video | null; turmas?: string[]; material?: MaterialLigado | null; questao?: QuestaoDaLinha | null; concluido?: boolean };
+export type ItemCurso = { id: number; nome: string; ordem: number; status: StatusConteudo; video_id: number | null; vimeo_id?: string | null; embed_url?: string | null; duracao_segundos?: number | null; video?: Video | null; turmas?: string[]; material?: MaterialLigado | null; questao?: QuestaoDaLinha | null; concluido?: boolean };
 
 /** Aula assistida. `posicao_segundos`: de onde o vídeo continua. */
 export type ProgressoDoItem = { item_id: number; concluido: boolean; posicao_segundos: number };

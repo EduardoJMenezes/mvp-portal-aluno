@@ -16,7 +16,7 @@
 //     chamado depois da animação de saída.
 
 import { X } from "lucide-react";
-import { useEffect, useId, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactNode } from "react";
 
 export type TamanhoDaCamada = "pequeno" | "medio" | "grande" | "tela";
 export type LadoDoOffCanvas = "direita" | "esquerda" | "baixo" | "cima";
@@ -40,6 +40,49 @@ type Conteudo = {
 
 /** O mesmo tempo da animação de saída em globals.css. */
 const SAIDA_MS = 200;
+
+// --- quais camadas estão abertas -------------------------------------------------
+// Quem mostra algo "por cima de tudo" (o recado ao pé da tela) precisa saber se há uma camada
+// aberta: o <dialog> deixa o resto da página inerte e atrás do escuro, então o recado tem de ir
+// morar dentro dela.
+
+const abertas: HTMLDialogElement[] = [];
+const ouvintes = new Set<() => void>();
+const avisar = () => ouvintes.forEach((ouvinte) => ouvinte());
+const registrar = (d: HTMLDialogElement) => {
+  if (abertas.includes(d)) return;
+  abertas.push(d);
+  avisar();
+};
+const esquecer = (d: HTMLDialogElement) => {
+  const i = abertas.indexOf(d);
+  if (i < 0) return;
+  abertas.splice(i, 1);
+  avisar();
+};
+const assinar = (ouvinte: () => void) => {
+  ouvintes.add(ouvinte);
+  return () => {
+    ouvintes.delete(ouvinte);
+  };
+};
+
+/** A camada aberta que está na frente das outras, ou `null` quando só há a página. */
+export function useCamadaDeCima(): HTMLDialogElement | null {
+  return useSyncExternalStore(assinar, () => abertas[abertas.length - 1] ?? null, () => null);
+}
+
+/**
+ * Para a camada que é montada só quando abre (o segundo jeito, lá em cima): `fechar()` faz sair da
+ * tela e, terminada a saída, `aoSumir` avisa quem montou.
+ *
+ *   const saida = useSaida(aoFechar);
+ *   <Modal {...saida} aoFechar={saida.fechar} ...>
+ */
+export function useSaida(aoFechar: () => void) {
+  const [aberto, setAberto] = useState(true);
+  return { aberto, fechar: () => setAberto(false), aoSumir: aoFechar };
+}
 
 function Camada({
   aberto,
@@ -74,8 +117,11 @@ function Camada({
       setPresente(true);
       delete d.dataset.saindo;
       if (!d.open) d.showModal();
+      registrar(d);
       return;
     }
+    // A saída começou: o recado volta para a página.
+    esquecer(d);
     if (!d.open) return;
     // Continua aberto enquanto a caixa sai; fechar antes tiraria o <dialog> da frente de tudo no
     // meio do movimento.
@@ -89,11 +135,22 @@ function Camada({
     return () => clearTimeout(id);
   }, [aberto]);
 
-  // O foco começa em quem pediu (`data-foco-inicial`) ou na própria caixa: sem isso o <dialog>
-  // escolhe o primeiro botão, que é o X.
+  // Desmontada ainda aberta, a camada sai da lista do mesmo jeito.
+  useEffect(() => {
+    const d = dialogo.current;
+    return () => {
+      if (d) esquecer(d);
+    };
+  }, []);
+
+  // O foco começa em quem pediu (`data-foco-inicial`, no campo ou em volta dele) ou na própria
+  // caixa: sem isso o <dialog> escolhe o primeiro botão, que é o X.
   useEffect(() => {
     if (!aberto || !presente) return;
-    (moldura.current?.querySelector<HTMLElement>("[data-foco-inicial]") ?? moldura.current)?.focus({ preventScroll: true });
+    const CAMPOS = "input, select, textarea, button, a[href], [tabindex]";
+    const marcado = moldura.current?.querySelector<HTMLElement>("[data-foco-inicial]");
+    const alvo = marcado?.matches(CAMPOS) ? marcado : marcado?.querySelector<HTMLElement>(CAMPOS);
+    (alvo ?? moldura.current)?.focus({ preventScroll: true });
   }, [aberto, presente]);
 
   return (

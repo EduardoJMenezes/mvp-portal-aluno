@@ -1,10 +1,11 @@
 "use client";
 
 import { Plus, X } from "lucide-react";
-import { useState, type FormEvent } from "react";
+import { useId, useState, type FormEvent } from "react";
+import { Modal, useSaida } from "@/components/Camadas";
 import { CampoCategoria } from "@/components/Categoria";
 import { EscolherCapa, capaPronta, type Capa } from "@/components/EscolherCapa";
-import { Botao, BotaoLink, Campo, Cartao } from "@/components/ui";
+import { Botao, Campo } from "@/components/ui";
 import { api } from "@/lib/api";
 import { BIBLIOTECA, type Executar } from "./comum";
 
@@ -15,7 +16,7 @@ export function NovoModulo({
   todasAsTurmas,
   turmaInicial,
   categorias,
-  cancelar,
+  aoCancelar,
   executar,
   aoCriar,
 }: {
@@ -23,8 +24,8 @@ export function NovoModulo({
   /** A turma pela qual a tela está olhando: já vem marcada. */
   turmaInicial?: string;
   categorias: string[];
-  /** Para onde o "Cancelar" leva. */
-  cancelar: string;
+  /** Fechou sem criar. */
+  aoCancelar: () => void;
   executar: Executar;
   aoCriar: (modulo: number) => void;
 }) {
@@ -35,6 +36,10 @@ export function NovoModulo({
   const [subs, setSubs] = useState<string[]>(DE_SEMPRE);
   const [novoSub, setNovoSub] = useState("");
   const [criando, setCriando] = useState(false);
+  // O que acontece depois que o modal sai da tela: abrir o módulo criado, ou só voltar.
+  const [criado, setCriado] = useState<number | null>(null);
+  const saida = useSaida(() => (criado === null ? aoCancelar() : aoCriar(criado)));
+  const idDoFormulario = useId();
 
   function acrescentar() {
     const limpo = novoSub.trim();
@@ -45,28 +50,39 @@ export function NovoModulo({
   async function criar(e: FormEvent) {
     e.preventDefault();
     setCriando(true);
-    let criado = 0;
+    let novo = 0;
     const ok = await executar(async () => {
-      criado = (await api.criarModulo(BIBLIOTECA, nome.trim(), subs, categoria.trim() || undefined, capa.tipo === "icone" ? capa.icone : undefined)).modulo_id;
-      if (turmas.length) await api.turmasDoModulo(criado, turmas);
+      novo = (await api.criarModulo(BIBLIOTECA, nome.trim(), subs, categoria.trim() || undefined, capa.tipo === "icone" ? capa.icone : undefined)).modulo_id;
+      if (turmas.length) await api.turmasDoModulo(novo, turmas);
       // A foto precisa do módulo já criado: vai logo em seguida.
-      if (capa.tipo === "foto" && capa.arquivo) await api.fotoDoModulo(criado, capa.arquivo);
+      if (capa.tipo === "foto" && capa.arquivo) await api.fotoDoModulo(novo, capa.arquivo);
     }, `Módulo "${nome.trim()}" criado${turmas.length ? ` para ${turmas.join(", ")}` : ", só na biblioteca"}.`);
     setCriando(false);
-    if (ok) aoCriar(criado);
+    if (ok) {
+      setCriado(novo);
+      saida.fechar();
+    }
   }
 
   return (
-    <Cartao como="article" className="p-5 sm:p-6">
-      <form onSubmit={criar} className="flex flex-col gap-5">
-        <div>
-          <h2 className="text-[22px] font-bold leading-tight tracking-[-0.015em] text-tinta sm:text-2xl">Novo módulo</h2>
-          <p className="mt-1 text-sm text-suave">Um capítulo do curso. Depois de criar, você põe os vídeos, os PDFs e as questões dentro dele.</p>
+    <Modal
+      {...saida}
+      aoFechar={() => !criando && saida.fechar()}
+      fechaClicandoFora={false}
+      tamanho="grande"
+      titulo="Novo módulo"
+      legenda="Um capítulo do curso. Depois de criar, você põe os vídeos, os PDFs e as questões dentro dele."
+      rodape={
+        <div className="flex flex-wrap justify-end gap-2">
+          <Botao onClick={saida.fechar} disabled={criando}>Cancelar</Botao>
+          <Botao type="submit" form={idDoFormulario} variante="primario" disabled={criando || !nome.trim() || !capaPronta(capa)}>{criando ? "Criando…" : "Criar módulo"}</Botao>
         </div>
-
-        <div className="grid gap-4 sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+      }
+    >
+      <form id={idDoFormulario} onSubmit={criar} className="flex flex-col gap-5">
+        <div className="grid gap-4 sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]" data-foco-inicial>
           <Campo rotulo="Nome" dica="Ex.: K01 - Introdução à química orgânica">
-            {(id) => <input id={id} autoFocus required maxLength={160} value={nome} onChange={(e) => setNome(e.target.value)} className="campo" />}
+            {(id) => <input id={id} required maxLength={160} value={nome} onChange={(e) => setNome(e.target.value)} className="campo" />}
           </Campo>
           <Campo rotulo="Categoria" dica="Opcional. É como o menu do aluno separa os capítulos.">
             {(id) => <CampoCategoria id={id} valor={categoria} aoMudar={setCategoria} sugestoes={categorias} />}
@@ -140,12 +156,7 @@ export function NovoModulo({
         </fieldset>
 
         <EscolherCapa nomeDoModulo={nome} valor={capa} aoMudar={setCapa} />
-
-        <div className="flex flex-wrap gap-2 border-t border-borda pt-4">
-          <Botao type="submit" variante="primario" disabled={criando || !nome.trim() || !capaPronta(capa)}>{criando ? "Criando…" : "Criar módulo"}</Botao>
-          <BotaoLink href={cancelar}>Cancelar</BotaoLink>
-        </div>
       </form>
-    </Cartao>
+    </Modal>
   );
 }

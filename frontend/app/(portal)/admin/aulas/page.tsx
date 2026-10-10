@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useId, useState, type FormEvent } from "react";
+import { Modal, useSaida } from "@/components/Camadas";
 import {
   Aviso,
   Botao,
@@ -23,6 +24,7 @@ export default function AulasDoProfessor() {
   const lista = useDados(() => api.aulasDoProfessor());
   const turmas = useDados(() => api.turmas());
   const [erro, setErro] = useState("");
+  const [agendando, setAgendando] = useState(false);
   const [dialogo, confirmar] = useConfirmar();
 
   async function executar(acao: () => Promise<unknown>) {
@@ -68,19 +70,25 @@ export default function AulasDoProfessor() {
     <Pagina
       titulo="Aulas ao vivo"
       legenda="A sala é do Zoom; quem entra é decidido aqui. O aluno recebe um link pessoal, que só funciona na janela da aula."
+      acoes={<Botao variante="primario" onClick={() => setAgendando(true)}>Agendar aula</Botao>}
     >
       {dialogo}
-      <Agendar
-        turmas={nomesDasTurmas}
-        categorias={categoriasDe(lista.dados ?? [])}
-        aoAgendar={(dados) => executar(() => api.agendarAula(dados))}
-      />
-      {erro && <Aviso tom="erro">{erro}</Aviso>}
+      {/* Agendar abre num modal: a lista das aulas é o que fica na página. */}
+      {agendando && (
+        <Agendar
+          turmas={nomesDasTurmas}
+          categorias={categoriasDe(lista.dados ?? [])}
+          erro={erro}
+          aoAgendar={(dados) => executar(() => api.agendarAula(dados))}
+          aoFechar={() => { setAgendando(false); setErro(""); }}
+        />
+      )}
+      {erro && !agendando && <Aviso tom="erro">{erro}</Aviso>}
 
       <Estado {...lista} linhas={3} forma="lista">
         {(aulas) =>
           aulas.length === 0 ? (
-            <Vazio titulo="Nenhuma aula agendada">Marque a primeira no formulário acima.</Vazio>
+            <Vazio titulo="Nenhuma aula agendada">Marque a primeira em &quot;Agendar aula&quot;.</Vazio>
           ) : (
             <ul className="flex flex-col gap-3">
               {aulas.map((aula) => (
@@ -165,7 +173,9 @@ type Novo = {
   categoria: string;
 };
 
-function Agendar({ turmas, categorias, aoAgendar }: { turmas: string[]; categorias: string[]; aoAgendar: (d: Novo) => Promise<boolean> }) {
+function Agendar({ turmas, categorias, erro, aoAgendar, aoFechar }: { turmas: string[]; categorias: string[]; erro: string; aoAgendar: (d: Novo) => Promise<boolean>; aoFechar: () => void }) {
+  const saida = useSaida(aoFechar);
+  const idDoFormulario = useId();
   const [titulo, setTitulo] = useState("");
   const [quando, setQuando] = useState("");
   const [minutos, setMinutos] = useState(90);
@@ -190,20 +200,28 @@ function Agendar({ turmas, categorias, aoAgendar }: { turmas: string[]; categori
       categoria: categoria.trim(),
     });
     setSalvando(false);
-    if (ok) {
-      setTitulo("");
-      setQuando("");
-      setDescricao("");
-      setEscolhidas([]);
-      setDestino(null);
-    }
+    if (ok) saida.fechar();
   }
 
   return (
-    <Cartao className="p-5">
-      <TituloDeSecao>Agendar aula</TituloDeSecao>
-      <form className="mt-3 flex flex-col gap-3" onSubmit={enviar}>
-        <div className="grid gap-3 sm:grid-cols-[2fr_1fr_auto]">
+    <Modal
+      {...saida}
+      aoFechar={() => !salvando && saida.fechar()}
+      fechaClicandoFora={false}
+      tamanho="grande"
+      titulo="Agendar aula"
+      legenda="Nasce em rascunho: a sala do Zoom só é criada quando você publicar. Toda aula é gravada."
+      rodape={
+        <div className="flex flex-wrap justify-end gap-2">
+          <Botao onClick={saida.fechar} disabled={salvando}>Cancelar</Botao>
+          <Botao type="submit" form={idDoFormulario} variante="primario" disabled={salvando || !titulo.trim() || !quando}>
+            {salvando ? "Agendando…" : "Agendar em rascunho"}
+          </Botao>
+        </div>
+      }
+    >
+      <form id={idDoFormulario} className="flex flex-col gap-3" onSubmit={enviar}>
+        <div className="grid gap-3 sm:grid-cols-[2fr_1fr_auto]" data-foco-inicial>
           <Campo rotulo="Título">
             {(id) => (
               <input
@@ -259,15 +277,10 @@ function Agendar({ turmas, categorias, aoAgendar }: { turmas: string[]; categori
           {(id) => <CampoCategoria id={id} valor={categoria} aoMudar={setCategoria} sugestoes={categorias} />}
         </Campo>
         <DestinoDaGravacao turmas={escolhidas} valor={destino} aoMudar={setDestino} />
-        <Botao type="submit" variante="primario" disabled={salvando} className="w-fit">
-          {salvando ? "Agendando…" : "Agendar em rascunho"}
-        </Botao>
-        <p className="text-[13px] text-apagado">
-          A sala do Zoom só é criada quando você publicar — rascunho não ocupa a agenda de ninguém. Toda aula é gravada.
-          Para agendar direto num módulo, use o botão "Aula ao vivo" em Aulas.
-        </p>
+        <p className="text-[13px] text-suave">Para agendar direto num módulo, já publicada, use Adicionar › Aula ao vivo em Montar o curso.</p>
+        {erro && <Aviso tom="erro">{erro}</Aviso>}
       </form>
-    </Cartao>
+    </Modal>
   );
 }
 

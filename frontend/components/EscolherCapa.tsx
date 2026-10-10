@@ -54,7 +54,7 @@ const MODOS: { tipo: Capa["tipo"]; rotulo: string }[] = [
 
 const FOCO = "has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-acento";
 
-export function EscolherCapa({ nomeDoModulo, valor, aoMudar }: { nomeDoModulo: string; valor: Capa; aoMudar: (capa: Capa) => void }) {
+export function EscolherCapa({ nomeDoModulo, valor, aoMudar, semTitulo = false }: { nomeDoModulo: string; valor: Capa; aoMudar: (capa: Capa) => void; semTitulo?: boolean }) {
   const grupo = useId();
   const [erro, setErro] = useState("");
   const [preparando, setPreparando] = useState(false);
@@ -92,8 +92,9 @@ export function EscolherCapa({ nomeDoModulo, valor, aoMudar }: { nomeDoModulo: s
 
   return (
     <fieldset className="flex flex-col gap-3">
-      <legend className="text-sm font-semibold text-tinta-2">Capa do cartão</legend>
-      <p className="-mt-1 text-[13px] text-suave">É o que o aluno vê ao lado do nome do módulo, em &quot;Meu curso&quot;.</p>
+      {/* Dentro de um modal, o título e a explicação já estão no cabeçalho dele. */}
+      <legend className={semTitulo ? "sr-only" : "text-sm font-semibold text-tinta-2"}>Capa do cartão</legend>
+      {!semTitulo && <p className="-mt-1 text-[13px] text-suave">É o que o aluno vê ao lado do nome do módulo, em &quot;Meu curso&quot;.</p>}
 
       <div className="inline-flex w-fit rounded-campo border border-borda bg-canvas p-1">
         {MODOS.map((modo) => {

@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useId, useState, type FormEvent } from "react";
+import { OffCanvas, useSaida } from "@/components/Camadas";
 import { Abas, Aviso, Botao, Campo, Cartao, Estado, Etiqueta, Pagina, TituloDeSecao, Vazio } from "@/components/ui";
 import {
   api,
@@ -53,24 +54,25 @@ function Planos() {
   async function salvar(dados: DadosDoPlano) {
     if (editando === "novo") await api.criarPlano(dados);
     else if (editando) await api.editarPlano(editando.plano_id, dados);
-    setEditando(null);
+    // Quem fecha é o painel, depois de salvar: aqui só se relê a lista.
     await lista.recarregar();
   }
 
   return (
     <div className="flex flex-col gap-4">
-      {editando ? (
+      {/* O plano, novo ou em edição, abre num off-canvas: a lista dos planos fica à vista atrás. */}
+      {editando && (
         <FormularioDoPlano
+          key={editando === "novo" ? "novo" : editando.plano_id}
           plano={editando === "novo" ? null : editando}
           turmas={nomesDasTurmas}
           aoSalvar={salvar}
-          aoCancelar={() => setEditando(null)}
+          aoFechar={() => setEditando(null)}
         />
-      ) : (
-        <Botao variante="primario" className="w-fit" onClick={() => setEditando("novo")}>
-          Novo plano
-        </Botao>
       )}
+      <Botao variante="primario" className="w-fit" onClick={() => setEditando("novo")}>
+        Novo plano
+      </Botao>
       <Estado {...lista} linhas={2}>
         {(planos) =>
           planos.length === 0 ? (
@@ -146,13 +148,15 @@ function FormularioDoPlano({
   plano,
   turmas,
   aoSalvar,
-  aoCancelar,
+  aoFechar,
 }: {
   plano: PlanoDeVenda | null;
   turmas: string[];
   aoSalvar: (dados: DadosDoPlano) => Promise<void>;
-  aoCancelar: () => void;
+  aoFechar: () => void;
 }) {
+  const saida = useSaida(aoFechar);
+  const idDoFormulario = useId();
   const [nome, setNome] = useState(plano?.nome ?? "");
   const [link, setLink] = useState(plano?.link ?? "");
   const [linkMexido, setLinkMexido] = useState(Boolean(plano));
@@ -185,16 +189,33 @@ function FormularioDoPlano({
         turmas: escolhidas,
         ativo,
       });
+      saida.fechar();
     } catch (ex) {
       setErro((ex as Error).message);
+    } finally {
       setSalvando(false);
     }
   }
 
   return (
-    <Cartao className="p-5">
-      <TituloDeSecao>{plano ? "Editar plano" : "Novo plano"}</TituloDeSecao>
-      <form className="mt-3 flex flex-col gap-4" onSubmit={enviar}>
+    <OffCanvas
+      {...saida}
+      aoFechar={() => !salvando && saida.fechar()}
+      fechaClicandoFora={false}
+      lado="direita"
+      tamanho="grande"
+      titulo={plano ? "Editar plano" : "Novo plano"}
+      legenda="O plano é o que se vende: um preço, as turmas que ele libera e o link que você divulga."
+      rodape={
+        <div className="flex flex-wrap justify-end gap-2">
+          <Botao onClick={saida.fechar} disabled={salvando}>Cancelar</Botao>
+          <Botao type="submit" form={idDoFormulario} variante="primario" disabled={salvando}>
+            {salvando ? "Salvando…" : plano ? "Salvar" : "Criar plano"}
+          </Botao>
+        </div>
+      }
+    >
+      <form id={idDoFormulario} className="flex flex-col gap-4" onSubmit={enviar}>
         <div className="grid gap-3 sm:grid-cols-2">
           <Campo rotulo="Nome" dica="É o que o aluno vê na página de assinar.">
             {(id) => (
@@ -319,16 +340,8 @@ function FormularioDoPlano({
         )}
 
         {erro && <Aviso tom="erro">{erro}</Aviso>}
-        <div className="flex flex-wrap gap-2">
-          <Botao type="submit" variante="primario" disabled={salvando}>
-            {salvando ? "Salvando…" : plano ? "Salvar" : "Criar plano"}
-          </Botao>
-          <Botao type="button" onClick={aoCancelar} disabled={salvando}>
-            Cancelar
-          </Botao>
-        </div>
       </form>
-    </Cartao>
+    </OffCanvas>
   );
 }
 

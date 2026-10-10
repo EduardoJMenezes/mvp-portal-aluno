@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useState, type FormEvent } from "react";
+import { useId, useState, type FormEvent } from "react";
+import { Modal, useSaida } from "@/components/Camadas";
 import { Aviso, Botao, Campo, Cartao, Estado, Etiqueta, Pagina, Vazio } from "@/components/ui";
 import { api, useDados, type Turma } from "@/lib/api";
 import { plural } from "@/lib/formato";
@@ -14,9 +15,9 @@ export default function Turmas() {
     <Pagina
       titulo="Turmas"
       legenda="O que se vende é a turma. Aqui ficam os alunos e o menu de cada uma; os módulos que ela recebe se escolhem em Montar o curso."
-      acoes={!criando && <Botao variante="primario" onClick={() => setCriando(true)}>Nova turma</Botao>}
+      acoes={<Botao variante="primario" onClick={() => setCriando(true)}>Nova turma</Botao>}
     >
-      {criando && <NovaTurma aoCriar={() => { setCriando(false); void turmas.recarregar(); }} aoCancelar={() => setCriando(false)} />}
+      {criando && <NovaTurma aoCriar={() => void turmas.recarregar()} aoFechar={() => setCriando(false)} />}
       <Estado {...turmas} linhas={3} forma="lista">
         {(lista) =>
           lista.length === 0 ? (
@@ -34,10 +35,12 @@ export default function Turmas() {
   );
 }
 
-function NovaTurma({ aoCriar, aoCancelar }: { aoCriar: () => void; aoCancelar: () => void }) {
+function NovaTurma({ aoCriar, aoFechar }: { aoCriar: () => void; aoFechar: () => void }) {
   const [nome, setNome] = useState("");
   const [erro, setErro] = useState("");
   const [salvando, setSalvando] = useState(false);
+  const saida = useSaida(aoFechar);
+  const idDoFormulario = useId();
 
   async function criar(e: FormEvent) {
     e.preventDefault();
@@ -46,26 +49,35 @@ function NovaTurma({ aoCriar, aoCancelar }: { aoCriar: () => void; aoCancelar: (
     try {
       await api.criarTurma(nome.trim());
       aoCriar();
+      saida.fechar();
     } catch (ex) {
       setErro((ex as Error).message);
+    } finally {
       setSalvando(false);
     }
   }
 
   return (
-    <Cartao className="p-5">
-      <form onSubmit={criar} className="flex flex-col gap-4">
-        <h2 className="text-lg font-semibold text-tinta">Nova turma</h2>
+    <Modal
+      {...saida}
+      aoFechar={() => !salvando && saida.fechar()}
+      tamanho="pequeno"
+      titulo="Nova turma"
+      legenda="Depois de criar, você matricula os alunos e escolhe os módulos que ela recebe."
+      rodape={
+        <div className="flex flex-wrap justify-end gap-2">
+          <Botao onClick={saida.fechar} disabled={salvando}>Cancelar</Botao>
+          <Botao type="submit" form={idDoFormulario} variante="primario" disabled={salvando || !nome.trim()}>{salvando ? "Criando…" : "Criar turma"}</Botao>
+        </div>
+      }
+    >
+      <form id={idDoFormulario} onSubmit={criar} className="flex flex-col gap-4" data-foco-inicial>
         <Campo rotulo="Nome" dica="Ex.: Q1 - Extensivo 2027">
           {(id) => <input id={id} required maxLength={120} value={nome} onChange={(e) => setNome(e.target.value)} className="campo" />}
         </Campo>
         {erro && <Aviso tom="erro">{erro}</Aviso>}
-        <div className="flex gap-2">
-          <Botao type="submit" variante="primario" disabled={salvando || !nome.trim()}>{salvando ? "Criando…" : "Criar turma"}</Botao>
-          <Botao onClick={aoCancelar}>Cancelar</Botao>
-        </div>
       </form>
-    </Cartao>
+    </Modal>
   );
 }
 

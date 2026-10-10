@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useState, type FormEvent } from "react";
+import { useId, useState, type FormEvent } from "react";
+import { Modal, useSaida } from "@/components/Camadas";
 import { Aviso, Botao, Campo, Cartao, Estado, Etiqueta, Pagina, TituloDeSecao, Vazio, useConfirmar } from "@/components/ui";
 import { EditarCategoria, categoriasDe } from "@/components/Categoria";
 import { api, useDados, type Material } from "@/lib/api";
@@ -11,6 +12,7 @@ export default function MateriaisDoProfessor() {
   const lista = useDados(() => api.materiaisDoProfessor());
   const turmas = useDados(() => api.turmas());
   const [erro, setErro] = useState("");
+  const [enviando, setEnviando] = useState(false);
   const [dialogo, confirmar] = useConfirmar();
 
   async function executar(acao: () => Promise<unknown>) {
@@ -39,15 +41,24 @@ export default function MateriaisDoProfessor() {
     <Pagina
       titulo="Materiais"
       legenda="PDF que o aluno lê e risca dentro do portal. Ele não baixa o arquivo: cada página sai do servidor com a sessão dele aberta."
+      acoes={<Botao variante="primario" onClick={() => setEnviando(true)}>Enviar material</Botao>}
     >
       {dialogo}
-      <Enviar turmas={turmas.dados?.map((t) => t.nome) ?? []} aoEnviar={(arquivo, titulo) => executar(() => api.enviarMaterial(arquivo, titulo, [], []))} />
-      {erro && <Aviso tom="erro">{erro}</Aviso>}
+      {/* Enviar abre num modal: a lista dos materiais é o que fica na página. */}
+      {enviando && (
+        <Enviar
+          turmas={turmas.dados?.map((t) => t.nome) ?? []}
+          erro={erro}
+          aoEnviar={(arquivo, titulo) => executar(() => api.enviarMaterial(arquivo, titulo, [], []))}
+          aoFechar={() => { setEnviando(false); setErro(""); }}
+        />
+      )}
+      {erro && !enviando && <Aviso tom="erro">{erro}</Aviso>}
 
       <Estado {...lista} linhas={3} forma="lista">
         {(materiais) =>
           materiais.length === 0 ? (
-            <Vazio titulo="Nenhum material enviado">Mande o primeiro PDF no formulário acima.</Vazio>
+            <Vazio titulo="Nenhum material enviado">Mande o primeiro PDF em &quot;Enviar material&quot;.</Vazio>
           ) : (
             <ul className="flex flex-col gap-3">
               {materiais.map((m) => (
@@ -117,36 +128,46 @@ export default function MateriaisDoProfessor() {
 
 function Enviar({
   turmas,
+  erro,
   aoEnviar,
+  aoFechar,
 }: {
   turmas: string[];
+  /** O que o servidor recusou: aparece dentro do modal. */
+  erro: string;
   aoEnviar: (arquivo: File, titulo: string) => Promise<boolean>;
+  aoFechar: () => void;
 }) {
   const [arquivo, setArquivo] = useState<File | null>(null);
   const [titulo, setTitulo] = useState("");
   const [enviando, setEnviando] = useState(false);
+  const saida = useSaida(aoFechar);
+  const idDoFormulario = useId();
 
   async function enviar(e: FormEvent) {
     e.preventDefault();
     if (!arquivo) return;
     setEnviando(true);
-    if (await aoEnviar(arquivo, titulo.trim() || arquivo.name.replace(/\.pdf$/i, ""))) {
-      setArquivo(null);
-      setTitulo("");
-    }
+    const ok = await aoEnviar(arquivo, titulo.trim() || arquivo.name.replace(/\.pdf$/i, ""));
     setEnviando(false);
+    if (ok) saida.fechar();
   }
 
   return (
-    <Cartao className="p-5">
-      <form onSubmit={enviar} className="flex flex-col gap-4">
-        <div>
-          <TituloDeSecao>Enviar material</TituloDeSecao>
-          <p className="text-[15px] text-suave">
-            PDF de até 60 MB. Ele entra como rascunho: escolha as turmas ou os alunos e publique quando quiser.
-            {turmas.length === 0 && " Cadastre uma turma antes, senão não há para quem publicar."}
-          </p>
+    <Modal
+      {...saida}
+      aoFechar={() => !enviando && saida.fechar()}
+      tamanho="medio"
+      titulo="Enviar material"
+      legenda={`PDF de até 60 MB. Entra como rascunho: escolha as turmas ou os alunos e publique quando quiser.${turmas.length === 0 ? " Cadastre uma turma antes, senão não há para quem publicar." : ""}`}
+      rodape={
+        <div className="flex flex-wrap justify-end gap-2">
+          <Botao onClick={saida.fechar} disabled={enviando}>Cancelar</Botao>
+          <Botao type="submit" form={idDoFormulario} variante="primario" disabled={!arquivo || enviando}>{enviando ? "Enviando…" : "Enviar"}</Botao>
         </div>
+      }
+    >
+      <form id={idDoFormulario} onSubmit={enviar} className="flex flex-col gap-4">
         <label className="flex cursor-pointer flex-col items-center gap-1 rounded-cartao border-2 border-dashed border-borda bg-canvas px-6 py-8 text-center hover:border-suave">
           <span className="font-semibold text-tinta">{arquivo ? arquivo.name : "Escolha o PDF"}</span>
           <span className="text-sm text-suave">{arquivo ? tamanhoDoArquivo(arquivo.size) : "Apostila, lista de exercícios, gabarito"}</span>
@@ -155,13 +176,9 @@ function Enviar({
         <Campo rotulo="Título" dica="Vazio usa o nome do arquivo.">
           {(id) => <input id={id} maxLength={200} value={titulo} onChange={(e) => setTitulo(e.target.value)} className="campo" />}
         </Campo>
-        <div>
-          <Botao type="submit" variante="primario" disabled={!arquivo || enviando}>
-            {enviando ? "Enviando…" : "Enviar"}
-          </Botao>
-        </div>
+        {erro && <Aviso tom="erro">{erro}</Aviso>}
       </form>
-    </Cartao>
+    </Modal>
   );
 }
 

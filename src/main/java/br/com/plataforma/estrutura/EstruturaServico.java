@@ -102,15 +102,28 @@ public class EstruturaServico {
      * {@code turmas}: vazia é "toda turma que tem o módulo"; com nomes, só elas. Sem vídeo, a linha é
      * só o PDF de {@code material} (decisão 0013) ou a {@code questao} que o aluno responde ali.
      */
+    /**
+     * {@code embedUrl} e {@code duracaoSegundos} são do vídeo da linha: é com eles que a tela de
+     * montar o curso mostra a prévia, sem ir ao Vimeo. A árvore é só do professor.
+     */
     public record ItemNaArvore(
             Integer id, String nome, Integer ordem, Status status, Integer videoId,
-            String vimeoId, List<String> turmas, MaterialLigado material, QuestaoDaLinha questao) {
+            String vimeoId, List<String> turmas, MaterialLigado material, QuestaoDaLinha questao,
+            String embedUrl, Integer duracaoSegundos) {
 
         public static ItemNaArvore de(Item i) {
+            var video = i.getVideo();
             return new ItemNaArvore(i.getId(), i.getNome(), i.getOrdem(), i.getStatus(),
-                    i.getVideo() == null ? null : i.getVideo().getId(),
-                    i.getVideo() == null ? null : i.getVideo().getVimeoId(), nomes(i.getTurmas()),
-                    MaterialLigado.de(i.getMaterial()), QuestaoDaLinha.de(i.getQuestao()));
+                    video == null ? null : video.getId(),
+                    video == null ? null : video.getVimeoId(), nomes(i.getTurmas()),
+                    MaterialLigado.de(i.getMaterial()), QuestaoDaLinha.de(i.getQuestao()),
+                    video == null ? null : video.getEmbedUrl(),
+                    video == null ? null : video.getDuracaoSegundos());
+        }
+
+        /** A mesma linha sem o endereço do player: é assim que ela sai para quem não é o professor. */
+        public ItemNaArvore semPrevia() {
+            return new ItemNaArvore(id, nome, ordem, status, videoId, vimeoId, turmas, material, questao, null, null);
         }
     }
 
@@ -124,7 +137,16 @@ public class EstruturaServico {
      */
     public record ModuloNaArvore(
             Integer id, String nome, Integer ordem, String categoria, String turma, List<String> turmas,
-            List<SubModuloNaArvore> submodulos, String icone, Long fotoVersao) {}
+            List<SubModuloNaArvore> submodulos, String icone, Long fotoVersao) {
+
+        /** O módulo com as linhas sem o endereço do player (ver {@link ItemNaArvore#semPrevia()}). */
+        public ModuloNaArvore semPrevia() {
+            return new ModuloNaArvore(id, nome, ordem, categoria, turma, turmas, submodulos.stream()
+                    .map(s -> new SubModuloNaArvore(s.id(), s.nome(), s.tipo(), s.ordem(),
+                            s.itens().stream().map(ItemNaArvore::semPrevia).toList()))
+                    .toList(), icone, fotoVersao);
+        }
+    }
 
     private static List<String> nomes(List<Turma> turmas) {
         return turmas.stream().map(Turma::getNome).toList();

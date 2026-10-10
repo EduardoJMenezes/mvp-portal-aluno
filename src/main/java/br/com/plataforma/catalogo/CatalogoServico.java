@@ -136,8 +136,11 @@ public class CatalogoServico {
             alvos = turmasVisiveis(ident);
         }
 
+        // O endereço do player só sai para o professor: para o aluno, quem decide se o vídeo toca é o
+        // AcessoServico, na tela dele, e esta árvore não pode ser um atalho por fora.
         return alvos.stream()
                 .flatMap(t -> estrutura.arvoreDaTurma(t, ident.eAluno(), false, java.time.Instant.now()).stream())
+                .map(m -> ident.eOperador() ? m : m.semPrevia())
                 .toList();
     }
 

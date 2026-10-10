@@ -4,9 +4,10 @@
 // Vimeo, ou busca pelo nome, marca o que quer (um vídeo, vários, a pasta inteira, de pastas
 // diferentes) e grava tudo de uma vez. Abre num off-canvas: o curso continua à vista atrás.
 
-import { ChevronRight, Folder, LoaderCircle, RefreshCw, Search, X } from "lucide-react";
+import { ChevronRight, Folder, LoaderCircle, Play, RefreshCw, Search, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { OffCanvas } from "@/components/Camadas";
+import { PassarVideos, TelaDoVideo } from "@/components/PreviaDoVideo";
 import { Aviso, Botao, Carregamento, Esqueleto } from "@/components/ui";
 import { api, type Modulo, type PastaVimeo, type SubModulo, type VideoDaPasta } from "@/lib/api";
 import { duracao, plural } from "@/lib/formato";
@@ -16,6 +17,9 @@ import { BIBLIOTECA, type Executar } from "./comum";
 type Escolhido = { vimeo_id: string; titulo: string; embed_url?: string | null; url?: string | null; thumbnail_url?: string | null; duracao_segundos?: number | null; pasta?: string; origem: string; caminho: string };
 /** Um vídeo na lista. `origem` e `caminho` só vêm na busca: dentro de uma pasta, valem os dela. */
 type NaLista = Omit<Escolhido, "origem" | "caminho" | "pasta"> & { avisos: string[]; origem?: string; caminho?: string; pasta?: string };
+
+/** O vídeo aberto na prévia: o da lista, já com a pasta de onde veio, para poder ser marcado dali. */
+type NaPrevia = NaLista & { origem: string; caminho: string };
 
 const SEM_PASTA = "sem-pasta";
 /** Quanto a busca espera depois da última tecla antes de perguntar ao Vimeo. */
@@ -113,6 +117,8 @@ export function AdicionarVideos({ modulo, sub, executar, aoFechar }: { modulo: M
   const [gravando, setGravando] = useState(false);
   const [erro, setErro] = useState("");
   const [saindo, setSaindo] = useState(false);
+  // A prévia: o vídeo que o professor quis conferir, tocando no alto do painel.
+  const [previa, setPrevia] = useState<NaPrevia | null>(null);
 
   const ler = (deNovo: boolean) => {
     setLendo(true);
@@ -317,12 +323,30 @@ export function AdicionarVideos({ modulo, sub, executar, aoFechar }: { modulo: M
     );
   };
 
+  /** O botão que abre (ou fecha) a prévia do vídeo: o player só existe depois do clique. */
+  const botaoDeVer = (v: NaPrevia) => {
+    const tocando = previa?.vimeo_id === v.vimeo_id;
+    return (
+      <button
+        type="button"
+        onClick={() => setPrevia(tocando ? null : v)}
+        aria-pressed={tocando}
+        aria-label={tocando ? `Fechar a prévia de ${v.titulo}` : `Ver o vídeo ${v.titulo}`}
+        title={tocando ? "Fechar a prévia" : "Ver o vídeo"}
+        className={`my-auto mr-3 flex size-8 shrink-0 items-center justify-center rounded-full transition-colors ${tocando ? "bg-acento text-white" : "text-acento hover:bg-lilas hover:text-acento-forte"}`}
+      >
+        <Play aria-hidden="true" className="size-3.5 translate-x-px" fill="currentColor" />
+      </button>
+    );
+  };
+
   const linhaDoVideo = (v: NaLista, origem: string, caminho: string, pasta?: string, comCaminho = false) => {
     const aqui = jaAqui.has(v.vimeo_id);
     const marcado = marcados.has(v.vimeo_id);
+    const tocando = previa?.vimeo_id === v.vimeo_id;
     return (
-      <li key={v.vimeo_id} className={`transition-colors ${marcado ? "bg-lilas/40 hover:bg-lilas/70" : aqui ? "" : "hover:bg-canvas"}`}>
-        <label className={`flex items-stretch pr-5 ${aqui ? "opacity-60" : "cursor-pointer"}`}>
+      <li key={v.vimeo_id} className={`flex items-stretch transition-colors ${tocando ? "shadow-[inset_3px_0_0_var(--color-acento)]" : ""} ${marcado ? "bg-lilas/40 hover:bg-lilas/70" : "hover:bg-canvas"}`}>
+        <label className={`flex min-w-0 flex-1 items-stretch pr-3 ${aqui ? "opacity-60" : "cursor-pointer"}`}>
           <span className={COLUNA_DA_CAIXA}>
             <input type="checkbox" disabled={aqui} checked={marcado} onChange={(e) => (e.target.checked ? escolher([v], origem, caminho, pasta) : tirar([v.vimeo_id]))} className="size-4 accent-acento" />
           </span>
@@ -334,6 +358,7 @@ export function AdicionarVideos({ modulo, sub, executar, aoFechar }: { modulo: M
           </span>
           <span className="shrink-0 py-2.5 pl-3 pt-3 text-[13px] tabular-nums text-suave">{duracao(v.duracao_segundos)}</span>
         </label>
+        {botaoDeVer({ ...v, origem: v.origem ?? origem, caminho: v.caminho ?? caminho, pasta: v.pasta ?? pasta })}
       </li>
     );
   };
@@ -374,6 +399,24 @@ export function AdicionarVideos({ modulo, sub, executar, aoFechar }: { modulo: M
   const noNivel = filhas.get(atual?.id ?? null) ?? [];
   const pastasAchadas = termo && pastas ? pastas.filter((p) => semAcento(p.nome).includes(termo)).sort((a, b) => ALFABETICA.compare(a.nome, b.nome)) : [];
 
+  const achadosAgora = termo && achados && achados.termo === termoDigitado ? achados.videos : null;
+  const videosDaBusca = achadosAgora?.map((v) => {
+    const mae = v.origem ? porId.get(v.origem) : undefined;
+    return { ...v, caminho: mae ? caminhoCom(mae) : (v.pasta ?? "Fora de pasta") };
+  });
+  const videosDaPastaAberta = atual ? videosDe[atual.id] : undefined;
+
+  // A fila em que a prévia anda: a lista de vídeos que está na tela agora.
+  const fila: NaPrevia[] =
+    vendo === "escolhidos"
+      ? escolhidos.map((e) => ({ ...e, avisos: [] }))
+      : termo
+        ? (videosDaBusca ?? []).map((v) => ({ ...v, origem: v.origem ?? SEM_PASTA }))
+        : atual && videosDaPastaAberta
+          ? videosDaPastaAberta.map((v) => ({ ...v, origem: atual.id, caminho: caminhoCom(atual), pasta: atual.nome }))
+          : [];
+  const naFila = previa ? fila.findIndex((v) => v.vimeo_id === previa.vimeo_id) : -1;
+
   let corpo: ReactNode;
   if (vendo === "escolhidos") {
     corpo = (
@@ -384,13 +427,14 @@ export function AdicionarVideos({ modulo, sub, executar, aoFechar }: { modulo: M
         </div>
         <ol className="divide-y divide-borda/70">
           {escolhidos.map((e, i) => (
-            <li key={e.vimeo_id} className="flex items-start gap-3 py-2.5 pl-5 pr-3">
+            <li key={e.vimeo_id} className={`flex items-start gap-3 py-2.5 pl-5 pr-3 ${previa?.vimeo_id === e.vimeo_id ? "shadow-[inset_3px_0_0_var(--color-acento)]" : ""}`}>
               <span className="w-6 shrink-0 pt-0.5 text-right text-[13px] font-semibold tabular-nums text-suave">{i + 1}</span>
               <span className="min-w-0 flex-1">
                 <span className="block text-[15px] text-tinta">{e.titulo}</span>
                 <span className="block truncate text-[13px] text-suave">{e.caminho}</span>
               </span>
               <span className="shrink-0 pt-0.5 text-[13px] tabular-nums text-suave">{duracao(e.duracao_segundos)}</span>
+              <span className="-my-1 -mr-3 flex">{botaoDeVer({ ...e, avisos: [] })}</span>
               <button type="button" onClick={() => tirar([e.vimeo_id])} aria-label={`Desmarcar ${e.titulo}`} className="-my-1 flex size-8 shrink-0 items-center justify-center rounded-lg text-suave hover:bg-canvas hover:text-erro">
                 <X aria-hidden="true" className="size-4" />
               </button>
@@ -411,11 +455,7 @@ export function AdicionarVideos({ modulo, sub, executar, aoFechar }: { modulo: M
     corpo = <EsqueletoDePastas />;
   } else if (termo) {
     // A busca: pastas de qualquer nível pelo nome, e vídeos do Vimeo inteiro pelo título.
-    const prontos = achados && achados.termo === termoDigitado ? achados.videos : null;
-    const videos = prontos?.map((v) => {
-      const mae = v.origem ? porId.get(v.origem) : undefined;
-      return { ...v, caminho: mae ? caminhoCom(mae) : (v.pasta ?? "Fora de pasta") };
-    });
+    const videos = videosDaBusca;
     corpo = (
       <div>
         {titulozinho(pastasAchadas.length ? plural(pastasAchadas.length, "pasta") : "Nenhuma pasta com esse nome")}
@@ -439,7 +479,7 @@ export function AdicionarVideos({ modulo, sub, executar, aoFechar }: { modulo: M
       </div>
     );
   } else {
-    const videosDaAtual = atual ? videosDe[atual.id] : undefined;
+    const videosDaAtual = videosDaPastaAberta;
     corpo = (
       <div>
         {noNivel.length > 0 && <ul className="divide-y divide-borda/70">{noNivel.map((p) => linhaDaPasta(p, false))}</ul>}
@@ -512,8 +552,40 @@ export function AdicionarVideos({ modulo, sub, executar, aoFechar }: { modulo: M
       semMargem
       rodape={rodape}
     >
+      <div className="sticky top-0 z-10 bg-papel">
+      {previa && (
+        <div className="border-b border-borda bg-canvas/70 px-5 py-3">
+          {/* A largura acompanha a altura que sobra: o player nunca toma mais que um terço e pouco da tela. */}
+          <div className="mx-auto w-full" style={{ maxWidth: "calc(38dvh * 16 / 9)" }}>
+            <TelaDoVideo video={previa} />
+          </div>
+          <div className="mt-2.5 flex items-center gap-2">
+            {/* A caixa fica na mesma coluna das caixas da lista, logo abaixo. */}
+            <label className={`-ml-5 flex min-w-0 flex-1 items-center ${jaAqui.has(previa.vimeo_id) ? "" : "cursor-pointer"}`}>
+              <span className={COLUNA_DA_CAIXA}>
+                <input
+                  type="checkbox"
+                  disabled={jaAqui.has(previa.vimeo_id)}
+                  checked={marcados.has(previa.vimeo_id)}
+                  onChange={(e) => (e.target.checked ? escolher([previa], previa.origem, previa.caminho, previa.pasta) : tirar([previa.vimeo_id]))}
+                  aria-label={`Marcar o vídeo ${previa.titulo}`}
+                  className="size-4 accent-acento"
+                />
+              </span>
+              <span className="min-w-0">
+                <span className="block truncate text-[15px] font-semibold text-tinta">{previa.titulo}</span>
+                <span className="block truncate text-[13px] text-suave">{jaAqui.has(previa.vimeo_id) ? `Já está em ${sub.nome}` : previa.caminho}</span>
+              </span>
+            </label>
+            <PassarVideos posicao={naFila} total={fila.length} aoPassar={(passo) => setPrevia(fila[naFila + passo] ?? previa)} />
+            <button type="button" onClick={() => setPrevia(null)} aria-label="Fechar a prévia" title="Fechar a prévia" className="flex size-8 shrink-0 items-center justify-center rounded-lg text-suave hover:bg-papel hover:text-tinta">
+              <X aria-hidden="true" className="size-[18px]" />
+            </button>
+          </div>
+        </div>
+      )}
       {vendo === "vimeo" && (
-        <div className="sticky top-0 z-10 flex flex-col gap-2.5 border-b border-borda bg-papel px-5 py-3">
+        <div className="flex flex-col gap-2.5 border-b border-borda px-5 py-3">
           <div className="flex items-center gap-2">
             <label htmlFor="busca-no-vimeo" className="sr-only">Buscar uma pasta ou um vídeo pelo nome</label>
             <div className="relative min-w-0 flex-1">
@@ -540,6 +612,7 @@ export function AdicionarVideos({ modulo, sub, executar, aoFechar }: { modulo: M
           )}
         </div>
       )}
+      </div>
       {/* A chave troca quando se muda de pasta ou de vista: o conteúdo novo surge, em vez de pular. */}
       <div key={`${vendo}:${termo ? "busca" : (aberta ?? "raiz")}`} className="surge">
         {corpo}

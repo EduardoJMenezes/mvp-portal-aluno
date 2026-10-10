@@ -5,6 +5,7 @@
 
 import { ArrowDown, ArrowUp, ImageIcon, Pencil, Plus, Trash2 } from "lucide-react";
 import { useState, type FormEvent } from "react";
+import { Modal } from "@/components/Camadas";
 import { CapaDoModulo } from "@/components/CapaDoModulo";
 import { EditarCategoria } from "@/components/Categoria";
 import { EscolherCapa, capaDe, capaPronta, type Capa } from "@/components/EscolherCapa";
@@ -97,8 +98,8 @@ export function EditorDoModulo({
       <header className="flex items-start gap-4 px-4 py-5 sm:px-5">
         <button
           type="button"
-          onClick={() => setTrocandoCapa(!trocandoCapa)}
-          aria-expanded={trocandoCapa}
+          onClick={() => setTrocandoCapa(true)}
+          aria-haspopup="dialog"
           aria-label={`Trocar a capa de ${modulo.nome}`}
           title="Trocar a capa"
           className="group/capa relative shrink-0 rounded-2xl"
@@ -131,7 +132,8 @@ export function EditorDoModulo({
                 valor={modulo.categoria}
                 sugestoes={categorias}
                 acao="Alterar"
-                aoSalvar={(categoria) => executar(() => api.editarModulo(BIBLIOTECA, modulo.id, { categoria }))}
+                modal={`Categoria de "${modulo.nome}"`}
+                aoSalvar={(categoria) => executar(() => api.editarModulo(BIBLIOTECA, modulo.id, { categoria }), `Categoria de "${modulo.nome}" salva.`)}
               />
             </dd>
             <dt className="font-semibold text-tinta-2">Turmas</dt>
@@ -141,6 +143,7 @@ export function EditorDoModulo({
                 marcadas={turmasDoModulo}
                 vazio="Nenhuma: o módulo está só na biblioteca"
                 acao="Alterar"
+                modal={`Turmas de "${modulo.nome}"`}
                 aoSalvar={(t) => executar(() => api.turmasDoModulo(modulo.id, t), `Turmas de "${modulo.nome}" salvas.`)}
               />
             </dd>
@@ -208,28 +211,54 @@ export function EditorDoModulo({
   );
 }
 
-/** A capa de um módulo que já existe: começa da que ele tem e grava só o que mudou. */
+/**
+ * A capa de um módulo que já existe, num modal: começa da que ele tem e grava só o que mudou.
+ * É montado para abrir; ao fechar, sai da tela e então avisa quem o montou.
+ */
 function TrocarCapa({ modulo, executar, aoFechar }: { modulo: Modulo; executar: Executar; aoFechar: () => void }) {
+  const [aberto, setAberto] = useState(true);
   const [capa, setCapa] = useState<Capa>(() => capaDe(modulo));
+  const [salvando, setSalvando] = useState(false);
+  const [erro, setErro] = useState("");
+  const fechar = () => setAberto(false);
 
   async function salvar() {
     // Foto sem arquivo novo é a que já estava: não há o que enviar.
-    if (capa.tipo === "foto" && !capa.arquivo) return aoFechar();
+    if (capa.tipo === "foto" && !capa.arquivo) return fechar();
     const arquivo = capa.tipo === "foto" ? capa.arquivo : null;
-    const salvou = await executar(
-      () => (arquivo ? api.fotoDoModulo(modulo.id, arquivo) : api.editarModulo(BIBLIOTECA, modulo.id, { icone: capa.tipo === "icone" ? capa.icone : "automatico" })),
-      `Capa de "${modulo.nome}" salva.`,
-    );
-    if (salvou) aoFechar();
+    setSalvando(true);
+    setErro("");
+    try {
+      await (arquivo ? api.fotoDoModulo(modulo.id, arquivo) : api.editarModulo(BIBLIOTECA, modulo.id, { icone: capa.tipo === "icone" ? capa.icone : "automatico" }));
+      // O recado mora na página, atrás do modal: o erro aparece aqui dentro, e o sucesso, ao fechar.
+      void executar(() => Promise.resolve(), `Capa de "${modulo.nome}" salva.`);
+      fechar();
+    } catch (ex) {
+      setErro((ex as Error).message);
+    } finally {
+      setSalvando(false);
+    }
   }
 
   return (
-    <div className="flex flex-col gap-4 border-t border-borda bg-canvas/40 px-4 py-4 sm:px-5">
-      <EscolherCapa nomeDoModulo={modulo.nome} valor={capa} aoMudar={setCapa} />
-      <div className="flex gap-2">
-        <Botao variante="primario" tamanho="pequeno" disabled={!capaPronta(capa)} onClick={() => void salvar()}>Salvar capa</Botao>
-        <Botao tamanho="pequeno" onClick={aoFechar}>Cancelar</Botao>
+    <Modal
+      aberto={aberto}
+      aoFechar={() => !salvando && fechar()}
+      aoSumir={aoFechar}
+      tamanho="medio"
+      titulo="Capa do cartão"
+      legenda={`O que o aluno vê ao lado de "${modulo.nome}", em "Meu curso".`}
+      rodape={
+        <div className="flex flex-wrap justify-end gap-2">
+          <Botao onClick={fechar} disabled={salvando}>Cancelar</Botao>
+          <Botao variante="primario" disabled={!capaPronta(capa) || salvando} onClick={() => void salvar()}>{salvando ? "Salvando…" : "Salvar capa"}</Botao>
+        </div>
+      }
+    >
+      <div className="flex flex-col gap-4">
+        <EscolherCapa nomeDoModulo={modulo.nome} valor={capa} aoMudar={setCapa} semTitulo />
+        {erro && <Aviso tom="erro">{erro}</Aviso>}
       </div>
-    </div>
+    </Modal>
   );
 }

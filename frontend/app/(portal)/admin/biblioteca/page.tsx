@@ -44,7 +44,8 @@ function Curso() {
   const [dialogo, confirmar] = useConfirmar();
   const [recado, recados] = useRecado();
 
-  const endereco = (mudancas: { modulo?: number | "novo" | null; turma?: string | null }) => {
+  // `novo=1` abre o modal de módulo novo sem tirar do endereço o módulo que estava aberto.
+  const endereco = (mudancas: { modulo?: number | null; turma?: string | null; novo?: "1" | null }) => {
     const p = new URLSearchParams(parametros);
     for (const [chave, valor] of Object.entries(mudancas)) {
       if (valor === null || valor === "") p.delete(chave);
@@ -81,7 +82,7 @@ function Curso() {
     <Pagina
       titulo="Montar o curso"
       legenda="Monte cada módulo com vídeos, PDFs e questões. O que você põe aqui já entra publicado; o que chega pelo Claude passa antes por Rascunhos."
-      acoes={<Botao onClick={() => setCopiar(!copiar)} aria-expanded={copiar}>Copiar entre turmas</Botao>}
+      acoes={<Botao onClick={() => setCopiar(true)} aria-haspopup="dialog">Copiar entre turmas</Botao>}
     >
       {dialogo}
       {recado}
@@ -98,9 +99,10 @@ function Curso() {
           const grupos = [...mapa.entries()].sort(([a], [b]) => (a === "" ? 1 : b === "" ? -1 : 0));
           const naOrdem = grupos.flatMap(([, doGrupo]) => doGrupo);
 
-          const novo = aberto === "novo";
+          const novo = parametros.get("novo") === "1" || aberto === "novo";
           // Sem módulo no endereço, a tela larga abre o primeiro; a estreita fica no índice.
-          const modulo = novo ? undefined : (modulos.find((m) => String(m.id) === aberto) ?? modulos.find((m) => m.id === ancora) ?? naOrdem[0]);
+          // Com o "novo módulo" aberto por cima, o que estava aberto continua atrás.
+          const modulo = modulos.find((m) => String(m.id) === aberto) ?? modulos.find((m) => m.id === ancora) ?? naOrdem[0];
           const doGrupo = modulo ? (grupos.find(([, lista]) => lista.includes(modulo))?.[1] ?? []) : [];
           const posicao = modulo ? doGrupo.indexOf(modulo) : -1;
 
@@ -132,7 +134,7 @@ function Curso() {
                   escolhido={modulo?.id ?? null}
                   soNaTelaLarga={!aberto}
                   novo={novo}
-                  href={(m) => endereco({ modulo: m })}
+                  href={(m) => (m === "novo" ? endereco({ novo: "1" }) : endereco({ modulo: m, novo: null }))}
                   aoReordenar={(ids) => void reordenarModulos(ids)}
                 />
               </aside>
@@ -141,16 +143,17 @@ function Curso() {
                 <Link href={endereco({ modulo: null })} scroll={false} className="mb-3 inline-flex items-center gap-1.5 text-sm font-medium text-suave hover:text-acento lg:hidden">
                   <ArrowLeft aria-hidden="true" className="size-4" /> Todos os módulos
                 </Link>
-                {novo ? (
+                {novo && (
                   <NovoModulo
                     todasAsTurmas={turmas.map((t) => t.nome)}
                     turmaInicial={turmaDoFiltro?.nome}
                     categorias={categoriasDe(todos)}
-                    cancelar={endereco({ modulo: null })}
+                    aoCancelar={() => ir(aberto === "novo" ? { novo: null, modulo: null } : { novo: null })}
                     executar={executar}
-                    aoCriar={(id) => ir({ modulo: id })}
+                    aoCriar={(id) => ir({ novo: null, modulo: id })}
                   />
-                ) : modulo ? (
+                )}
+                {modulo ? (
                   <EditorDoModulo
                     key={modulo.id}
                     modulo={modulo}

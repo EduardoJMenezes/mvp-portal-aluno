@@ -135,6 +135,31 @@ seção "Em aberto", no fim.
 > ou `esqueleto`. Tela nova não escreve "Carregando…" nem usa `animate-pulse`:
 > diz a forma. Com "reduzir movimento" o bloco fica parado. Também está na
 > vitrine.
+>
+> **Mudou em 10/10/2026: dá para ver o vídeo ao montar o curso**
+> (`frontend/components/PreviaDoVideo.tsx`). É o vídeo cru, só o player do
+> Vimeo, e ele só é carregado quando o professor pede. Em "Montar o curso", o
+> ícone de play da linha abre um off-canvas com o player e as setas de
+> anterior e próximo dentro do sub-módulo. No painel "Adicionar vídeos", cada
+> vídeo tem um botão de play: o player abre preso no alto do painel, com a
+> caixa de marcar e as mesmas setas, e a lista continua embaixo. Para isso a
+> árvore do professor passou a levar `embed_url` e `duracao_segundos` de cada
+> linha de vídeo (`ItemNaArvore`). Esse endereço **não** sai para o aluno:
+> `CatalogoServico.listarModulos` devolve a árvore `semPrevia()` a quem não é
+> operador, e a tela do aluno continua passando pelo `AcessoServico`.
+>
+> **Mudou em 10/10/2026: o que o professor cria abre por cima da página.** Nas
+> telas dele, o formulário deixou de expandir no meio da lista (ou de ficar
+> fixo no alto dela) e passou a abrir num `Modal` ou `OffCanvas`: em "Montar o
+> curso", a capa, a categoria e as turmas do módulo, copiar entre turmas, novo
+> módulo, PDF, questão, aula ao vivo, classificar por assunto e as turmas de
+> uma linha; na agenda, o evento; em aulas ao vivo, agendar; em materiais,
+> enviar; em turmas, nova turma e matricular aluno; em vendas, o plano.
+> Renomear continua no lugar, e o que é uma página inteira (questão, simulado)
+> continua página. Duas peças sustentam isso: `useSaida`, para a camada que é
+> montada só quando abre, e o recado ao pé da tela (`useRecado`), que passa a
+> morar dentro da camada aberta — atrás dela, um erro ficaria no escuro. As
+> telas do aluno não mudaram.
 
 ## O que está errado hoje
 
