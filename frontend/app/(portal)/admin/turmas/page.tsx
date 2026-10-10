@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useId, useState, type FormEvent } from "react";
 import { Modal, useSaida } from "@/components/Camadas";
-import { Aviso, Botao, Campo, Cartao, Estado, Etiqueta, Pagina, Vazio } from "@/components/ui";
+import { Aviso, Botao, Campo, Cartao, Estado, Etiqueta, Formulario, Pagina, Vazio } from "@/components/ui";
 import { api, useDados, type Turma } from "@/lib/api";
 import { plural } from "@/lib/formato";
 
@@ -67,7 +67,7 @@ function NovaTurma({ aoCriar, aoFechar }: { aoCriar: () => void; aoFechar: () =>
       rodape={
         <div className="flex flex-wrap justify-end gap-2">
           <Botao onClick={saida.fechar} disabled={salvando}>Cancelar</Botao>
-          <Botao type="submit" form={idDoFormulario} variante="primario" disabled={salvando || !nome.trim()}>{salvando ? "Criando…" : "Criar turma"}</Botao>
+          <Botao type="submit" form={idDoFormulario} variante="primario" disabled={!nome.trim()} ocupado={salvando}>{salvando ? "Criando…" : "Criar turma"}</Botao>
         </div>
       }
     >
@@ -101,19 +101,19 @@ function LinhaDaTurma({ turma, aoMudar }: { turma: Turma; aoMudar: () => void })
   return (
     <Cartao como="li" className="flex flex-col gap-3 p-5">
       {editando ? (
-        <form onSubmit={salvar} className="flex flex-col gap-3">
+        <Formulario onSubmit={salvar} className="flex flex-col gap-3">
           <Campo rotulo="Nome">{(id) => <input id={id} required maxLength={120} value={nome} onChange={(e) => setNome(e.target.value)} className="campo" />}</Campo>
           {erro && <Aviso tom="erro">{erro}</Aviso>}
           <div className="flex gap-2">
             <Botao type="submit" variante="primario" tamanho="pequeno">Salvar</Botao>
             <Botao tamanho="pequeno" onClick={() => setEditando(false)}>Cancelar</Botao>
           </div>
-        </form>
+        </Formulario>
       ) : (
         <>
           <div className="flex items-start justify-between gap-3">
             <h2 className="text-lg font-semibold text-tinta">{turma.nome}</h2>
-            <Botao variante="texto" onClick={() => setEditando(true)}>Renomear</Botao>
+            <Botao tamanho="mini" onClick={() => setEditando(true)}>Renomear</Botao>
           </div>
           <div className="flex flex-wrap gap-2">
             <Etiqueta>{plural(turma.alunos, "aluno")}</Etiqueta>

@@ -99,10 +99,10 @@ function Conta() {
           {erro && <Aviso tom="erro">{erro}</Aviso>}
           {sucesso && <Aviso tom="sucesso">Senha trocada. As outras sessões desta conta foram encerradas.</Aviso>}
           <div className="flex flex-wrap gap-2">
-            <Botao type="submit" variante="primario" disabled={enviando || !atual || !nova || !confirmacao}>
+            <Botao type="submit" variante="primario" disabled={!atual || !nova || !confirmacao} ocupado={enviando}>
               {enviando ? "Salvando…" : "Trocar senha"}
             </Botao>
-            <Botao onClick={() => void sair()}>Sair</Botao>
+            <Botao onClick={() => sair()}>Sair</Botao>
           </div>
         </form>
       </Cartao>

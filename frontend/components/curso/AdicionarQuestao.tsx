@@ -5,11 +5,10 @@
 // se precisar e adiciona; a que não existe, escreve. O painel fica aberto entre uma e outra, e o
 // nome da próxima linha ("Q05") anda sozinho.
 
-import { Check, ChevronDown, Image as Figura, Play, Plus, Search } from "lucide-react";
-import Link from "next/link";
+import { Check, Image as Figura, Play, Plus, Search } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { OffCanvas, useSaida } from "@/components/Camadas";
-import { Aviso, Botao, BotaoLink, Carregamento, Esqueleto } from "@/components/ui";
+import { Aviso, Botao, BotaoLink, Carregamento, Esqueleto, Revelar } from "@/components/ui";
 import { api, type Assunto, type ItemCurso, type Modulo, type Questao, type QuestaoDetalhada, type SubModulo } from "@/lib/api";
 import { plural } from "@/lib/formato";
 import { DIFICULDADE, LETRAS } from "@/lib/rotulos";
@@ -92,7 +91,7 @@ function QuestaoAberta({ questao, detalhe, erro }: { questao: Questao; detalhe?:
         </>
       )}
       <div>
-        <Link href={`/admin/questoes/editar/?id=${questao.questao_id}`} target="_blank" className="text-sm font-semibold text-acento hover:underline">Abrir no editor, em outra aba</Link>
+        <BotaoLink tamanho="pequeno" outraAba href={`/admin/questoes/editar/?id=${questao.questao_id}`}>Abrir no editor</BotaoLink>
       </div>
     </div>
   );
@@ -298,10 +297,9 @@ export function AdicionarQuestao({ modulo, sub, assuntos, executar, aoFechar }: 
                             resolução em vídeo
                           </span>
                         )}
-                        <button type="button" onClick={() => abrir(q.questao_id)} aria-expanded={expandida} className="inline-flex items-center gap-0.5 font-semibold text-acento hover:underline">
+                        <Revelar aberto={expandida} aoAlternar={() => abrir(q.questao_id)} className="text-[13px]">
                           {expandida ? "Recolher" : "Ver a questão"}
-                          <ChevronDown aria-hidden="true" className={`size-3.5 transition-transform ${expandida ? "rotate-180" : ""}`} />
-                        </button>
+                        </Revelar>
                       </div>
                     </div>
                     {esta ? (
@@ -310,7 +308,7 @@ export function AdicionarQuestao({ modulo, sub, assuntos, executar, aoFechar }: 
                         {entraram[q.questao_id] ? `Entrou como ${entraram[q.questao_id]}` : "Já está aqui"}
                       </span>
                     ) : (
-                      <Botao tamanho="pequeno" variante="secundario" disabled={adicionando !== null} onClick={() => void adicionar(q)} className="shrink-0">
+                      <Botao tamanho="pequeno" variante="secundario" disabled={adicionando !== null} ocupado={adicionando === q.questao_id} onClick={() => adicionar(q)} className="shrink-0">
                         {adicionando === q.questao_id ? "Adicionando…" : "Adicionar"}
                       </Botao>
                     )}
@@ -322,7 +320,7 @@ export function AdicionarQuestao({ modulo, sub, assuntos, executar, aoFechar }: 
           </ul>
           {temMais && (
             <div className="flex justify-center border-t border-borda/70 p-4">
-              <Botao tamanho="pequeno" disabled={carregandoMais} onClick={() => void carregar(questoes?.length ?? 0)}>{carregandoMais ? "Carregando…" : "Carregar mais"}</Botao>
+              <Botao tamanho="pequeno" ocupado={carregandoMais} onClick={() => carregar(questoes?.length ?? 0)}>{carregandoMais ? "Carregando…" : "Carregar mais"}</Botao>
             </div>
           )}
         </div>

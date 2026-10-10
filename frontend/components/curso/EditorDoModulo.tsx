@@ -11,7 +11,7 @@ import { EditarCategoria } from "@/components/Categoria";
 import { EscolherCapa, capaDe, capaPronta, type Capa } from "@/components/EscolherCapa";
 import { EscolherTurmas } from "@/components/EscolherTurmas";
 import { Menu } from "@/components/Menu";
-import { Aviso, Botao, Cartao } from "@/components/ui";
+import { Aviso, Botao, Cartao, Formulario } from "@/components/ui";
 import { api, type Assunto, type Aula, type Modulo } from "@/lib/api";
 import { plural } from "@/lib/formato";
 import { BIBLIOTECA, composicao, type Confirmar, type Executar } from "./comum";
@@ -114,12 +114,12 @@ export function EditorDoModulo({
 
         <div className="min-w-0 flex-1">
           {renomeando ? (
-            <form onSubmit={renomear} className="flex flex-wrap items-center gap-2">
+            <Formulario onSubmit={renomear} className="flex flex-wrap items-center gap-2">
               <label className="sr-only" htmlFor={`nome-modulo-${modulo.id}`}>Nome do módulo</label>
               <input id={`nome-modulo-${modulo.id}`} autoFocus onFocus={(e) => e.target.select()} required maxLength={160} value={nome} onChange={(e) => setNome(e.target.value)} className="campo min-w-0 max-w-lg flex-1" />
               <Botao type="submit" variante="primario" tamanho="pequeno">Salvar</Botao>
               <Botao tamanho="pequeno" onClick={() => setRenomeando(false)}>Cancelar</Botao>
-            </form>
+            </Formulario>
           ) : (
             <h2 className="text-[22px] font-bold leading-tight tracking-[-0.015em] text-tinta sm:text-2xl">{modulo.nome}</h2>
           )}
@@ -195,12 +195,12 @@ export function EditorDoModulo({
 
       <footer className="border-t border-borda px-4 py-3.5 sm:px-5">
         {novoSub ? (
-          <form onSubmit={criarSub} className="flex flex-wrap items-center gap-2">
+          <Formulario onSubmit={criarSub} className="flex flex-wrap items-center gap-2">
             <label htmlFor={`novo-sub-${modulo.id}`} className="sr-only">Nome do sub-módulo</label>
             <input id={`novo-sub-${modulo.id}`} autoFocus required maxLength={120} value={nomeSub} onChange={(e) => setNomeSub(e.target.value)} placeholder="Ex.: Resumos, Listas, Revisão" className="campo min-w-0 max-w-sm flex-1" />
             <Botao type="submit" variante="primario" tamanho="pequeno" disabled={!nomeSub.trim()}>Criar sub-módulo</Botao>
             <Botao tamanho="pequeno" onClick={() => setNovoSub(false)}>Cancelar</Botao>
-          </form>
+          </Formulario>
         ) : (
           <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
             <Botao tamanho="pequeno" onClick={() => setNovoSub(true)}>
@@ -255,7 +255,7 @@ function TrocarCapa({ modulo, executar, aoFechar }: { modulo: Modulo; executar: 
       rodape={
         <div className="flex flex-wrap justify-end gap-2">
           <Botao onClick={fechar} disabled={salvando}>Cancelar</Botao>
-          <Botao variante="primario" disabled={!capaPronta(capa) || salvando} onClick={() => void salvar()}>{salvando ? "Salvando…" : "Salvar capa"}</Botao>
+          <Botao variante="primario" disabled={!capaPronta(capa)} ocupado={salvando} onClick={() => salvar()}>{salvando ? "Salvando…" : "Salvar capa"}</Botao>
         </div>
       }
     >

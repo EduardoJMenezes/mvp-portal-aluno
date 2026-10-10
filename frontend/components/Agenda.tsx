@@ -2,8 +2,7 @@
 
 // A agenda (decisão 0012): eventos por turma que levam ao conteúdo ligado.
 
-import Link from "next/link";
-import { Etiqueta } from "@/components/ui";
+import { BotaoLink, Etiqueta } from "@/components/ui";
 import type { DestinoDoEvento, EventoDaAgenda } from "@/lib/api";
 
 const DIA = new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Sao_Paulo", weekday: "short", day: "2-digit", month: "2-digit" });
@@ -59,9 +58,9 @@ export function LinhaDoEvento({ evento, acoes }: { evento: EventoDaAgenda; acoes
       </span>
       {evento.destino &&
         (evento.liberado ? (
-          <Link href={hrefDoDestino(evento.destino)} className="text-sm font-semibold text-acento hover:underline">
-            {evento.destino.tipo === "SIMULADO" ? "Ver simulado" : evento.destino.tipo === "AULA_AO_VIVO" ? "Ver aula ao vivo" : "Estudar"} →
-          </Link>
+          <BotaoLink tamanho="mini" variante="secundario" href={hrefDoDestino(evento.destino)}>
+            {evento.destino.tipo === "SIMULADO" ? "Ver simulado" : evento.destino.tipo === "AULA_AO_VIVO" ? "Ver aula ao vivo" : "Estudar"}
+          </BotaoLink>
         ) : (
           <span className="text-[13px] text-apagado">Libera às {HORA.format(inicio)}</span>
         ))}

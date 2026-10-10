@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { BotaoLink, Cartao, Estado, Etiqueta, Pagina, TituloDeSecao, Vazio } from "@/components/ui";
+import { BotaoLink, Cartao, Estado, Etiqueta, LinkDeSecao, Pagina, TituloDeSecao, Vazio } from "@/components/ui";
 import { api, useDados, type RascunhoResumo, type SimuladoResumo, type Turma } from "@/lib/api";
 import { emBrasilia, plural } from "@/lib/formato";
 import { useUsuario } from "@/lib/sessao";
@@ -43,7 +43,7 @@ export default function Painel() {
 function Rascunhos({ rascunhos }: { rascunhos: RascunhoResumo[] }) {
   return (
     <section className="flex flex-col gap-3" aria-labelledby="titulo-rascunhos">
-      <TituloDeSecao acao={<Link href="/admin/rascunhos/" className="text-sm font-semibold text-acento hover:underline">Ver todos</Link>}>
+      <TituloDeSecao acao={<LinkDeSecao href="/admin/rascunhos/">Ver todos</LinkDeSecao>}>
         <span id="titulo-rascunhos">Esperando aprovação</span>
         {rascunhos.length > 0 && <Etiqueta tom="atencao" className="ml-2 align-middle">{rascunhos.length}</Etiqueta>}
       </TituloDeSecao>
@@ -90,7 +90,7 @@ function Simulados({ simulados }: { simulados: SimuladoResumo[] }) {
 
   return (
     <section className="flex flex-col gap-3" aria-labelledby="titulo-simulados">
-      <TituloDeSecao acao={<Link href="/admin/simulados/" className="text-sm font-semibold text-acento hover:underline">Ver todos</Link>}>
+      <TituloDeSecao acao={<LinkDeSecao href="/admin/simulados/">Ver todos</LinkDeSecao>}>
         <span id="titulo-simulados">Simulados</span>
       </TituloDeSecao>
       {!abertos.length && !proximos.length && !encerrados.length ? (
@@ -111,7 +111,7 @@ function Simulados({ simulados }: { simulados: SimuladoResumo[] }) {
 function Turmas({ turmas }: { turmas: Turma[] }) {
   return (
     <section className="flex flex-col gap-3" aria-labelledby="titulo-turmas">
-      <TituloDeSecao acao={<Link href="/admin/turmas/" className="text-sm font-semibold text-acento hover:underline">Gerenciar</Link>}>
+      <TituloDeSecao acao={<LinkDeSecao href="/admin/turmas/">Gerenciar</LinkDeSecao>}>
         <span id="titulo-turmas">Turmas</span>
       </TituloDeSecao>
       {turmas.length === 0 ? (
@@ -127,9 +127,9 @@ function Turmas({ turmas }: { turmas: Turma[] }) {
               <p className="mt-1 text-[13px] text-suave">
                 {plural(t.alunos, "aluno")} · {plural(t.modulos, "módulo")} · {plural(t.itens_publicados, "vídeo publicado", "vídeos publicados")}
               </p>
-              <div className="mt-2 flex gap-3 text-sm font-semibold">
-                <Link href={`/admin/biblioteca/?turma=${t.id}`} className="text-acento hover:underline">Curso</Link>
-                <Link href={`/admin/turmas/alunos/?turma=${t.id}`} className="text-acento hover:underline">Alunos</Link>
+              <div className="mt-3 flex gap-2">
+                <BotaoLink tamanho="mini" href={`/admin/biblioteca/?turma=${t.id}`}>Curso</BotaoLink>
+                <BotaoLink tamanho="mini" href={`/admin/turmas/alunos/?turma=${t.id}`}>Alunos</BotaoLink>
               </div>
             </Cartao>
           ))}

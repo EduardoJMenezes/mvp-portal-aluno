@@ -1,7 +1,8 @@
 "use client";
 
+import { Trash2 } from "lucide-react";
 import { useState, type FormEvent } from "react";
-import { Aviso, Botao, Campo, Cartao, Estado, Pagina, Vazio, useConfirmar } from "@/components/ui";
+import { Aviso, Botao, BotaoIcone, Campo, Cartao, Estado, Formulario, Pagina, Vazio, useConfirmar } from "@/components/ui";
 import { api, useDados, type Assunto } from "@/lib/api";
 
 export default function Assuntos() {
@@ -57,14 +58,14 @@ export default function Assuntos() {
                 <Cartao key={a.id} como="li" className="flex flex-col gap-3 p-4">
                   <div className="flex items-start justify-between gap-2">
                     <NomeEditavel nome={a.nome} rotulo={`Novo nome de ${a.nome}`} classe="text-lg font-semibold" aoSalvar={(nome) => executar(() => api.editarAssunto(a.id, nome))} />
-                    <Botao tamanho="pequeno" variante="texto" className="text-erro" onClick={() => void removerAssunto(a)}>Remover</Botao>
+                    <Botao tamanho="mini" variante="perigo" onClick={() => removerAssunto(a)}>Remover</Botao>
                   </div>
                   {a.subassuntos.length > 0 && (
                     <ul className="flex flex-col divide-y divide-borda rounded-cartao border border-borda">
                       {a.subassuntos.map((s) => (
                         <li key={s.id} className="flex items-center justify-between gap-2 px-3 py-1.5">
                           <NomeEditavel nome={s.nome} rotulo={`Novo nome de ${s.nome}`} classe="text-[15px]" aoSalvar={(nome) => executar(() => api.editarSubassunto(a.id, s.id, nome))} />
-                          <button type="button" onClick={() => void removerSub(a, s)} className="text-sm font-semibold text-erro hover:underline">Remover</button>
+                          <BotaoIcone rotulo={`Remover ${s.nome}`} icone={Trash2} variante="perigo" onClick={() => removerSub(a, s)} />
                         </li>
                       ))}
                     </ul>
@@ -97,7 +98,7 @@ function NomeEditavel({ nome, rotulo, classe, aoSalvar }: { nome: string; rotulo
   }
 
   return (
-    <form
+    <Formulario
       className="flex min-w-0 flex-1 gap-2"
       onSubmit={async (e) => {
         e.preventDefault();
@@ -106,14 +107,14 @@ function NomeEditavel({ nome, rotulo, classe, aoSalvar }: { nome: string; rotulo
     >
       <input aria-label={rotulo} autoFocus required maxLength={120} value={valor} onChange={(e) => setValor(e.target.value)} onKeyDown={(e) => e.key === "Escape" && setEditando(false)} className="campo min-w-0 flex-1 py-1" />
       <Botao type="submit" tamanho="pequeno" variante="secundario">Salvar</Botao>
-    </form>
+    </Formulario>
   );
 }
 
 function NovoSub({ assunto, aoCriar }: { assunto: string; aoCriar: (nome: string) => Promise<boolean> }) {
   const [nome, setNome] = useState("");
   return (
-    <form
+    <Formulario
       className="flex gap-2"
       onSubmit={async (e) => {
         e.preventDefault();
@@ -122,7 +123,7 @@ function NovoSub({ assunto, aoCriar }: { assunto: string; aoCriar: (nome: string
     >
       <input aria-label={`Novo sub-assunto de ${assunto}`} maxLength={120} value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Novo sub-assunto" className="campo min-w-0 flex-1 py-1.5" />
       <Botao type="submit" tamanho="pequeno" disabled={!nome.trim()}>Adicionar</Botao>
-    </form>
+    </Formulario>
   );
 }
 
@@ -144,11 +145,11 @@ function NovoAssunto({ aoCriar }: { aoCriar: (nome: string, subassuntos: string[
 
   return (
     <Cartao className="p-5">
-      <form onSubmit={enviar} className="grid gap-3 sm:grid-cols-[1fr_2fr_auto] sm:items-end">
+      <Formulario onSubmit={enviar} className="grid gap-3 sm:grid-cols-[1fr_2fr_auto] sm:items-end">
         <Campo rotulo="Novo assunto">{(id) => <input id={id} required maxLength={120} value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Estequiometria" className="campo" />}</Campo>
         <Campo rotulo="Sub-assuntos (opcional)">{(id) => <input id={id} value={subs} onChange={(e) => setSubs(e.target.value)} placeholder="Pureza e rendimento, Reagente limitante" className="campo" />}</Campo>
         <Botao type="submit" variante="primario" disabled={ocupado || !nome.trim()}>Cadastrar</Botao>
-      </form>
+      </Formulario>
     </Cartao>
   );
 }

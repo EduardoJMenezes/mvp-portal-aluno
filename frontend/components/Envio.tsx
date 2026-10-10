@@ -1,7 +1,8 @@
 "use client";
 
+import { Trash2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import { Botao } from "./ui";
+import { Botao, BotaoIcone } from "./ui";
 
 // Print vem de qualquer lugar — prova, PDF, site — e quase sempre está na área
 // de transferência: colar (Ctrl+V) é o caminho principal; escolher e arrastar
@@ -59,9 +60,7 @@ export function EscolherPrints({ enviando, aoEnviar }: { enviando: boolean; aoEn
               <img src={enderecos[i]} alt={`Print ${i + 1}: ${arquivo.name}`} className="h-28 w-full rounded object-contain" />
               <div className="mt-1.5 flex items-center justify-between text-sm">
                 <span className="font-semibold tabular-nums text-tinta">{i + 1}</span>
-                <button type="button" className="text-erro hover:underline" onClick={() => setPrints(prints.filter((_, j) => j !== i))}>
-                  remover
-                </button>
+                <BotaoIcone rotulo={`Remover o print ${i + 1}`} icone={Trash2} variante="perigo" className="-my-1 -mr-1 size-7" onClick={() => setPrints(prints.filter((_, j) => j !== i))} />
               </div>
             </li>
           ))}
@@ -69,7 +68,7 @@ export function EscolherPrints({ enviando, aoEnviar }: { enviando: boolean; aoEn
       )}
 
       <div>
-        <Botao variante="primario" disabled={!prints.length || enviando} onClick={() => aoEnviar(prints)}>
+        <Botao variante="primario" disabled={!prints.length} ocupado={enviando} onClick={() => aoEnviar(prints)}>
           {enviando ? "Enviando…" : prints.length === 1 ? "Enviar 1 print" : `Enviar ${prints.length} prints`}
         </Botao>
       </div>
@@ -87,7 +86,7 @@ export function EscolherDocx({ enviando, aoEnviar, rotulo = "Enviar" }: { envian
         <input type="file" accept=".docx" className="sr-only" onChange={(e) => setArquivo(e.target.files?.[0] ?? null)} />
       </label>
       <div>
-        <Botao variante="primario" disabled={!arquivo || enviando} onClick={() => arquivo && aoEnviar(arquivo)}>
+        <Botao variante="primario" disabled={!arquivo} ocupado={enviando} onClick={() => arquivo && aoEnviar(arquivo)}>
           {enviando ? "Lendo o documento…" : rotulo}
         </Botao>
       </div>

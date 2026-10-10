@@ -1,10 +1,9 @@
 "use client";
 
-import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense } from "react";
 import { PorAssunto, ResumoDaDevolutiva } from "@/components/Devolutiva";
-import { Aviso, BotaoLink, Cartao, Estado, Etiqueta, Pagina, TituloDeSecao, Vazio } from "@/components/ui";
+import { Aviso, BotaoLink, Cartao, Estado, Etiqueta, LinkNoTexto, Pagina, TituloDeSecao, Vazio } from "@/components/ui";
 import { api, useDados, type QuestaoDaAulaNaTurma } from "@/lib/api";
 import { plural, porcento } from "@/lib/formato";
 import { LETRAS } from "@/lib/rotulos";
@@ -56,7 +55,7 @@ function DesempenhoDaTurma() {
                 {d.geral.sem_assunto > 0 && (
                   <Aviso tom="atencao">
                     {d.geral.questoes_sem_assunto === 1 ? "1 questão respondida não tem" : `${d.geral.questoes_sem_assunto} questões respondidas não têm`} assunto, e por isso {d.geral.sem_assunto === 1 ? "1 resposta fica" : `${d.geral.sem_assunto} respostas ficam`} de fora desta leitura.{" "}
-                    <Link href="/admin/questoes/" className="font-semibold underline">Classificar no banco de questões</Link>
+                    <LinkNoTexto herdaCor href="/admin/questoes/">Classificar no banco de questões</LinkNoTexto>
                   </Aviso>
                 )}
               </section>
@@ -135,7 +134,7 @@ function Questao({ questao: q }: { questao: QuestaoDaAulaNaTurma }) {
           {plural(q.respostas, "resposta")}
           {q.topico ? `, ${q.topico}` : ", sem assunto"}
         </span>
-        <Link href={`/admin/questoes/editar/?id=${q.questao_id}`} className="font-semibold text-acento hover:underline">Abrir a questão #{q.questao_id}</Link>
+        <BotaoLink tamanho="mini" href={`/admin/questoes/editar/?id=${q.questao_id}`}>Abrir a questão #{q.questao_id}</BotaoLink>
       </div>
     </Cartao>
   );

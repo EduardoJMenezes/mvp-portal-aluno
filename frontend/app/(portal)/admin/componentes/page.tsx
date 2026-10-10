@@ -1,11 +1,13 @@
 "use client";
 
-// A vitrine dos componentes da casa: o Modal e o OffCanvas em todos os tamanhos e lados, e o
-// carregamento em todas as formas. Não está no menu; abre por /admin/componentes/.
+// A vitrine dos componentes da casa: os botões e o que pode continuar texto, o Modal e o OffCanvas
+// em todos os tamanhos e lados, e o carregamento em todas as formas. Não está no menu; abre por
+// /admin/componentes/.
 
-import { useState } from "react";
+import { Play, RefreshCw, Trash2, X } from "lucide-react";
+import { useState, type ReactNode } from "react";
 import { Modal, OffCanvas, type LadoDoOffCanvas, type TamanhoDaCamada } from "@/components/Camadas";
-import { Botao, Campo, Carregando, Cartao, Esqueleto, Pagina, TituloDeSecao } from "@/components/ui";
+import { Botao, BotaoIcone, BotaoLink, Campo, Carregando, Cartao, Esqueleto, Formulario, LinkDeSecao, LinkDeTitulo, LinkNoTexto, Pagina, Revelar, TituloDeSecao } from "@/components/ui";
 import type { FormaDoCarregamento } from "@/components/Esqueleto";
 
 const TAMANHOS: TamanhoDaCamada[] = ["pequeno", "medio", "grande", "tela"];
@@ -13,6 +15,94 @@ const LADOS: LadoDoOffCanvas[] = ["direita", "esquerda", "baixo", "cima"];
 const FORMAS: FormaDoCarregamento[] = ["lista", "cartoes", "tabela", "texto", "blocos"];
 
 type Aberta = { tipo: "modal"; tamanho: TamanhoDaCamada } | { tipo: "offcanvas"; lado: LadoDoOffCanvas; tamanho: TamanhoDaCamada } | null;
+
+/** Uma ação de mentira, que demora: para ver o botão girar e recusar o segundo clique. */
+const demorar = () => new Promise((pronto) => setTimeout(pronto, 1800));
+
+function Linha({ quando, children }: { quando: string; children: ReactNode }) {
+  return (
+    <div className="grid items-center gap-x-6 gap-y-2 border-t border-borda/70 py-3 first:border-t-0 sm:grid-cols-[15rem_1fr]">
+      <p className="text-sm text-tinta-2">{quando}</p>
+      <div className="flex flex-wrap items-center gap-2">{children}</div>
+    </div>
+  );
+}
+
+function VitrineDosBotoes() {
+  const [cliques, setCliques] = useState(0);
+  const [envios, setEnvios] = useState(0);
+  const [aberto, setAberto] = useState(false);
+  return (
+    <>
+      <Cartao className="flex flex-col gap-2 p-5">
+        <TituloDeSecao>Botões</TituloDeSecao>
+        <p className="max-w-2xl text-[15px] text-suave">
+          Tudo o que faz alguma coisa é botão, com forma de botão. Ele afunda ao ser pressionado e, se a ação demora, gira e não aceita outro clique até terminar.
+        </p>
+        <div>
+          <Linha quando="A ação principal da tela ou do painel, uma só">
+            <Botao variante="primario">Salvar</Botao>
+            <Botao variante="primario" disabled>Desabilitado</Botao>
+          </Linha>
+          <Linha quando="As outras ações">
+            <Botao variante="secundario">Escolher no Vimeo</Botao>
+            <Botao>Cancelar</Botao>
+            <Botao variante="perigo">Remover</Botao>
+            <Botao variante="discreto">
+              <RefreshCw aria-hidden="true" className="size-4" />
+              Atualizar
+            </Botao>
+          </Linha>
+          <Linha quando="Tamanhos: normal, pequeno e mini (dentro de uma linha)">
+            <Botao>Normal</Botao>
+            <Botao tamanho="pequeno">Pequeno</Botao>
+            <Botao tamanho="mini">Mini</Botao>
+            <Botao tamanho="mini" variante="perigo">Tirar</Botao>
+          </Linha>
+          <Linha quando="Só um ícone">
+            <BotaoIcone rotulo="Ver o vídeo" icone={Play} />
+            <BotaoIcone rotulo="Fechar" icone={X} />
+            <BotaoIcone rotulo="Remover" icone={Trash2} variante="perigo" onClick={demorar} />
+          </Linha>
+          <Linha quando="Leva a outra tela">
+            <BotaoLink href="/admin/componentes/">Abrir</BotaoLink>
+            <BotaoLink tamanho="pequeno" outraAba href="/admin/componentes/">Abrir no editor</BotaoLink>
+            <LinkDeSecao href="/admin/componentes/">Ver todos</LinkDeSecao>
+          </Linha>
+          <Linha quando={`Clique várias vezes: a ação rodou ${cliques} ${cliques === 1 ? "vez" : "vezes"}`}>
+            <Botao variante="primario" onClick={() => demorar().then(() => setCliques((n) => n + 1))}>Gravar</Botao>
+            <Botao tamanho="mini" onClick={() => demorar().then(() => setCliques((n) => n + 1))}>Gerar nova senha</Botao>
+          </Linha>
+          <Linha quando={`Formulário: Enter repetido envia uma vez só (${envios} ${envios === 1 ? "envio" : "envios"})`}>
+            <Formulario className="flex flex-wrap items-center gap-2" onSubmit={() => demorar().then(() => setEnvios((n) => n + 1))}>
+              <input aria-label="Um campo qualquer" className="campo w-48 py-1.5" placeholder="Escreva e dê Enter" />
+              <Botao type="submit" tamanho="pequeno" variante="primario">Salvar</Botao>
+            </Formulario>
+          </Linha>
+        </div>
+      </Cartao>
+
+      <Cartao className="flex flex-col gap-2 p-5">
+        <TituloDeSecao>O que pode continuar texto</TituloDeSecao>
+        <p className="max-w-2xl text-[15px] text-suave">Só três casos. Fora deles, palavra colorida solta na tela não é botão.</p>
+        <div>
+          <Linha quando="O link que faz parte de uma frase: sempre sublinhado">
+            <p className="text-[15px] text-tinta-2">
+              Nenhum assunto cadastrado. <LinkNoTexto href="/admin/assuntos/">Cadastre em Assuntos</LinkNoTexto>.
+            </p>
+          </Linha>
+          <Linha quando="O título que leva ao item">
+            <LinkDeTitulo href="/admin/componentes/">Simulado 1 — Cinética</LinkDeTitulo>
+          </Linha>
+          <Linha quando="Mostrar e esconder: sempre com a setinha">
+            <Revelar aberto={aberto} aoAlternar={() => setAberto(!aberto)}>{aberto ? "Recolher" : "Ver a questão"}</Revelar>
+            {aberto && <span className="surge text-[15px] text-suave">O que estava escondido aparece logo abaixo.</span>}
+          </Linha>
+        </div>
+      </Cartao>
+    </>
+  );
+}
 
 export default function VitrineDasCamadas() {
   // A última camada aberta continua desenhada enquanto sai da tela.
@@ -45,7 +135,8 @@ export default function VitrineDasCamadas() {
   );
 
   return (
-    <Pagina titulo="Componentes" legenda="As peças que a plataforma inteira reaproveita: as camadas que abrem por cima da página e o carregamento.">
+    <Pagina titulo="Componentes" legenda="As peças que a plataforma inteira reaproveita: os botões, as camadas que abrem por cima da página e o carregamento.">
+      <VitrineDosBotoes />
       <Cartao className="flex flex-col gap-4 p-5">
         <TituloDeSecao>Tamanho</TituloDeSecao>
         <div className="flex flex-wrap gap-2">

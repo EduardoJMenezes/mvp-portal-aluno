@@ -1,9 +1,10 @@
 "use client";
 
-import Link from "next/link";
+import { KeyRound, UserMinus } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useId, useState, type FormEvent } from "react";
 import { Modal, useSaida } from "@/components/Camadas";
+import { Menu } from "@/components/Menu";
 import { Aviso, Botao, BotaoLink, Campo, Cartao, Estado, Etiqueta, Pagina, Progresso, SegredoUmaVez, Vazio, useConfirmar } from "@/components/ui";
 import { api, useDados, type Aluno } from "@/lib/api";
 import { emBrasilia, haQuantoTempo } from "@/lib/formato";
@@ -110,10 +111,16 @@ function Alunos() {
                       </td>
                       <td>{a.senha_temporaria ? <Etiqueta tom="atencao">Senha temporária</Etiqueta> : <Etiqueta tom="sucesso">Ativo</Etiqueta>}</td>
                       <td>
-                        <div className="flex flex-wrap justify-end gap-x-3 gap-y-1 text-sm">
-                          <Link href={`/admin/alunos/?aluno=${a.id}`} className="font-semibold text-acento hover:underline">Acompanhar</Link>
-                          <button type="button" onClick={() => void redefinir(a)} className="font-semibold text-acento hover:underline">Nova senha</button>
-                          <button type="button" onClick={() => void tirar(a)} className="font-semibold text-erro hover:underline">Tirar da turma</button>
+                        <div className="flex items-center justify-end gap-1">
+                          <BotaoLink tamanho="mini" href={`/admin/alunos/?aluno=${a.id}`}>Acompanhar</BotaoLink>
+                          <Menu
+                            rotulo={`Mais ações de ${a.nome}`}
+                            itens={[
+                              { rotulo: "Gerar nova senha", icone: KeyRound, aoEscolher: () => void redefinir(a) },
+                              "divisor",
+                              { rotulo: "Tirar da turma", icone: UserMinus, perigo: true, aoEscolher: () => void tirar(a) },
+                            ]}
+                          />
                         </div>
                       </td>
                     </tr>
@@ -197,7 +204,7 @@ function Matricular({ turma, aoMatricular, aoFechar }: { turma: number; aoMatric
       rodape={
         <div className="flex flex-wrap justify-end gap-2">
           <Botao onClick={saida.fechar} disabled={salvando}>Fechar</Botao>
-          <Botao type="submit" form={idDoFormulario} variante="primario" disabled={salvando || !email.trim()}>{salvando ? "Matriculando…" : "Matricular"}</Botao>
+          <Botao type="submit" form={idDoFormulario} variante="primario" disabled={!email.trim()} ocupado={salvando}>{salvando ? "Matriculando…" : "Matricular"}</Botao>
         </div>
       }
     >

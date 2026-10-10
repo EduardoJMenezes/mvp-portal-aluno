@@ -1,9 +1,8 @@
 "use client";
 
-import Link from "next/link";
 import { useState } from "react";
 import { EditarCategoria, categoriasDe } from "@/components/Categoria";
-import { Aviso, BotaoLink, Cartao, Estado, Etiqueta, Pagina, Vazio } from "@/components/ui";
+import { Aviso, BotaoLink, Cartao, Estado, Etiqueta, LinkDeTitulo, Pagina, Vazio } from "@/components/ui";
 import { api, useDados } from "@/lib/api";
 import { emBrasilia, plural } from "@/lib/formato";
 import { SITUACAO } from "@/lib/rotulos";
@@ -70,7 +69,7 @@ export default function SimuladosDoProfessor() {
                     return (
                       <tr key={s.simulado_id}>
                         <td>
-                          <Link href={`/admin/simulados/ver/?id=${s.simulado_id}`} className="font-semibold text-tinta hover:text-acento hover:underline">{s.titulo}</Link>
+                          <LinkDeTitulo href={`/admin/simulados/ver/?id=${s.simulado_id}`}>{s.titulo}</LinkDeTitulo>
                           <p className="text-[13px] text-suave">
                             {s.turmas.join(", ") || "Sem turma"} · {plural(s.total_questoes, "questão", "questões")}
                             {s.duracao_minutos ? ` · ${s.duracao_minutos} min` : ""}

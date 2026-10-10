@@ -81,7 +81,7 @@ function Lives() {
                           {aula.descricao && <p className="mt-1 text-sm text-suave">{aula.descricao}</p>}
                           {aula.material && <LinkDoPdf material={aula.material} className="mt-2" />}
                         </div>
-                        <Botao variante="primario" onClick={() => void entrar(aula)} disabled={entrando === aula.aula_id}>
+                        <Botao variante="primario" onClick={() => entrar(aula)} ocupado={entrando === aula.aula_id}>
                           {entrando === aula.aula_id ? "Abrindo…" : "Entrar na aula"}
                         </Botao>
                       </div>

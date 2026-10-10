@@ -145,7 +145,7 @@ export function BuscaNoBanco({
           placeholder="Trecho do enunciado (vazio lista as primeiras)"
           className="campo min-w-48 flex-1"
         />
-        <Botao tamanho="pequeno" variante="secundario" disabled={buscando} onClick={() => void buscar()}>{buscando ? "Buscando…" : "Buscar"}</Botao>
+        <Botao tamanho="pequeno" variante="secundario" ocupado={buscando} onClick={() => buscar()}>{buscando ? "Buscando…" : "Buscar"}</Botao>
       </div>
       {erro && <Aviso tom="erro">{erro}</Aviso>}
       {resultados && (

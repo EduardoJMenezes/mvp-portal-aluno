@@ -75,7 +75,7 @@ export function NovoModulo({
       rodape={
         <div className="flex flex-wrap justify-end gap-2">
           <Botao onClick={saida.fechar} disabled={criando}>Cancelar</Botao>
-          <Botao type="submit" form={idDoFormulario} variante="primario" disabled={criando || !nome.trim() || !capaPronta(capa)}>{criando ? "Criando…" : "Criar módulo"}</Botao>
+          <Botao type="submit" form={idDoFormulario} variante="primario" disabled={!nome.trim() || !capaPronta(capa)} ocupado={criando}>{criando ? "Criando…" : "Criar módulo"}</Botao>
         </div>
       }
     >

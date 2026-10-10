@@ -120,7 +120,7 @@ export default function AulasDoProfessor() {
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
                       {aula.tem_sala && (
-                        <Botao tamanho="pequeno" variante="primario" onClick={() => void iniciar(aula)}>
+                        <Botao tamanho="pequeno" variante="primario" onClick={() => iniciar(aula)}>
                           Iniciar
                         </Botao>
                       )}
@@ -128,7 +128,7 @@ export default function AulasDoProfessor() {
                         tamanho="pequeno"
                         variante={aula.status === "PUBLICADO" ? "neutro" : "primario"}
                         onClick={() =>
-                          void executar(() =>
+                          executar(() =>
                             api.editarAula(aula.aula_id, {
                               status: aula.status === "PUBLICADO" ? "RASCUNHO" : "PUBLICADO",
                             }),
@@ -137,7 +137,7 @@ export default function AulasDoProfessor() {
                       >
                         {aula.status === "PUBLICADO" ? "Tirar do ar" : "Publicar"}
                       </Botao>
-                      <Botao tamanho="pequeno" variante="perigo" onClick={() => void remover(aula)}>
+                      <Botao tamanho="pequeno" variante="perigo" onClick={() => remover(aula)}>
                         Remover
                       </Botao>
                     </div>
@@ -214,7 +214,7 @@ function Agendar({ turmas, categorias, erro, aoAgendar, aoFechar }: { turmas: st
       rodape={
         <div className="flex flex-wrap justify-end gap-2">
           <Botao onClick={saida.fechar} disabled={salvando}>Cancelar</Botao>
-          <Botao type="submit" form={idDoFormulario} variante="primario" disabled={salvando || !titulo.trim() || !quando}>
+          <Botao type="submit" form={idDoFormulario} variante="primario" disabled={!titulo.trim() || !quando} ocupado={salvando}>
             {salvando ? "Agendando…" : "Agendar em rascunho"}
           </Botao>
         </div>
@@ -413,7 +413,7 @@ function QuemAlcanca({
         )}
       </Campo>
       {mudou && (
-        <Botao tamanho="pequeno" variante="primario" onClick={() => void salvar()} disabled={salvando} className="w-fit">
+        <Botao tamanho="pequeno" variante="primario" onClick={() => salvar()} ocupado={salvando} className="w-fit">
           {salvando ? "Salvando…" : "Salvar quem entra"}
         </Botao>
       )}

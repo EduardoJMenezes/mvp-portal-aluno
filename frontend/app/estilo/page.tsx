@@ -114,7 +114,7 @@ export default function PaginaDeEstilo() {
           <Botao variante="secundario">Ver detalhes</Botao>
           <Botao>Cancelar</Botao>
           <Botao variante="perigo">Remover</Botao>
-          <Botao variante="texto">Saiba mais</Botao>
+          <Botao variante="discreto">Atualizar</Botao>
         </div>
         <div className="flex flex-wrap items-center gap-3">
           <Botao variante="primario" disabled>Desabilitado</Botao>

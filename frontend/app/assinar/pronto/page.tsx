@@ -132,7 +132,7 @@ function CriarSenha({ token, situacao }: { token: string; situacao: SituacaoDoPe
           <p className="text-[13px] text-suave">Pelo menos 10 caracteres. Evite seu nome e seu e-mail.</p>
         </div>
         {erro && <Aviso tom="erro">{erro}</Aviso>}
-        <Botao type="submit" variante="primario" disabled={enviando || !senha} className="w-full">
+        <Botao type="submit" variante="primario" disabled={!senha} ocupado={enviando} className="w-full">
           {enviando ? "Entrando…" : "Criar senha e entrar"}
         </Botao>
       </form>

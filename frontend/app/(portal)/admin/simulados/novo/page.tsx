@@ -89,7 +89,7 @@ export default function NovoSimulado() {
 
         {erro && <Aviso tom="erro">{erro}</Aviso>}
         <div className="flex flex-wrap gap-2">
-          <Botao type="submit" variante="primario" disabled={salvando}>{salvando ? "Criando…" : "Criar rascunho"}</Botao>
+          <Botao type="submit" variante="primario" ocupado={salvando}>{salvando ? "Criando…" : "Criar rascunho"}</Botao>
         </div>
       </form>
     </Pagina>

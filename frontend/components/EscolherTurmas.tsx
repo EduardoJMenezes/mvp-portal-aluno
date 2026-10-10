@@ -2,7 +2,7 @@
 
 import { useId, useState } from "react";
 import { Modal } from "@/components/Camadas";
-import { Botao } from "@/components/ui";
+import { Botao, Formulario } from "@/components/ui";
 
 /**
  * As turmas de um módulo, ou de uma aula dentro dele (decisão 0011): o texto de hoje, e um clique
@@ -44,9 +44,9 @@ export function EscolherTurmas({
   const idDoFormulario = useId();
 
   const resumo = (
-    <span className="inline-flex flex-wrap items-center gap-1 text-[13px] text-suave">
+    <span className="inline-flex flex-wrap items-center gap-2 text-[13px] text-suave">
       {marcadas.length ? marcadas.join(", ") : vazio}
-      <Botao variante="texto" onClick={() => { setEscolhidas(marcadas); setAberto(true); }}>
+      <Botao tamanho="mini" onClick={() => { setEscolhidas(marcadas); setAberto(true); }}>
         {acao}
       </Botao>
     </span>
@@ -66,11 +66,11 @@ export function EscolherTurmas({
           rodape={
             <div className="flex flex-wrap justify-end gap-2">
               <Botao onClick={() => setAberto(false)} disabled={salvando}>Cancelar</Botao>
-              <Botao type="submit" form={idDoFormulario} variante="primario" disabled={salvando}>{salvando ? "Salvando…" : "Salvar"}</Botao>
+              <Botao type="submit" form={idDoFormulario} variante="primario" ocupado={salvando}>{salvando ? "Salvando…" : "Salvar"}</Botao>
             </div>
           }
         >
-          <form
+          <Formulario
             id={idDoFormulario}
             onSubmit={async (e) => {
               e.preventDefault();
@@ -96,7 +96,7 @@ export function EscolherTurmas({
                 })}
               </fieldset>
             )}
-          </form>
+          </Formulario>
         </Modal>
       </>
     );
@@ -104,7 +104,7 @@ export function EscolherTurmas({
 
   if (!aberto) return resumo;
   return (
-    <form
+    <Formulario
       className="flex flex-wrap items-center gap-2"
       onSubmit={async (e) => {
         e.preventDefault();
@@ -136,6 +136,6 @@ export function EscolherTurmas({
       <Botao type="submit" tamanho="pequeno" variante="primario">Salvar</Botao>
       <Botao tamanho="pequeno" onClick={fechar}>Cancelar</Botao>
       <span className="basis-full text-[13px] text-suave">Nenhuma marcada: {vazio.toLowerCase()}.</span>
-    </form>
+    </Formulario>
   );
 }

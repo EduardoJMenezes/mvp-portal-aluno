@@ -1,9 +1,8 @@
 "use client";
 
-import Link from "next/link";
 import { useId, useState, type FormEvent } from "react";
 import { Modal, useSaida } from "@/components/Camadas";
-import { Aviso, Botao, Campo, Cartao, Estado, Etiqueta, Pagina, TituloDeSecao, Vazio, useConfirmar } from "@/components/ui";
+import { Aviso, Botao, BotaoLink, Campo, Cartao, Estado, Etiqueta, Pagina, TituloDeSecao, Vazio, useConfirmar } from "@/components/ui";
 import { EditarCategoria, categoriasDe } from "@/components/Categoria";
 import { api, useDados, type Material } from "@/lib/api";
 import { emBrasilia, tamanhoDoArquivo } from "@/lib/formato";
@@ -92,21 +91,19 @@ export default function MateriaisDoProfessor() {
                       ) : null}
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
-                      <Link href={`/materiais/ler/?id=${m.material_id}`} className="text-sm font-semibold text-acento hover:underline">
-                        Abrir
-                      </Link>
+                      <BotaoLink tamanho="pequeno" href={`/materiais/ler/?id=${m.material_id}`}>Abrir</BotaoLink>
                       <Botao
                         tamanho="pequeno"
                         variante={m.status === "PUBLICADO" ? "neutro" : "primario"}
                         onClick={() =>
-                          void executar(() =>
+                          executar(() =>
                             api.editarMaterial(m.material_id, { status: m.status === "PUBLICADO" ? "RASCUNHO" : "PUBLICADO" }),
                           )
                         }
                       >
                         {m.status === "PUBLICADO" ? "Tirar do ar" : "Publicar"}
                       </Botao>
-                      <Botao tamanho="pequeno" variante="perigo" onClick={() => void remover(m)}>
+                      <Botao tamanho="pequeno" variante="perigo" onClick={() => remover(m)}>
                         Remover
                       </Botao>
                     </div>
@@ -163,7 +160,7 @@ function Enviar({
       rodape={
         <div className="flex flex-wrap justify-end gap-2">
           <Botao onClick={saida.fechar} disabled={enviando}>Cancelar</Botao>
-          <Botao type="submit" form={idDoFormulario} variante="primario" disabled={!arquivo || enviando}>{enviando ? "Enviando…" : "Enviar"}</Botao>
+          <Botao type="submit" form={idDoFormulario} variante="primario" disabled={!arquivo} ocupado={enviando}>{enviando ? "Enviando…" : "Enviar"}</Botao>
         </div>
       }
     >
@@ -241,7 +238,7 @@ function QuemAlcanca({
         <Campo rotulo="Alunos avulsos" dica="E-mails separados por vírgula. É por aqui que um material vai para uma pessoa só." className="min-w-64 flex-1">
           {(id) => <input id={id} value={avulsos} onChange={(e) => setAvulsos(e.target.value)} placeholder="aluno@escola.com" className="campo" />}
         </Campo>
-        <Botao tamanho="pequeno" variante="secundario" disabled={!mudou || salvando} onClick={() => void salvar()} className="mb-6">
+        <Botao tamanho="pequeno" variante="secundario" disabled={!mudou} ocupado={salvando} onClick={() => salvar()} className="mb-6">
           {salvando ? "Salvando…" : "Salvar acesso"}
         </Botao>
       </div>

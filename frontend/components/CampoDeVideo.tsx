@@ -76,12 +76,12 @@ export function CampoDeVideo({
         </div>
       ) : (
         <>
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+          <div className="flex flex-wrap items-center gap-2">
             <Botao variante="secundario" onClick={() => setEscolhendo(true)}>
               <Search aria-hidden="true" className="size-4" />
               Escolher no Vimeo
             </Botao>
-            {!colando && <Botao variante="texto" onClick={() => setColando(true)}>Colar o link do vídeo</Botao>}
+            {!colando && <Botao onClick={() => setColando(true)}>Colar o link do vídeo</Botao>}
           </div>
           {colando && (
             <div className="flex flex-wrap items-start gap-2">
@@ -104,7 +104,7 @@ export function CampoDeVideo({
                 {colado.trim() && !numero && <p className="mt-1 text-[13px] text-atencao">Não achei o número do vídeo nesse texto.</p>}
               </div>
               <Botao variante="secundario" disabled={!numero} onClick={usarOColado}>Usar</Botao>
-              <Botao variante="texto" className="self-center" onClick={() => { setColando(false); setColado(""); }}>Cancelar</Botao>
+              <Botao onClick={() => { setColando(false); setColado(""); }}>Cancelar</Botao>
             </div>
           )}
         </>

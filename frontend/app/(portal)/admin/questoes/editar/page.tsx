@@ -216,7 +216,7 @@ function Editor() {
       titulo={id ? `Questão #${id}` : submodulo ? "Nova questão na aula" : "Nova questão"}
       legenda={id ? undefined : submodulo ? `Entra no banco e vira uma linha de ${destino || "o sub-módulo"}, já publicada: o aluno responde ali e vê o gabarito na hora.` : "Entra no banco já publicada: fica disponível para simulados e para as aulas."}
       voltar={submodulo || moduloDeVolta ? { href: curso, rotulo: "Montar o curso" } : { href: "/admin/questoes/", rotulo: "Banco de questões" }}
-      acoes={id && <Botao variante="perigo" onClick={() => void remover()}>Remover</Botao>}
+      acoes={id && <Botao variante="perigo" onClick={() => remover()}>Remover</Botao>}
     >
       {dialogo}
       {questao.erro && <Aviso tom="erro">{questao.erro}</Aviso>}
@@ -341,7 +341,7 @@ function Editor() {
           {erro && <Aviso tom="erro">{erro}</Aviso>}
           {aviso && <Aviso tom="sucesso">{aviso}</Aviso>}
           <div className="flex flex-wrap gap-2">
-            <Botao type="submit" variante="primario" disabled={salvando} onClick={() => (depois.current = "voltar")}>{salvando ? "Salvando…" : id ? "Salvar questão" : submodulo ? "Criar e pôr na aula" : "Criar questão"}</Botao>
+            <Botao type="submit" variante="primario" ocupado={salvando} onClick={() => (depois.current = "voltar")}>{salvando ? "Salvando…" : id ? "Salvar questão" : submodulo ? "Criar e pôr na aula" : "Criar questão"}</Botao>
             {submodulo && <Botao type="submit" variante="secundario" disabled={salvando} onClick={() => (depois.current = "outra")}>Criar e escrever a próxima</Botao>}
           </div>
         </div>
@@ -439,7 +439,7 @@ function Figuras({ questao, aoAnexar }: { questao: QuestaoDetalhada; aoAnexar: (
       </div>
       {erro && <Aviso tom="erro">{erro}</Aviso>}
       <div>
-        <Botao variante="secundario" disabled={!arquivo || enviando} onClick={() => void anexar()}>{enviando ? "Anexando…" : "Anexar figura"}</Botao>
+        <Botao variante="secundario" disabled={!arquivo} ocupado={enviando} onClick={() => anexar()}>{enviando ? "Anexando…" : "Anexar figura"}</Botao>
       </div>
     </Cartao>
   );

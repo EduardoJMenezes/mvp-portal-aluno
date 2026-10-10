@@ -2,21 +2,20 @@
 
 // O PDF da aula (decisão 0013): um material que a aula ao vivo ou a linha do módulo leva junto.
 
-import Link from "next/link";
 import { useEffect, useState, type ReactNode } from "react";
-import { Botao } from "@/components/ui";
+import { Botao, LinkDeTitulo } from "@/components/ui";
 import { api, type Aula, type Material, type MaterialLigado } from "@/lib/api";
 
 /** O link que abre o PDF no leitor de materiais, com a marcação do aluno. */
 export function LinkDoPdf({ material, className = "" }: { material: MaterialLigado; className?: string }) {
   return (
-    <Link href={`/materiais/ler/?id=${material.material_id}`} className={`inline-flex w-fit items-center gap-1.5 text-sm font-semibold text-acento hover:underline ${className}`}>
+    <LinkDeTitulo href={`/materiais/ler/?id=${material.material_id}`} className={`inline-flex w-fit items-center gap-1.5 text-sm ${className}`}>
       <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" />
         <path d="M14 3v5h5" />
       </svg>
       Material da aula
-    </Link>
+    </LinkDeTitulo>
   );
 }
 
@@ -70,7 +69,7 @@ export function EscolherPdf({
   }
 
   if (!aberto) {
-    return <Botao variante="texto" tamanho="pequeno" className="w-fit" onClick={() => setAberto(true)}>{rotulo}</Botao>;
+    return <Botao tamanho="pequeno" className="w-fit" onClick={() => setAberto(true)}>{rotulo}</Botao>;
   }
   return (
     <div className={`flex flex-col gap-2 ${moldura ? "rounded-cartao border border-borda bg-canvas p-3" : ""}`}>
@@ -92,7 +91,7 @@ export function EscolherPdf({
       </div>
       {erro && <p role="alert" className="text-[13px] text-erro">{erro}</p>}
       <div className="flex gap-2">
-        <Botao variante="primario" tamanho="pequeno" disabled={enviando || (!arquivo && !escolhido)} onClick={() => void salvar()}>
+        <Botao variante="primario" tamanho="pequeno" disabled={(!arquivo && !escolhido)} ocupado={enviando} onClick={() => salvar()}>
           {enviando ? (arquivo ? "Enviando…" : "Salvando…") : "Anexar"}
         </Botao>
         <Botao tamanho="pequeno" onClick={fechar}>Cancelar</Botao>
@@ -120,9 +119,9 @@ export function PdfDaAula({
   return (
     <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
       <span className="text-suave">PDF:</span>
-      <Link href={`/materiais/ler/?id=${material.material_id}`} className="font-semibold text-acento hover:underline">{material.titulo}</Link>
-      <Botao variante="texto" tamanho="pequeno" onClick={() => setTrocando(true)}>Trocar</Botao>
-      {aoTirar && <Botao variante="texto" tamanho="pequeno" className="text-erro" onClick={() => void aoTirar()}>Tirar</Botao>}
+      <LinkDeTitulo href={`/materiais/ler/?id=${material.material_id}`}>{material.titulo}</LinkDeTitulo>
+      <Botao tamanho="mini" onClick={() => setTrocando(true)}>Trocar</Botao>
+      {aoTirar && <Botao tamanho="mini" variante="perigo" onClick={() => aoTirar()}>Tirar</Botao>}
       {extra}
     </div>
   );

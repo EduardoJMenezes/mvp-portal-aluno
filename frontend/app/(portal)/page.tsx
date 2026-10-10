@@ -1,8 +1,7 @@
 "use client";
 
-import Link from "next/link";
 import { CartaoDoModulo } from "@/components/CartaoDoModulo";
-import { BotaoLink, Cartao, Estado, Etiqueta, Pagina, TituloDeSecao, Vazio } from "@/components/ui";
+import { BotaoLink, Cartao, Estado, Etiqueta, LinkDeSecao, Pagina, TituloDeSecao, Vazio } from "@/components/ui";
 import { LinhaDoEvento } from "@/components/Agenda";
 import { api, useDados, type ConteudoDaTurma, type EventoDaAgenda, type SimuladoResumo } from "@/lib/api";
 import { emBrasilia, plural } from "@/lib/formato";
@@ -39,7 +38,7 @@ function Simulados({ simulados }: { simulados: SimuladoResumo[] }) {
 
   return (
     <section className="flex flex-col gap-3" aria-labelledby="titulo-simulados">
-      <TituloDeSecao acao={<Link href="/simulados/" className="text-sm font-semibold text-acento hover:underline">Todos os simulados</Link>}>
+      <TituloDeSecao acao={<LinkDeSecao href="/simulados/">Todos os simulados</LinkDeSecao>}>
         <span id="titulo-simulados">Simulados</span>
       </TituloDeSecao>
       {nada && <Vazio titulo="Nenhum simulado por agora">Quando o professor publicar um simulado para a sua turma, ele aparece aqui.</Vazio>}
@@ -93,7 +92,7 @@ function Curso({ conteudo }: { conteudo: ConteudoDaTurma[] }) {
   const modulos = conteudo.flatMap((t) => t.modulos);
   return (
     <section className="mt-4 flex flex-col gap-3" aria-labelledby="titulo-curso">
-      <TituloDeSecao acao={<Link href="/curso/" className="text-sm font-semibold text-acento hover:underline">Curso completo</Link>}>
+      <TituloDeSecao acao={<LinkDeSecao href="/curso/">Curso completo</LinkDeSecao>}>
         <span id="titulo-curso">Seu curso</span>
       </TituloDeSecao>
       {modulos.length === 0 ? (
@@ -119,7 +118,7 @@ function EstaSemana({ agenda }: { agenda: EventoDaAgenda[] }) {
   if (daSemana.length === 0) return null;
   return (
     <section className="flex flex-col gap-3" aria-labelledby="titulo-semana">
-      <TituloDeSecao acao={<Link href="/agenda/" className="text-sm font-semibold text-acento hover:underline">Agenda completa</Link>}>
+      <TituloDeSecao acao={<LinkDeSecao href="/agenda/">Agenda completa</LinkDeSecao>}>
         <span id="titulo-semana">Esta semana</span>
       </TituloDeSecao>
       <Cartao>

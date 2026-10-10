@@ -98,7 +98,7 @@ export default function ConectarAoClaude() {
                         <td className="whitespace-nowrap tabular-nums">{emBrasilia(t.criado_em)}</td>
                         <td className="whitespace-nowrap tabular-nums">{t.ultimo_uso_em ? emBrasilia(t.ultimo_uso_em) : "nunca"}</td>
                         <td className="text-right">
-                          {t.revogado ? <Etiqueta>Revogado</Etiqueta> : <button type="button" onClick={() => void revogar(t)} className="text-sm font-semibold text-erro hover:underline">Revogar</button>}
+                          {t.revogado ? <Etiqueta>Revogado</Etiqueta> : <Botao tamanho="mini" variante="perigo" onClick={() => revogar(t)}>Revogar</Botao>}
                         </td>
                       </tr>
                     ))}
@@ -147,7 +147,7 @@ function EmitirToken({ aoEmitir }: { aoEmitir: (t: TokenMcp & { token: string })
         <Campo rotulo="Nome do token" dica="Para lembrar onde ele está em uso." className="min-w-56 flex-1">
           {(id) => <input id={id} maxLength={120} value={nome} onChange={(e) => setNome(e.target.value)} className="campo" />}
         </Campo>
-        <Botao type="submit" variante="primario" disabled={ocupado} className="mb-6">{ocupado ? "Emitindo…" : "Emitir token"}</Botao>
+        <Botao type="submit" variante="primario" ocupado={ocupado} className="mb-6">{ocupado ? "Emitindo…" : "Emitir token"}</Botao>
       </div>
       {erro && <Aviso tom="erro">{erro}</Aviso>}
     </form>

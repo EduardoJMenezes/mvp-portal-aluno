@@ -131,7 +131,7 @@ function Modulo({ turmas }: { turmas: ConteudoDaTurma[] }) {
                 <Botao
                   variante={concluido(atual) ? "secundario" : "neutro"}
                   aria-pressed={concluido(atual)}
-                  onClick={() => void marcar(atual, !concluido(atual))}
+                  onClick={() => marcar(atual, !concluido(atual))}
                   title={concluido(atual) ? "Clique para desmarcar" : undefined}
                 >
                   {concluido(atual) && <CircleCheck aria-hidden="true" className="size-[18px] text-sucesso-vivo" strokeWidth={2.4} />}
@@ -279,7 +279,7 @@ function AulaAoVivo({ aula }: { aula: AulaNoCurso }) {
       </span>
       {aula.material && <LinkDoPdf material={aula.material} className="ml-6" />}
       {salaAberta && (
-        <Botao tamanho="pequeno" variante="primario" className="ml-6 w-fit" disabled={abrindo} onClick={() => void entrar()}>
+        <Botao tamanho="pequeno" variante="primario" className="ml-6 w-fit" ocupado={abrindo} onClick={() => entrar()}>
           {abrindo ? "Abrindo…" : "Entrar na aula"}
         </Botao>
       )}

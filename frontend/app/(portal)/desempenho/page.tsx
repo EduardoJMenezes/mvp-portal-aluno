@@ -1,9 +1,8 @@
 "use client";
 
-import Link from "next/link";
 import { PorAssunto, ResumoDaDevolutiva } from "@/components/Devolutiva";
 import { OndeRevisar } from "@/components/Resultado";
-import { Cartao, Estado, Pagina, TituloDeSecao, Vazio } from "@/components/ui";
+import { Cartao, Estado, LinkDeTitulo, Pagina, TituloDeSecao, Vazio } from "@/components/ui";
 import { api, useDados } from "@/lib/api";
 import { emBrasilia, porcento } from "@/lib/formato";
 
@@ -57,9 +56,7 @@ export default function MeuDesempenho() {
                         {h.simulados.map((s) => (
                           <tr key={s.simulado_id}>
                             <td>
-                              <Link href={`/simulados/resultado/?id=${s.simulado_id}`} className="font-semibold text-acento hover:underline">
-                                {s.titulo}
-                              </Link>
+                              <LinkDeTitulo href={`/simulados/resultado/?id=${s.simulado_id}`}>{s.titulo}</LinkDeTitulo>
                             </td>
                             <td className="whitespace-nowrap text-suave">{emBrasilia(s.fechou_em)}</td>
                             <td className="whitespace-nowrap">{s.acertos} de {s.total}</td>

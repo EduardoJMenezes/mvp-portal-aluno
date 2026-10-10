@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState, type FormEvent } from "react";
 import { MontarProva, doBanco, paraApi, type EntradaDaProva } from "@/components/MontarProva";
@@ -109,7 +108,7 @@ function Prova({ simulado: s, aoSalvar }: { simulado: SimuladoDoProfessor; aoSal
                 {q.imagem_pendente && <Etiqueta tom="atencao">Imagem pendente</Etiqueta>}
                 {!!q.aulas?.length && <span title={`Lá o aluno vê o gabarito ao responder: ${q.aulas.join("; ")}`}><Etiqueta tom="atencao">Também em aula</Etiqueta></span>}
                 {q.resolucao ? <Etiqueta tom="info">Vídeo: {q.resolucao}</Etiqueta> : <Etiqueta>Sem vídeo de resolução</Etiqueta>}
-                <Link href={`/admin/questoes/editar/?id=${q.questao_id}`} className="ml-auto text-sm font-semibold text-acento hover:underline">Editar questão #{q.questao_id}</Link>
+                <BotaoLink tamanho="mini" className="ml-auto" href={`/admin/questoes/editar/?id=${q.questao_id}`}>Editar questão #{q.questao_id}</BotaoLink>
               </div>
               <TextoFormatado texto={q.enunciado} compacto />
               <ul className="mt-2 flex flex-col gap-1">
@@ -128,7 +127,7 @@ function Prova({ simulado: s, aoSalvar }: { simulado: SimuladoDoProfessor; aoSal
       {erro && <Aviso tom="erro">{erro}</Aviso>}
       {s.situacao !== "ABERTO" && (
         <div>
-          <Botao variante="perigo" onClick={() => void remover()}>Remover simulado</Botao>
+          <Botao variante="perigo" onClick={() => remover()}>Remover simulado</Botao>
         </div>
       )}
     </div>
@@ -237,7 +236,7 @@ function Edicao({ simulado: s, aoSalvar }: { simulado: SimuladoDoProfessor; aoSa
         {erro && <Aviso tom="erro">{erro}</Aviso>}
         {aviso && <Aviso tom="sucesso">{aviso}</Aviso>}
         <div>
-          <Botao type="submit" variante="primario" disabled={salvando}>{salvando ? "Salvando…" : "Salvar mudanças"}</Botao>
+          <Botao type="submit" variante="primario" ocupado={salvando}>{salvando ? "Salvando…" : "Salvar mudanças"}</Botao>
         </div>
       </form>
     </Cartao>

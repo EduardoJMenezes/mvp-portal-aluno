@@ -1,10 +1,9 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useRef, useState, type PointerEvent } from "react";
 import { EscolherPrints } from "@/components/Envio";
-import { Aviso, Botao, BotaoLink, Campo, Cartao, Estado, Pagina, TituloDeSecao, Vazio } from "@/components/ui";
+import { Aviso, Botao, BotaoLink, Campo, Cartao, Estado, LinkNoTexto, Pagina, TituloDeSecao, Vazio } from "@/components/ui";
 import { api, tokenDoLink, useDados, type LinkDeEnvio } from "@/lib/api";
 import { LETRAS } from "@/lib/rotulos";
 
@@ -73,7 +72,7 @@ function Envio() {
         <Cartao className="flex flex-col gap-4 p-5">
           <p className="text-[15px]">Cada envio ganha um número de importação; é por ele que os prints são achados depois.</p>
           <div>
-            <Botao variante="primario" disabled={ocupado} onClick={() => void gerar()}>{ocupado ? "Preparando…" : "Enviar prints agora"}</Botao>
+            <Botao variante="primario" ocupado={ocupado} onClick={() => gerar()}>{ocupado ? "Preparando…" : "Enviar prints agora"}</Botao>
           </div>
           <form
             className="flex flex-wrap items-end gap-2 border-t border-borda pt-4"
@@ -282,7 +281,7 @@ function Recorte({ importacao, numero }: { importacao: number; numero: number })
         </div>
         {rascunhos.dados?.length === 0 && (
           <Aviso tom="atencao">
-            Nenhuma questão em rascunho. Crie em <Link href="/admin/questoes/editar/" className="font-semibold underline">Nova questão</Link> ou num simulado novo, com a marca ![](figura:pendente) onde a figura entra.
+            Nenhuma questão em rascunho. Crie em <LinkNoTexto herdaCor href="/admin/questoes/editar/">Nova questão</LinkNoTexto> ou num simulado novo, com a marca ![](figura:pendente) onde a figura entra.
           </Aviso>
         )}
         <label className="flex items-center gap-2 text-[15px]">
@@ -291,7 +290,7 @@ function Recorte({ importacao, numero }: { importacao: number; numero: number })
         </label>
         {erro && <Aviso tom="erro">{erro}</Aviso>}
         <div className="flex flex-wrap gap-2">
-          <Botao variante="primario" disabled={!valido || !questao || ocupado} onClick={() => void recortar()}>{ocupado ? "Recortando…" : "Recortar para a questão"}</Botao>
+          <Botao variante="primario" disabled={!valido || !questao} ocupado={ocupado} onClick={() => recortar()}>{ocupado ? "Recortando…" : "Recortar para a questão"}</Botao>
           {ret && <Botao onClick={() => setRet(null)}>Limpar seleção</Botao>}
         </div>
       </Cartao>

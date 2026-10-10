@@ -155,7 +155,7 @@ function MenuDaTurma() {
                 <Botao
                   variante="primario"
                   onClick={() =>
-                    void gravar(
+                    gravar(
                       () => api.definirMenu(turmaId, botoes.map((b) => ({ ...b, rotulo: b.rotulo.trim(), categoria: b.categoria?.trim() || null }))),
                       "Menu salvo. Os alunos já veem o novo.",
                     )
@@ -164,7 +164,7 @@ function MenuDaTurma() {
                   Salvar menu
                 </Botao>
                 {!menu.padrao && (
-                  <Botao variante="texto" onClick={() => void gravar(() => api.definirMenu(turmaId, []), "A turma voltou ao menu de sempre.")}>
+                  <Botao onClick={() => gravar(() => api.definirMenu(turmaId, []), "A turma voltou ao menu de sempre.")}>
                     Voltar ao menu de sempre
                   </Botao>
                 )}
@@ -183,7 +183,7 @@ function MenuDaTurma() {
                     ))}
                   </select>
                 </label>
-                <Botao disabled={!copiarDe} onClick={() => void copiar()}>Copiar menu</Botao>
+                <Botao disabled={!copiarDe} onClick={() => copiar()}>Copiar menu</Botao>
               </div>
             </Cartao>
           </>

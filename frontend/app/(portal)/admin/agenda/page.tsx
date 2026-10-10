@@ -127,9 +127,9 @@ export default function AgendaDoProfessor() {
                           acoes={
                             <span className="flex w-full flex-wrap items-center justify-between gap-2 sm:w-auto">
                               <span className="text-[13px] text-suave">{e.turmas.join(", ")}</span>
-                              <span className="flex gap-1">
-                                <Botao variante="texto" onClick={() => setEditando(e.evento_id)}>Editar</Botao>
-                                <Botao variante="texto" className="text-erro" onClick={() => void remover(e)}>Tirar</Botao>
+                              <span className="flex gap-1.5">
+                                <Botao tamanho="mini" onClick={() => setEditando(e.evento_id)}>Editar</Botao>
+                                <Botao tamanho="mini" variante="perigo" onClick={() => remover(e)}>Tirar</Botao>
                               </span>
                             </span>
                           }
@@ -204,7 +204,7 @@ function FormularioDoEvento({
       rodape={
         <div className="flex flex-wrap justify-end gap-2">
           <Botao onClick={saida.fechar} disabled={salvando}>Cancelar</Botao>
-          <Botao type="submit" form={idDoFormulario} variante="primario" disabled={salvando || !titulo.trim() || !inicio || !escolhidas.length || (!!tipo && !alvo)}>
+          <Botao type="submit" form={idDoFormulario} variante="primario" disabled={!titulo.trim() || !inicio || !escolhidas.length || (!!tipo && !alvo)} ocupado={salvando}>
             {salvando ? "Salvando…" : "Salvar"}
           </Botao>
         </div>

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Cartao, Pagina } from "@/components/ui";
+import { Cartao, LinkNoTexto, Pagina } from "@/components/ui";
 
 const CAMINHOS = [
   {
@@ -39,7 +39,7 @@ export default function Importar() {
         ))}
       </ul>
       <p className="text-[15px] text-suave">
-        Pelo Claude dá para fazer o mesmo conversando — ele gera o link de envio e revisa com você. Veja <Link href="/admin/claude/" className="font-semibold text-acento hover:underline">Conectar ao Claude</Link>.
+        Pelo Claude dá para fazer o mesmo conversando — ele gera o link de envio e revisa com você. Veja <LinkNoTexto href="/admin/claude/">Conectar ao Claude</LinkNoTexto>.
       </p>
     </Pagina>
   );

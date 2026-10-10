@@ -249,7 +249,7 @@ function EmAndamento({ prova, aoAcabar }: { prova: Prova; aoAcabar: () => Promis
                 Próxima →
               </Botao>
             ) : (
-              <Botao variante="primario" onClick={() => void entregar()} disabled={entregando}>
+              <Botao variante="primario" onClick={() => entregar()} ocupado={entregando}>
                 {entregando ? "Entregando…" : "Entregar prova"}
               </Botao>
             )}
@@ -267,7 +267,7 @@ function EmAndamento({ prova, aoAcabar }: { prova: Prova; aoAcabar: () => Promis
             />
             <p className="mt-3 text-[13px] text-suave">{plural(total - respondidas, "em branco", "em branco")}</p>
           </Cartao>
-          <Botao variante="secundario" onClick={() => void entregar()} disabled={entregando} className="w-full">
+          <Botao variante="secundario" onClick={() => entregar()} ocupado={entregando} className="w-full">
             {entregando ? "Entregando…" : "Entregar prova"}
           </Botao>
           <Link href="/simulados/" className="text-center text-sm text-suave hover:text-acento">

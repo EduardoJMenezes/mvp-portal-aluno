@@ -15,7 +15,7 @@ export function ColocarVideo({ aula, aoColocar }: { aula: Aula; aoColocar: (link
 
   if (!aberto) {
     return (
-      <Botao variante="texto" className="w-fit" onClick={() => { setLink(""); setAberto(true); }}>
+      <Botao tamanho="pequeno" className="w-fit" onClick={() => { setLink(""); setAberto(true); }}>
         {temGravacao ? "Trocar vídeo" : "Colocar vídeo"}
       </Botao>
     );

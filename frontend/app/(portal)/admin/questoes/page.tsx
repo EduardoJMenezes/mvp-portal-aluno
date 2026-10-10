@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Aviso, Botao, BotaoLink, Campo, Cartao, Carregando, Etiqueta, Pagina, Vazio } from "@/components/ui";
 import { api, useDados, type Questao } from "@/lib/api";
@@ -106,7 +105,7 @@ export default function BancoDeQuestoes() {
                   {q.video_resolucao_id && <Etiqueta>Com vídeo</Etiqueta>}
                   {!!q.aulas?.length && <span title={q.aulas.join("; ")}><Etiqueta tom="info">Em aula</Etiqueta></span>}
                 </div>
-                <Link href={`/admin/questoes/editar/?id=${q.questao_id}`} className="text-sm font-semibold text-acento hover:underline">Abrir</Link>
+                <BotaoLink tamanho="mini" href={`/admin/questoes/editar/?id=${q.questao_id}`}>Abrir</BotaoLink>
               </div>
               <div className="relative max-h-40 overflow-hidden">
                 <TextoFormatado texto={q.enunciado} compacto />
@@ -119,7 +118,7 @@ export default function BancoDeQuestoes() {
       )}
       {temMais && (
         <div className="flex justify-center">
-          <Botao disabled={carregando} onClick={() => void carregar(questoes.length)}>{carregando ? "Carregando…" : "Carregar mais"}</Botao>
+          <Botao ocupado={carregando} onClick={() => carregar(questoes.length)}>{carregando ? "Carregando…" : "Carregar mais"}</Botao>
         </div>
       )}
     </Pagina>

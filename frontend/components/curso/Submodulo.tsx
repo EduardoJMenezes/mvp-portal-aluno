@@ -4,14 +4,13 @@
 // único de "Adicionar" e o que cada linha deixa fazer.
 
 import { ArrowDown, ArrowUp, CornerDownRight, ExternalLink, Paperclip, Pencil, Play, Plus, SquarePen, Tags, Trash2, Users } from "lucide-react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
 import { OffCanvas } from "@/components/Camadas";
 import { EscolherTurmas } from "@/components/EscolherTurmas";
 import { Menu, type ItemDoMenu } from "@/components/Menu";
 import { PassarVideos, TelaDoVideo } from "@/components/PreviaDoVideo";
-import { Botao, Etiqueta, botao } from "@/components/ui";
+import { Botao, BotaoLink, Etiqueta, Formulario, LinkDeTitulo, botao } from "@/components/ui";
 import { api, type Assunto, type Aula, type ItemCurso, type Modulo, type SubModulo } from "@/lib/api";
 import { duracao } from "@/lib/formato";
 import { Alca, Azulejo, BIBLIOTECA, Marca, TIPOS, composicao, tipoDaLinha, useArrastar, type Arrastar, type Confirmar, type Executar, type Tipo } from "./comum";
@@ -98,12 +97,12 @@ export function SecaoDoSubmodulo({
     <section aria-label={sub.nome} className="border-t border-borda">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2 bg-canvas/60 px-4 py-2.5 sm:px-5">
         {renomeando ? (
-          <form onSubmit={renomear} className="flex flex-1 flex-wrap items-center gap-2">
+          <Formulario onSubmit={renomear} className="flex flex-1 flex-wrap items-center gap-2">
             <label htmlFor={`nome-sub-${sub.id}`} className="sr-only">Nome do sub-módulo</label>
             <input id={`nome-sub-${sub.id}`} autoFocus onFocus={(e) => e.target.select()} required maxLength={120} value={nome} onChange={(e) => setNome(e.target.value)} className="campo max-w-xs py-1.5" />
             <Botao type="submit" variante="primario" tamanho="pequeno">Salvar</Botao>
             <Botao tamanho="pequeno" onClick={() => setRenomeando(false)}>Cancelar</Botao>
-          </form>
+          </Formulario>
         ) : (
           <>
             <h3 className="text-[17px] font-bold tracking-[-0.01em] text-tinta">{sub.nome}</h3>
@@ -197,9 +196,7 @@ export function SecaoDoSubmodulo({
               {videoDaPrevia.status !== "PUBLICADO" && <Etiqueta tom="atencao">Rascunho</Etiqueta>}
               {videoDaPrevia.duracao_segundos ? <span className="tabular-nums">{duracao(videoDaPrevia.duracao_segundos)}</span> : null}
               {videoDaPrevia.vimeo_id && (
-                <a href={`https://vimeo.com/${videoDaPrevia.vimeo_id}`} target="_blank" rel="noreferrer" className="font-semibold text-acento hover:underline">
-                  Abrir no Vimeo
-                </a>
+                <BotaoLink tamanho="mini" href={`https://vimeo.com/${videoDaPrevia.vimeo_id}`}>Abrir no Vimeo</BotaoLink>
               )}
             </p>
           </div>
@@ -310,12 +307,12 @@ function Linha({
         )}
         <div className="min-w-0 flex-1 self-center">
           {modo === "nome" ? (
-            <form onSubmit={renomear} className="flex flex-wrap items-center gap-2">
+            <Formulario onSubmit={renomear} className="flex flex-wrap items-center gap-2">
               <label htmlFor={`nome-item-${item.id}`} className="sr-only">Nome do item</label>
               <input id={`nome-item-${item.id}`} autoFocus onFocus={(e) => e.target.select()} required value={nome} onChange={(e) => setNome(e.target.value)} className="campo min-w-0 flex-1 py-1.5" />
               <Botao type="submit" tamanho="pequeno" variante="primario">Salvar</Botao>
               <Botao tamanho="pequeno" onClick={voltar}>Cancelar</Botao>
-            </form>
+            </Formulario>
           ) : (
             <>
               <p className="flex flex-wrap items-center gap-x-2 gap-y-1">
@@ -388,7 +385,7 @@ function Detalhe({ item, tipo }: { item: ItemCurso; tipo: Tipo }) {
         PDF
         {item.material && item.material.titulo !== item.nome && (
           <>
-            : <Link href={`/materiais/ler/?id=${item.material.material_id}`} className="font-medium text-acento hover:underline">{item.material.titulo}</Link>
+            : <LinkDeTitulo href={`/materiais/ler/?id=${item.material.material_id}`}>{item.material.titulo}</LinkDeTitulo>
           </>
         )}
         <AssuntoNaLinha item={item} />
@@ -400,7 +397,7 @@ function Detalhe({ item, tipo }: { item: ItemCurso; tipo: Tipo }) {
       Vídeo
       {item.material && (
         <>
-          , com o PDF <Link href={`/materiais/ler/?id=${item.material.material_id}`} className="font-medium text-acento hover:underline">{item.material.titulo}</Link>
+          , com o PDF <LinkDeTitulo href={`/materiais/ler/?id=${item.material.material_id}`}>{item.material.titulo}</LinkDeTitulo>
         </>
       )}
       <AssuntoNaLinha item={item} />

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { Aviso, Botao, Campo, Cartao, Estado, Etiqueta, Pagina, TituloDeSecao } from "@/components/ui";
+import { Aviso, Botao, Campo, Cartao, Estado, Etiqueta, LinkNoTexto, Pagina, TituloDeSecao } from "@/components/ui";
 import { api, useDados, type Destino, type PastaVimeo, type Rascunho, type SimulacaoVimeo } from "@/lib/api";
 import { duracao, plural } from "@/lib/formato";
 
@@ -115,7 +115,7 @@ export default function ImportarDoVimeo() {
           {modulos.erro && <Aviso tom="erro">{modulos.erro}</Aviso>}
           {modulos.dados && modulosDaTurma.length === 0 && (
             <Aviso tom="atencao">
-              Esta turma ainda não tem módulos. Crie em <Link href="/admin/turmas/" className="font-semibold underline">Turmas › Curso</Link> antes de importar.
+              Esta turma ainda não tem módulos. Crie em <LinkNoTexto herdaCor href="/admin/turmas/">Turmas › Curso</LinkNoTexto> antes de importar.
             </Aviso>
           )}
           <ol className="flex flex-col gap-3">
@@ -165,14 +165,14 @@ export default function ImportarDoVimeo() {
                       </select>
                     )}
                   </Campo>
-                  <Botao tamanho="pequeno" variante="texto" disabled={destinos.length === 1} onClick={() => { setDestinos(destinos.filter((_, j) => j !== i)); setSimulacao(null); }}>Tirar</Botao>
+                  <Botao tamanho="pequeno" disabled={destinos.length === 1} onClick={() => { setDestinos(destinos.filter((_, j) => j !== i)); setSimulacao(null); }}>Tirar</Botao>
                 </li>
               );
             })}
           </ol>
           <div className="flex flex-wrap gap-2">
             <Botao tamanho="pequeno" onClick={() => setDestinos([...destinos, { ...DESTINO_VAZIO }])}>Outro destino</Botao>
-            <Botao tamanho="pequeno" variante="secundario" disabled={!limpos().length || !!ocupado} onClick={() => void simular()}>{ocupado === "simulando" ? "Lendo a pasta…" : "Simular"}</Botao>
+            <Botao tamanho="pequeno" variante="secundario" disabled={!limpos().length || !!ocupado} ocupado={ocupado === "simulando"} onClick={() => simular()}>{ocupado === "simulando" ? "Lendo a pasta…" : "Simular"}</Botao>
           </div>
         </Cartao>
       )}
@@ -181,7 +181,7 @@ export default function ImportarDoVimeo() {
 
       {simulacao && (
         <Cartao className="flex flex-col gap-4 p-5">
-          <TituloDeSecao acao={<Botao variante="primario" disabled={!!ocupado} onClick={() => void importar()}>{ocupado === "importando" ? "Criando…" : "Criar rascunhos"}</Botao>}>3. O que vai acontecer</TituloDeSecao>
+          <TituloDeSecao acao={<Botao variante="primario" disabled={!!ocupado} ocupado={ocupado === "importando"} onClick={() => importar()}>{ocupado === "importando" ? "Criando…" : "Criar rascunhos"}</Botao>}>3. O que vai acontecer</TituloDeSecao>
           <p className="text-[15px] text-suave">
             {plural(simulacao.videos_na_pasta, "vídeo")} na pasta {simulacao.pasta.nome}
             {simulacao.videos_ja_no_acervo.length > 0 && ` · ${simulacao.videos_ja_no_acervo.length} já estão no acervo e são reaproveitados`}. {simulacao.observacao}

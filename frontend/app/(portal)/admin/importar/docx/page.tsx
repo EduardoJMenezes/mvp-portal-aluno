@@ -1,10 +1,9 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useState, type FormEvent } from "react";
 import { EscolherDocx } from "@/components/Envio";
-import { Aviso, Botao, BotaoLink, Campo, Cartao, Estado, Etiqueta, Pagina, TituloDeSecao } from "@/components/ui";
+import { Aviso, Botao, BotaoLink, Campo, Cartao, Estado, Etiqueta, LinkNoTexto, Pagina, TituloDeSecao } from "@/components/ui";
 import { api, tokenDoLink, useDados, type LinkDeEnvio, type RevisaoDocx } from "@/lib/api";
 import { LETRAS } from "@/lib/rotulos";
 import { TextoFormatado } from "@/lib/texto";
@@ -99,7 +98,7 @@ function Pedido() {
             <Campo rotulo="Pasta do Vimeo com as resoluções" dica="Opcional. A questão 7 recebe o vídeo Q07.">{(id) => <input id={id} value={pasta} onChange={(e) => setPasta(e.target.value)} placeholder="Nome ou id da pasta" className="campo" />}</Campo>
             {erro && <Aviso tom="erro">{erro}</Aviso>}
             <div>
-              <Botao type="submit" variante="primario" disabled={ocupado}>{ocupado ? "Conferindo…" : "Continuar"}</Botao>
+              <Botao type="submit" variante="primario" ocupado={ocupado}>{ocupado ? "Conferindo…" : "Continuar"}</Botao>
             </div>
           </form>
         </Cartao>
@@ -111,7 +110,7 @@ function Pedido() {
           <p className="text-[13px] text-suave">
             Outra pessoa da equipe vai enviar? Passe o link de uso único (vale até {link.expira_em}):{" "}
             <code className="select-all break-all rounded-campo bg-canvas px-1.5 py-0.5">{link.link}</code>. Depois abra a revisão em{" "}
-            <Link href={`/admin/importar/docx/?importacao=${link.importacao_id}`} className="font-semibold text-acento hover:underline">importação #{link.importacao_id}</Link>.
+            <LinkNoTexto href={`/admin/importar/docx/?importacao=${link.importacao_id}`}>importação #{link.importacao_id}</LinkNoTexto>.
           </p>
         </Cartao>
       )}
@@ -161,7 +160,7 @@ function ConteudoDaRevisao({ revisao: r, id, aoCompletar }: { revisao: RevisaoDo
                 {q.numero_no_documento !== null && q.numero_no_documento !== q.ordem && <Etiqueta>nº {q.numero_no_documento} no documento</Etiqueta>}
                 <Etiqueta tom="sucesso">Gabarito {q.gabarito}</Etiqueta>
                 {q.imagem_pendente && <Etiqueta tom="atencao">Imagem pendente</Etiqueta>}
-                <Link href={`/admin/questoes/editar/?id=${q.questao_id}`} className="ml-auto text-sm font-semibold text-acento hover:underline">Editar #{q.questao_id}</Link>
+                <BotaoLink tamanho="mini" className="ml-auto" href={`/admin/questoes/editar/?id=${q.questao_id}`}>Editar #{q.questao_id}</BotaoLink>
               </div>
               <TextoFormatado texto={q.enunciado} compacto />
               <ul className="mt-2 flex flex-col gap-1">
@@ -231,7 +230,7 @@ function Completar({ importacao, incompleta, aoCompletar }: { importacao: number
         <Campo rotulo="Resolução (blocos, opcional)">{(id) => <input id={id} value={resolucao} onChange={(e) => setResolucao(e.target.value)} placeholder="24-30" className="campo" />}</Campo>
         {erro && <Aviso tom="erro" className="sm:col-span-2">{erro}</Aviso>}
         <div className="sm:col-span-2">
-          <Botao type="submit" variante="secundario" disabled={ocupado}>{ocupado ? "Montando…" : "Montar questão"}</Botao>
+          <Botao type="submit" variante="secundario" ocupado={ocupado}>{ocupado ? "Montando…" : "Montar questão"}</Botao>
         </div>
       </form>
     </Cartao>

@@ -6,7 +6,7 @@
 import { useSearchParams } from "next/navigation";
 import { useId, useState } from "react";
 import { Modal } from "@/components/Camadas";
-import { Botao, Etiqueta } from "@/components/ui";
+import { Botao, Etiqueta, Formulario } from "@/components/ui";
 
 /** A categoria que o botão do menu pediu. Quem usa precisa estar dentro de um <Suspense>. */
 export function useCategoria() {
@@ -70,9 +70,9 @@ export function EditarCategoria({
   const [salvando, setSalvando] = useState(false);
 
   const resumo = (
-    <span className="inline-flex items-center gap-1">
+    <span className="inline-flex items-center gap-2">
       {valor ? <Etiqueta tom="info">{valor}</Etiqueta> : <Etiqueta>Sem categoria</Etiqueta>}
-      <Botao variante="texto" onClick={() => { setTexto(valor ?? ""); setEditando(true); }}>
+      <Botao tamanho="mini" onClick={() => { setTexto(valor ?? ""); setEditando(true); }}>
         {acao}
       </Botao>
     </span>
@@ -91,11 +91,11 @@ export function EditarCategoria({
           rodape={
             <div className="flex flex-wrap justify-end gap-2">
               <Botao onClick={() => setEditando(false)} disabled={salvando}>Cancelar</Botao>
-              <Botao type="submit" form={`${id}-form`} variante="primario" disabled={salvando}>{salvando ? "Salvando…" : "Salvar"}</Botao>
+              <Botao type="submit" form={`${id}-form`} variante="primario" ocupado={salvando}>{salvando ? "Salvando…" : "Salvar"}</Botao>
             </div>
           }
         >
-          <form
+          <Formulario
             id={`${id}-form`}
             data-foco-inicial
             onSubmit={async (e) => {
@@ -109,7 +109,7 @@ export function EditarCategoria({
           >
             <label htmlFor={id} className="mb-1.5 block text-sm font-semibold text-tinta-2">Categoria</label>
             <CampoCategoria id={id} valor={texto} aoMudar={setTexto} sugestoes={sugestoes} />
-          </form>
+          </Formulario>
         </Modal>
       </>
     );
@@ -117,7 +117,7 @@ export function EditarCategoria({
 
   if (!editando) return resumo;
   return (
-    <form
+    <Formulario
       className="inline-flex flex-wrap items-center gap-2"
       onSubmit={async (e) => {
         e.preventDefault();
@@ -129,6 +129,6 @@ export function EditarCategoria({
       <CampoCategoria id={id} valor={texto} aoMudar={setTexto} sugestoes={sugestoes} className="campo w-48 py-1" />
       <Botao type="submit" tamanho="pequeno" variante="primario">Salvar</Botao>
       <Botao tamanho="pequeno" onClick={() => setEditando(false)}>Cancelar</Botao>
-    </form>
+    </Formulario>
   );
 }

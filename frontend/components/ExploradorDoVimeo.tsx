@@ -478,7 +478,7 @@ export function ExploradorDoVimeo(props: ParaVarios | ParaUm) {
       <div>
         <div className="flex items-center gap-3 border-b border-borda bg-canvas/70 py-2 pl-5 pr-3 text-[13px] font-semibold text-tinta-2">
           <span className="flex-1">Entram nesta ordem, no fim de {destino}</span>
-          <Botao variante="texto" onClick={() => { setEscolhidos([]); setVendo("vimeo"); }}>Desmarcar todos</Botao>
+          <Botao tamanho="mini" onClick={() => { setEscolhidos([]); setVendo("vimeo"); }}>Desmarcar todos</Botao>
         </div>
         <ol className="divide-y divide-borda/70">
           {escolhidos.map((e, i) => (
@@ -502,7 +502,7 @@ export function ExploradorDoVimeo(props: ParaVarios | ParaUm) {
     corpo = (
       <div className="p-5">
         <Aviso tom="erro">
-          {erroDasPastas} <button type="button" onClick={() => ler(true)} className="font-semibold underline">Tentar de novo</button>
+          {erroDasPastas} <Botao tamanho="mini" className="ml-1.5 align-middle" onClick={() => ler(true)}>Tentar de novo</Botao>
         </Aviso>
       </div>
     );
@@ -544,7 +544,7 @@ export function ExploradorDoVimeo(props: ParaVarios | ParaUm) {
             {erroDosVideos[atual.id] && (
               <div className="p-5">
                 <Aviso tom="erro">
-                  {erroDosVideos[atual.id]} <button type="button" onClick={() => void lerVideos(atual.id).catch(() => {})} className="font-semibold underline">Tentar de novo</button>
+                  {erroDosVideos[atual.id]} <Botao tamanho="mini" className="ml-1.5 align-middle" onClick={() => lerVideos(atual.id).catch(() => {})}>Tentar de novo</Botao>
                 </Aviso>
               </div>
             )}
@@ -593,7 +593,7 @@ export function ExploradorDoVimeo(props: ParaVarios | ParaUm) {
         )}
         <div className="flex gap-2">
           <Botao onClick={pedirParaSair} disabled={gravando}>Cancelar</Botao>
-          <Botao variante="primario" disabled={!escolhidos.length || gravando} onClick={() => void gravar()}>
+          <Botao variante="primario" disabled={!escolhidos.length} ocupado={gravando} onClick={() => gravar()}>
             {gravando ? "Adicionando…" : escolhidos.length ? `Adicionar ${plural(escolhidos.length, "vídeo")}` : "Adicionar"}
           </Botao>
         </div>
@@ -663,7 +663,7 @@ export function ExploradorDoVimeo(props: ParaVarios | ParaUm) {
               <Search aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-apagado" />
               <input id="busca-no-vimeo" type="search" value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar pasta ou vídeo pelo nome" className="campo pl-9" />
             </div>
-            <Botao variante="texto" disabled={lendo} onClick={() => ler(true)} title="Ler as pastas do Vimeo de novo">
+            <Botao variante="discreto" tamanho="pequeno" disabled={lendo} onClick={() => ler(true)} title="Ler as pastas do Vimeo de novo">
               <RefreshCw aria-hidden="true" className={`size-4 ${lendo ? "animate-spin" : ""}`} />
               <span className="max-sm:sr-only">Atualizar</span>
             </Botao>
@@ -671,7 +671,7 @@ export function ExploradorDoVimeo(props: ParaVarios | ParaUm) {
           {termo ? (
             <p className="text-[13px] text-suave">
               {atual ? `Primeiro em ${atual.nome}; depois em todas as pastas do Vimeo e nos títulos dos vídeos. ` : "Em todas as pastas do Vimeo, de qualquer nível, e nos títulos dos vídeos. "}
-              {atual && <button type="button" onClick={() => setBusca("")} className="font-semibold text-acento hover:underline">Voltar para a pasta</button>}
+              {atual && <Botao tamanho="mini" className="ml-1 align-middle" onClick={() => setBusca("")}>Voltar para a pasta</Botao>}
             </p>
           ) : (
             <nav aria-label="Onde você está no Vimeo" className="flex flex-wrap items-center gap-1 text-[13px]">

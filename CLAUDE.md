@@ -102,6 +102,11 @@ Ensaio geral dos quatro fluxos do §21, contra o servidor no ar:
   passe `description=` no decorator, senão a docstring é ignorada.
 * **Tools em português, aceitando nomes** ("Extensivo 2027", "João"): quem
   chama é um modelo repetindo o que o professor disse, não um sistema com ids.
+* **No portal, palavra colorida não é botão.** Tudo que faz alguma coisa usa
+  `Botao`/`BotaoLink` de `frontend/components/ui.tsx`, que travam o clique
+  repetido sozinhos — sem `void` no `onClick`, senão a trava não liga. O que
+  pode continuar texto, e como, está em
+  [docs/PADRAO-BOTOES.md](docs/PADRAO-BOTOES.md).
 
 ## Armadilhas conhecidas
 

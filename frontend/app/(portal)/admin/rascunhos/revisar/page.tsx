@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
 import { Aviso, Botao, BotaoLink, Cartao, Estado, Etiqueta, Pagina, TituloDeSecao, useConfirmar } from "@/components/ui";
@@ -113,8 +112,8 @@ function Conteudo({ r, recarregar }: { r: Rascunho; recarregar: () => Promise<vo
         </div>
         {aberto && (
           <div className="flex flex-wrap gap-2">
-            <Botao variante="perigo" disabled={ocupado} onClick={() => void descartar()}>Descartar</Botao>
-            <Botao variante="primario" disabled={ocupado || pendencias.length > 0 || (r.itens.length > 0 && selecionados.length === 0)} onClick={() => void publicar()}>
+            <Botao variante="perigo" disabled={ocupado} onClick={() => descartar()}>Descartar</Botao>
+            <Botao variante="primario" disabled={ocupado || pendencias.length > 0 || (r.itens.length > 0 && selecionados.length === 0)} onClick={() => publicar()}>
               {parcial ? `Publicar ${plural(selecionados.length, "vídeo")}` : "Aprovar e publicar"}
             </Botao>
           </div>
@@ -171,7 +170,7 @@ function Conteudo({ r, recarregar }: { r: Rascunho; recarregar: () => Promise<vo
                       <TextoFormatado texto={q.enunciado} compacto />
                     </div>
                   </div>
-                  <Link href={`/admin/questoes/editar/?id=${q.questao_id}`} className="text-sm font-semibold text-acento hover:underline">Editar</Link>
+                  <BotaoLink tamanho="mini" href={`/admin/questoes/editar/?id=${q.questao_id}`}>Editar</BotaoLink>
                 </li>
               ))}
             </ol>
@@ -251,7 +250,7 @@ function Conteudo({ r, recarregar }: { r: Rascunho; recarregar: () => Promise<vo
                   <Etiqueta>{DIFICULDADE[q.dificuldade] ?? q.dificuldade}</Etiqueta>
                   {q.imagem_pendente && <Etiqueta tom="atencao">Imagem pendente</Etiqueta>}
                 </div>
-                <Link href={`/admin/questoes/editar/?id=${q.questao_id}`} className="text-sm font-semibold text-acento hover:underline">Editar e anexar figura</Link>
+                <BotaoLink tamanho="mini" href={`/admin/questoes/editar/?id=${q.questao_id}`}>Editar e anexar figura</BotaoLink>
               </div>
               <TextoFormatado texto={q.enunciado} />
               {q.completa && (

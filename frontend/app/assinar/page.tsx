@@ -153,7 +153,7 @@ function Formulario({ plano }: { plano: PlanoPublico }) {
 
         {erro && <Aviso tom="erro">{erro}</Aviso>}
 
-        <Botao type="submit" variante="primario" disabled={enviando} className="w-full">
+        <Botao type="submit" variante="primario" ocupado={enviando} className="w-full">
           {enviando ? "Abrindo o pagamento…" : "Ir para o pagamento"}
         </Botao>
         <p className="text-[13px] text-suave">

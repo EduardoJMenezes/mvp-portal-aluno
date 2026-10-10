@@ -3,13 +3,12 @@
 // O que se abre por cima da página para pôr conteúdo num sub-módulo: PDF, aula ao vivo e a etiqueta
 // de assunto. Os vídeos do Vimeo estão em AdicionarVideos, e as questões, em AdicionarQuestao.
 
-import Link from "next/link";
 import { useId, useState, type FormEvent, type ReactNode } from "react";
 import { Modal, OffCanvas, useSaida, type TamanhoDaCamada } from "@/components/Camadas";
 import { CampoCategoria } from "@/components/Categoria";
 import { ColocarVideo } from "@/components/ColocarVideo";
 import { EscolherPdf, PdfDaAulaAoVivo } from "@/components/Pdf";
-import { Aviso, Botao, Campo } from "@/components/ui";
+import { Aviso, Botao, BotaoLink, Campo, LinkNoTexto } from "@/components/ui";
 import { abrirEmNovaAba, api, type Assunto, type Aula, type ItemCurso, type Modulo, type SubModulo } from "@/lib/api";
 import { emBrasilia, plural } from "@/lib/formato";
 import { Azulejo, BIBLIOTECA, type Executar, type Tipo } from "./comum";
@@ -118,7 +117,7 @@ export function NovaAulaAoVivo({ turmas, sub, categorias, executar, aoFechar }: 
       rodape={
         <div className="flex flex-wrap justify-end gap-2">
           <Botao onClick={saida.fechar} disabled={salvando}>Cancelar</Botao>
-          <Botao type="submit" form={idDoFormulario} variante="primario" disabled={salvando || !titulo.trim() || !quando}>{salvando ? "Agendando…" : "Agendar aula"}</Botao>
+          <Botao type="submit" form={idDoFormulario} variante="primario" disabled={!titulo.trim() || !quando} ocupado={salvando}>{salvando ? "Agendando…" : "Agendar aula"}</Botao>
         </div>
       }
     >
@@ -192,9 +191,9 @@ export function AulasDoSubmodulo({ aulas, executar }: { aulas: Aula[]; executar:
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
                     {aula.tem_sala && aula.estado !== "ENCERRADA" && (
-                      <Botao tamanho="pequeno" variante="primario" onClick={() => void iniciar(aula)}>Iniciar</Botao>
+                      <Botao tamanho="pequeno" variante="primario" onClick={() => iniciar(aula)}>Iniciar</Botao>
                     )}
-                    <Link href="/admin/aulas/" className="text-sm font-semibold text-acento hover:underline">Gerenciar</Link>
+                    <BotaoLink tamanho="pequeno" href="/admin/aulas/">Gerenciar</BotaoLink>
                   </div>
                 </div>
                 <PdfDaAulaAoVivo aula={aula} executar={executar} />
@@ -248,7 +247,7 @@ function EscolherAssunto({ assuntos, assunto, subassunto, aoMudar, comVazio = fa
 
 const SEM_ASSUNTOS = (
   <Aviso tom="atencao">
-    Nenhum assunto cadastrado. <Link href="/admin/assuntos/" className="font-semibold underline">Cadastre em Assuntos</Link>.
+    Nenhum assunto cadastrado. <LinkNoTexto herdaCor href="/admin/assuntos/">Cadastre em Assuntos</LinkNoTexto>.
   </Aviso>
 );
 
@@ -289,7 +288,7 @@ export function AssuntoDaLinha({ item, tipo, assuntos, executar, aoFechar }: { i
       rodape={
         <div className="flex flex-wrap justify-end gap-2">
           <Botao onClick={saida.fechar} disabled={salvando}>{assuntos.length ? "Cancelar" : "Fechar"}</Botao>
-          {assuntos.length > 0 && <Botao type="submit" form={idDoFormulario} variante="primario" disabled={salvando}>{salvando ? "Salvando…" : "Salvar"}</Botao>}
+          {assuntos.length > 0 && <Botao type="submit" form={idDoFormulario} variante="primario" ocupado={salvando}>{salvando ? "Salvando…" : "Salvar"}</Botao>}
         </div>
       }
     >
@@ -345,7 +344,7 @@ export function Classificar({ modulo, sub, assuntos, executar, aoFechar }: { mod
       rodape={
         <div className="flex flex-wrap justify-end gap-2">
           <Botao onClick={saida.fechar} disabled={aplicando}>{assuntos.length ? "Cancelar" : "Fechar"}</Botao>
-          {assuntos.length > 0 && <Botao type="submit" form={idDoFormulario} variante="primario" disabled={!assunto || aplicando}>{aplicando ? "Aplicando…" : "Aplicar"}</Botao>}
+          {assuntos.length > 0 && <Botao type="submit" form={idDoFormulario} variante="primario" disabled={!assunto} ocupado={aplicando}>{aplicando ? "Aplicando…" : "Aplicar"}</Botao>}
         </div>
       }
     >

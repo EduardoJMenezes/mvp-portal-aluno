@@ -106,7 +106,7 @@ function Planos() {
                     <code className="min-w-0 truncate rounded bg-canvas px-2 py-1 text-[13px] text-tinta-2">
                       /assinar/{plano.link}
                     </code>
-                    <Botao tamanho="pequeno" variante="primario" onClick={() => void copiar(plano)} disabled={!plano.ativo}>
+                    <Botao tamanho="pequeno" variante="primario" onClick={() => copiar(plano)} disabled={!plano.ativo}>
                       {copiado === plano.plano_id ? "Link copiado" : "Copiar link"}
                     </Botao>
                   </div>
@@ -209,7 +209,7 @@ function FormularioDoPlano({
       rodape={
         <div className="flex flex-wrap justify-end gap-2">
           <Botao onClick={saida.fechar} disabled={salvando}>Cancelar</Botao>
-          <Botao type="submit" form={idDoFormulario} variante="primario" disabled={salvando}>
+          <Botao type="submit" form={idDoFormulario} variante="primario" ocupado={salvando}>
             {salvando ? "Salvando…" : plano ? "Salvar" : "Criar plano"}
           </Botao>
         </div>

@@ -40,7 +40,7 @@ export function CopiarEntreTurmas({ turmas, executar, aoFechar }: { turmas: Turm
       rodape={
         <div className="flex flex-wrap justify-end gap-2">
           <Botao onClick={saida.fechar} disabled={copiando}>Cancelar</Botao>
-          <Botao variante="primario" disabled={!de || !para || copiando} onClick={() => void copiar()}>{copiando ? "Copiando…" : "Copiar módulos"}</Botao>
+          <Botao variante="primario" disabled={!de || !para} ocupado={copiando} onClick={() => copiar()}>{copiando ? "Copiando…" : "Copiar módulos"}</Botao>
         </div>
       }
     >

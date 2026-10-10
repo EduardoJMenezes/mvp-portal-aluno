@@ -129,7 +129,7 @@ export function Exercicio({ item, aoResponder }: { item: number; aoResponder?: (
             })}
           </fieldset>
           <div className="mt-5 flex flex-wrap items-center gap-3 border-t border-borda pt-4">
-            <Botao variante="primario" disabled={!marcada || enviando} onClick={() => void confirmar()}>
+            <Botao variante="primario" disabled={!marcada} ocupado={enviando} onClick={() => confirmar()}>
               {enviando ? "Enviando…" : "Confirmar resposta"}
             </Botao>
             <p className="text-[13px] text-suave">Só vale a primeira resposta: depois de confirmar, não dá para trocar.</p>

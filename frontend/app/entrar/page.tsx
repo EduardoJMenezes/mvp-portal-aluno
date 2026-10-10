@@ -114,7 +114,7 @@ function Entrar() {
 
             {erro && <Aviso tom="erro">{erro}</Aviso>}
 
-            <Botao type="submit" variante="primario" disabled={enviando} className="mt-1 w-full py-3">
+            <Botao type="submit" variante="primario" ocupado={enviando} className="mt-1 w-full py-3">
               {enviando ? "Entrando…" : "Entrar"}
             </Botao>
           </form>
