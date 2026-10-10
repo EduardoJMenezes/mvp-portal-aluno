@@ -223,7 +223,14 @@ class DevolutivaTest extends BaseDoPortal {
     void ondeRevisarLevaALinhaDoCursoDoAlunoPeloAssuntoDoConteudo() throws Exception {
         var aulas = jdbc.queryForObject("SELECT id FROM submodules WHERE nome = 'Aulas'", Integer.class);
         // Um vídeo e um PDF de Mol, um vídeo só de Estequiometria e um de outro assunto.
-        var videoDeMol = criarItem(aulas, criarVideo("700001", "Aula de mol"), "Aula de mol", 1, "PUBLICADO");
+        var aulaDeMol = criarVideo("700001", "Aula de mol");
+        var videoDeMol = criarItem(aulas, aulaDeMol, "Aula de mol", 1, "PUBLICADO");
+        // A mesma aula noutro módulo do curso dele: é o mesmo vídeo, e a recomendação a mostra uma vez só.
+        comando("criar_modulo", "{\"turma\": \"Extensivo 2027\", \"nome\": \"K02\"}").andExpect(status().isOk());
+        var aulasDoK02 = jdbc.queryForObject("""
+                SELECT s.id FROM submodules s JOIN modules m ON m.id = s.modulo_id
+                 WHERE m.nome = 'K02' AND s.nome = 'Aulas'""", Integer.class);
+        criarItem(aulasDoK02, aulaDeMol, "Aula de mol (revisão)", 1, "PUBLICADO");
         var videoDoAssunto = criarItem(aulas, criarVideo("700002", "Visão geral"), "Visão geral", 2, "PUBLICADO");
         var deOutro = criarItem(aulas, criarVideo("700003", "Rutherford"), "Rutherford", 3, "PUBLICADO");
         var material = jdbc.queryForObject("""

@@ -318,9 +318,17 @@ public class DevolutivaServico {
                 linhas.stream().filter(l -> trata(etiquetasDa.apply(l), p.assuntoId(), p.subassuntoId(), exato))
                         .filter(l -> !doPonto.contains(l)).forEach(doPonto::add);
             }
+            // O mesmo conteúdo pode estar em várias linhas do curso (a mesma aula em dois módulos, ou
+            // em duas turmas do aluno): a recomendação o mostra uma vez só, na primeira linha em que
+            // aparece. Na questão, vale a linha que ele já respondeu, que é a que diz se acertou.
+            var unicas = new java.util.LinkedHashMap<String, LinhaDoCurso>();
+            for (var l : doPonto) {
+                var chave = l.questaoId() != null ? "q" + l.questaoId() : l.videoId() != null ? "v" + l.videoId() : "m" + l.materialId();
+                unicas.merge(chave, l, (primeira, outra) -> primeira.questaoId() != null && !primeira.respondida() && outra.respondida() ? outra : primeira);
+            }
             var noCurso = new ArrayList<AnalyticsServico.LinhaParaRevisar>();
             for (var tipo : List.of("VIDEO", "PDF", "QUESTAO", "ERRO")) {
-                doPonto.stream().filter(l -> tipo.equals(tipoDa.apply(l))).limit(LINHAS_POR_TIPO)
+                unicas.values().stream().filter(l -> tipo.equals(tipoDa.apply(l))).limit(LINHAS_POR_TIPO)
                         .forEach(l -> noCurso.add(new AnalyticsServico.LinhaParaRevisar(tipo, l.itemId(), l.moduloId(), l.modulo(), l.nome())));
             }
 
