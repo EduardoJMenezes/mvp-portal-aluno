@@ -2,7 +2,9 @@ package br.com.plataforma.seguranca;
 
 import br.com.plataforma.contas.ContasServico;
 import br.com.plataforma.portal.ConfigDoPortal;
+import br.com.plataforma.portal.FiltroDaRepeticao;
 import br.com.plataforma.portal.FiltroDaSessao;
+import br.com.plataforma.portal.Repeticoes;
 import br.com.plataforma.portal.Sessoes;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -59,8 +61,8 @@ class Seguranca {
 
     @Bean
     @Order(3)
-    SecurityFilterChain portal(HttpSecurity http, Sessoes sessoes, ContasServico contas, ConfigDoPortal config)
-            throws Exception {
+    SecurityFilterChain portal(HttpSecurity http, Sessoes sessoes, ContasServico contas, ConfigDoPortal config,
+            Repeticoes repeticoes) throws Exception {
         return http.securityMatcher("/api/**")
                 // CSRF é a origem conferida no filtro: cookie SameSite=Strict mais o header Origin.
                 .csrf(AbstractHttpConfigurer::disable)
@@ -68,6 +70,8 @@ class Seguranca {
                 .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .headers(h -> h.cacheControl(c -> c.disable()))
                 .addFilterBefore(new FiltroDaSessao(sessoes, contas, config), AuthorizationFilter.class)
+                // Depois de saber quem pede: a escrita idêntica repetida em seguida não roda de novo.
+                .addFilterAfter(new FiltroDaRepeticao(repeticoes), FiltroDaSessao.class)
                 .authorizeHttpRequests(a -> a
                         .requestMatchers("/api/login", "/api/logout", "/api/sessao/config", "/api/demo/entrar",
                                 "/api/saude", "/api/importacoes/**", "/api/zoom/webhook", "/api/asaas/webhook",

@@ -38,9 +38,13 @@ public abstract class BaseDeComando {
 
     @Autowired protected MockMvc mvc;
     @Autowired protected JdbcTemplate jdbc;
+    @Autowired protected br.com.plataforma.portal.Repeticoes repeticoes;
 
     @BeforeEach
     void cenario() {
+        // Os testes repetem o mesmo pedido de propósito, para ver a regra de negócio recusar o
+        // segundo. A resposta de memória fica desligada; quem a testa liga (RepeticaoTest).
+        repeticoes.janela(java.time.Duration.ZERO);
         jdbc.execute("TRUNCATE users, classes, modules, videos, subjects, questions, exams, drafts, imports, images, login_attempts, planos, pedidos RESTART IDENTITY CASCADE");
         jdbc.update("""
                 INSERT INTO users (id, nome, email, senha_hash, papel) VALUES

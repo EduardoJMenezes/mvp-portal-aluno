@@ -82,9 +82,46 @@ Ocupado não é `disabled`: o botão continua com a cor dele e com o foco do
 teclado (num modal, perder o foco joga a pessoa para fora do formulário).
 `disabled` fica para "ainda não dá para clicar" (falta preencher um campo).
 
-## O que isto não garante
+## A segunda tranca, no servidor
 
-A trava é do navegador. Duas abas, ou uma requisição repetida pela rede, ainda
-chegam duas vezes ao servidor. O servidor já recusa algumas repetições pela
-regra de negócio (a mesma questão duas vezes no mesmo sub-módulo); garantia
-geral pede chave de idempotência por requisição, que não foi feita.
+A trava do botão é do navegador. Duas abas, um clique que escapou ou um pedido
+repetido no caminho ainda chegam ao servidor em dobro. Lá, quem segura é o
+`FiltroDaRepeticao` (`portal/`, com as regras em `Repeticoes`): a escrita
+idêntica — mesma pessoa, mesmo método, mesmo endereço, mesmo corpo — não roda
+de novo em dois casos.
+
+* **A primeira ainda está rodando.** A segunda espera e recebe a mesma
+  resposta. Passados 30 s sem resposta, recebe 409.
+* **A primeira acabou de dar certo** (há menos de 5 s) **e a pessoa não
+  escreveu mais nada depois.** A segunda recebe a resposta guardada.
+
+A resposta repetida sai com o cabeçalho `X-Repetida: 1`, e é a da primeira,
+byte a byte: para o portal, é como se o segundo pedido tivesse dado certo.
+
+"Sem nada no meio" é o que separa o clique repetido da intenção de fazer de
+novo. Adicionar, remover e adicionar outra vez são três pedidos, e o terceiro
+roda. Marcar, desmarcar e marcar também. Só o pedido igual, logo em seguida, é
+respondido de memória. E só o que deu certo fica guardado: o pedido recusado
+pode ser tentado de novo à vontade.
+
+O que fica de fora:
+
+* **Leitura** (`GET`): nunca é repetição.
+* **Envio de arquivo** (PDF, figura, foto do módulo): o navegador sorteia o
+  separador das partes, e dois envios do mesmo arquivo nunca têm o mesmo
+  corpo. Ali a proteção é só o botão.
+* **Escrita sem sessão**, com uma exceção: a compra (`/api/vendas/planos/…/comprar`),
+  em que quem repete é reconhecido pelo IP, para o clique duplo não abrir dois
+  checkouts no Asaas. Login não entra: a resposta dele leva o cookie, e
+  repeti-la sem o cookie deixaria o segundo navegador de fora.
+* **`/comandos/**`** (o Claude, pelo MCP): fora do filtro.
+
+**Mora na memória do processo.** A janela é de segundos e a API roda numa
+instância só (conferido no Railway em 10/10/2026: `numReplicas` 1). Com mais de
+uma réplica, cada uma teria a sua memória e a garantia valeria só para pedidos
+que caíssem na mesma: aí `Repeticoes` precisa ir para o banco.
+
+**Nos testes a resposta de memória fica desligada** (`BaseDeComando` zera a
+janela): eles repetem o mesmo pedido de propósito, para ver a regra de negócio
+recusar o segundo. Quem testa a repetição liga a janela, como o
+`RepeticaoTest`.

@@ -210,6 +210,14 @@ Ensaio geral dos quatro fluxos do §21, contra o servidor no ar:
   680 pedidos por segundo. A conta do Railway é memória, não CPU: o heap tem
   teto (`JAVA_TOOL_OPTIONS` no Dockerfile). Medições e método em
   [docs/CARGA.md](docs/CARGA.md).
+* **A escrita idêntica repetida em seguida não roda de novo.** Em `/api/**`, o
+  `FiltroDaRepeticao` devolve a resposta da primeira (cabeçalho `X-Repetida`)
+  quando o mesmo pedido da mesma pessoa chega enquanto o primeiro roda, ou até
+  5 s depois de ele dar certo sem nenhuma outra escrita no meio. Consequência
+  para quem testa na mão ou por script: mandar o mesmo `POST` duas vezes
+  seguidas mostra a resposta guardada, não a regra de negócio recusando. Nos
+  testes Java a janela é zero (`BaseDeComando`). Mora em memória, e isso só
+  vale com uma instância. Ver [docs/PADRAO-BOTOES.md](docs/PADRAO-BOTOES.md).
 * **Simulado: o relógio entra como parâmetro.** Os services de
   [simulados.py](mcp/app/services/simulados.py) recebem `agora`; não há job
   de entrega automática — a tentativa vencida é consolidada na próxima consulta.
