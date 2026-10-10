@@ -1,10 +1,11 @@
 "use client";
 
 import { useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useEffect, useMemo, useState, type FormEvent } from "react";
+import { Suspense, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { CampoDeVideo, type VideoNoCampo } from "@/components/CampoDeVideo";
+import { proximoNome } from "@/components/curso/AdicionarQuestao";
 import { Aviso, Botao, Campo, Cartao, Carregando, Etiqueta, Pagina, TituloDeSecao, useConfirmar } from "@/components/ui";
-import { api, useDados, type Assunto, type QuestaoDetalhada, type VideoVimeo } from "@/lib/api";
-import { duracao } from "@/lib/formato";
+import { api, useDados, type Assunto, type QuestaoDetalhada } from "@/lib/api";
 import { DIFICULDADE, LETRAS } from "@/lib/rotulos";
 import { TextoFormatado } from "@/lib/texto";
 
@@ -78,7 +79,13 @@ function Editor() {
   // Quem veio da tela de montar o curso volta para o módulo em que estava.
   const moduloDeVolta = Number(parametros.get("modulo")) || null;
   const curso = moduloDeVolta ? `/admin/biblioteca/?modulo=${moduloDeVolta}` : "/admin/biblioteca/";
-  const [nomeDaLinha, setNomeDaLinha] = useState("");
+  const [nomeDaLinha, setNomeDaLinha] = useState(() => (submodulo ? (parametros.get("nome") ?? "") : ""));
+  // O que se sabe do vídeo de resolução além do número: o título e a pasta, para mostrar no campo.
+  const [video, setVideo] = useState<VideoNoCampo | null>(null);
+  // "Criar e escrever a próxima" fica na tela; "Criar e pôr na aula" volta para o curso.
+  const depois = useRef<"voltar" | "outra">("voltar");
+  const [criada, setCriada] = useState("");
+  const enunciado = useRef<HTMLTextAreaElement>(null);
   const assuntos = useDados(() => api.assuntos());
   const questao = useDados(() => (id ? api.questao(id) : Promise.resolve(null)), [id]);
   const [form, setForm] = useState<Formulario>(VAZIO);
@@ -93,6 +100,7 @@ function Editor() {
       const carregado = doDetalhe(questao.dados, assuntos.dados);
       setForm(carregado);
       setOriginal(carregado);
+      setVideo(questao.dados.resolucao);
     }
   }, [questao.dados, assuntos.dados]);
 
@@ -109,6 +117,7 @@ function Editor() {
     e.preventDefault();
     setErro("");
     setAviso("");
+    setCriada("");
     if (!form.gabarito) return setErro("Marque o gabarito.");
     if (form.gabarito === "E" && !form.alternativas.E?.trim()) return setErro("O gabarito é a E, mas a alternativa E está em branco.");
     setSalvando(true);
@@ -126,8 +135,18 @@ function Editor() {
           comentarios: comentariosPreenchidos(form),
         };
         if (submodulo) {
-          await api.questaoNoSubmodulo(submodulo, { nome: nomeDaLinha.trim() || undefined, nova });
-          router.replace(curso);
+          const linha = await api.questaoNoSubmodulo(submodulo, { nome: nomeDaLinha.trim() || undefined, nova });
+          if (depois.current === "voltar") {
+            router.replace(curso);
+            return;
+          }
+          // A próxima da apostila: a classificação costuma ser a mesma, e o nome da linha anda um.
+          setForm({ ...VAZIO, assunto: form.assunto, subassunto: form.subassunto, dificuldade: form.dificuldade });
+          setVideo(null);
+          setNomeDaLinha(proximoNome(linha.nome));
+          setCriada(`${linha.nome} criada em ${destino || "o sub-módulo"}, já publicada. O formulário está limpo para a próxima; o assunto e a dificuldade ficaram os mesmos.`);
+          window.scrollTo({ top: 0 });
+          enunciado.current?.focus();
           return;
         }
         const criada = await api.criarQuestao({ ...nova, imagem_pendente: form.imagem_pendente });
@@ -201,6 +220,7 @@ function Editor() {
     >
       {dialogo}
       {questao.erro && <Aviso tom="erro">{questao.erro}</Aviso>}
+      {criada && <Aviso tom="sucesso">{criada}</Aviso>}
       {travada && (
         <Aviso tom="atencao" titulo="Enunciado, alternativas, gabarito e imagem travaram">
           Esta questão está em simulado que já abriu: {questao.dados?.simulados.filter((s) => s.situacao !== "RASCUNHO" && s.situacao !== "AGENDADO").map((s) => s.titulo).join(", ")}. Classificação, dificuldade e vídeo ainda mudam.
@@ -224,7 +244,7 @@ function Editor() {
           )}
           <Cartao className="flex flex-col gap-4 p-5">
             <Campo rotulo="Enunciado" dica={<>Markdown. Fórmula entre $…$ (química em \ce&#123;…&#125;). Figura que ainda vai entrar: ![](figura:pendente).</>}>
-              {(cid) => <textarea id={cid} required rows={8} disabled={travada} value={form.enunciado} onChange={(e) => muda("enunciado", e.target.value)} className="campo" />}
+              {(cid) => <textarea id={cid} ref={enunciado} required rows={8} disabled={travada} value={form.enunciado} onChange={(e) => muda("enunciado", e.target.value)} className="campo" />}
             </Campo>
             <fieldset className="flex flex-col gap-4">
               <legend className="mb-1 text-sm font-semibold text-tinta-2">Alternativas, gabarito e comentários</legend>
@@ -303,7 +323,16 @@ function Editor() {
           </Cartao>
 
           <Cartao className="flex flex-col gap-4 p-5">
-            <VideoDaResolucao vimeoId={form.vimeo_id} aoEscolher={(v) => muda("vimeo_id", v)} />
+            <CampoDeVideo
+              rotulo="Vídeo de resolução"
+              dica="O aluno assiste depois de responder. Escolha pelas pastas do Vimeo ou pela busca, e confira antes de usar."
+              tituloDaEscolha="Escolher o vídeo de resolução"
+              video={form.vimeo_id ? (video?.vimeo_id === form.vimeo_id ? video : { vimeo_id: form.vimeo_id }) : null}
+              aoMudar={(v) => {
+                setVideo(v);
+                muda("vimeo_id", v?.vimeo_id ?? "");
+              }}
+            />
             <Campo rotulo="Resolução comentada" dica="O aluno vê depois que o simulado fecha — ou, na aula, assim que responde.">
               {(cid) => <textarea id={cid} rows={5} value={form.resolucao_comentada} onChange={(e) => muda("resolucao_comentada", e.target.value)} className="campo" />}
             </Campo>
@@ -311,8 +340,9 @@ function Editor() {
 
           {erro && <Aviso tom="erro">{erro}</Aviso>}
           {aviso && <Aviso tom="sucesso">{aviso}</Aviso>}
-          <div className="flex gap-2">
-            <Botao type="submit" variante="primario" disabled={salvando}>{salvando ? "Salvando…" : id ? "Salvar questão" : submodulo ? "Criar e pôr na aula" : "Criar questão"}</Botao>
+          <div className="flex flex-wrap gap-2">
+            <Botao type="submit" variante="primario" disabled={salvando} onClick={() => (depois.current = "voltar")}>{salvando ? "Salvando…" : id ? "Salvar questão" : submodulo ? "Criar e pôr na aula" : "Criar questão"}</Botao>
+            {submodulo && <Botao type="submit" variante="secundario" disabled={salvando} onClick={() => (depois.current = "outra")}>Criar e escrever a próxima</Botao>}
           </div>
         </div>
 
@@ -352,53 +382,6 @@ function Previa({ form }: { form: Formulario }) {
         </div>
       )}
     </Cartao>
-  );
-}
-
-function VideoDaResolucao({ vimeoId, aoEscolher }: { vimeoId: string; aoEscolher: (vimeoId: string) => void }) {
-  const [busca, setBusca] = useState("");
-  const [resultados, setResultados] = useState<VideoVimeo[] | null>(null);
-  const [erro, setErro] = useState("");
-  const [buscando, setBuscando] = useState(false);
-
-  async function buscar() {
-    setBuscando(true);
-    setErro("");
-    try {
-      setResultados(await api.videosVimeo({ busca: busca.trim(), limite: 10 }));
-    } catch (e) {
-      setErro((e as Error).message);
-    } finally {
-      setBuscando(false);
-    }
-  }
-
-  return (
-    <div className="flex flex-col gap-2">
-      <Campo rotulo="Vídeo de resolução (id do Vimeo)" dica="Vazio tira o vídeo.">
-        {(cid) => <input id={cid} value={vimeoId} onChange={(e) => aoEscolher(e.target.value)} placeholder="Ex.: 123456789" className="campo font-mono" />}
-      </Campo>
-      <div className="flex flex-wrap gap-2">
-        <label htmlFor="busca-vimeo" className="sr-only">Buscar vídeo no Vimeo</label>
-        <input id="busca-vimeo" value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar no Vimeo pelo título" className="campo min-w-48 flex-1"
-          onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void buscar(); } }} />
-        <Botao variante="secundario" tamanho="pequeno" disabled={buscando || !busca.trim()} onClick={() => void buscar()}>{buscando ? "Buscando…" : "Buscar"}</Botao>
-      </div>
-      {erro && <Aviso tom="erro">{erro}</Aviso>}
-      {resultados && (
-        <ul className="max-h-56 divide-y divide-borda overflow-y-auto rounded-cartao border border-borda">
-          {resultados.length === 0 && <li className="px-3 py-2 text-[15px] text-suave">Nada encontrado.</li>}
-          {resultados.map((v) => (
-            <li key={v.id}>
-              <button type="button" onClick={() => { aoEscolher(v.id); setResultados(null); }} className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left hover:bg-canvas">
-                <span className="truncate text-[15px]">{v.titulo}</span>
-                <span className="shrink-0 text-[13px] text-suave">{duracao(v.duracao_segundos)}</span>
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
   );
 }
 

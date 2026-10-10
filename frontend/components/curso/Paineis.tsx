@@ -1,16 +1,15 @@
 "use client";
 
-// O que se abre por cima da página para pôr conteúdo num sub-módulo: PDF, questão, aula ao vivo e a
-// etiqueta de assunto. Os vídeos do Vimeo estão em AdicionarVideos.
+// O que se abre por cima da página para pôr conteúdo num sub-módulo: PDF, aula ao vivo e a etiqueta
+// de assunto. Os vídeos do Vimeo estão em AdicionarVideos, e as questões, em AdicionarQuestao.
 
 import Link from "next/link";
 import { useId, useState, type FormEvent, type ReactNode } from "react";
 import { Modal, OffCanvas, useSaida, type TamanhoDaCamada } from "@/components/Camadas";
 import { CampoCategoria } from "@/components/Categoria";
 import { ColocarVideo } from "@/components/ColocarVideo";
-import { BuscaNoBanco } from "@/components/MontarProva";
 import { EscolherPdf, PdfDaAulaAoVivo } from "@/components/Pdf";
-import { Aviso, Botao, BotaoLink, Campo } from "@/components/ui";
+import { Aviso, Botao, Campo } from "@/components/ui";
 import { abrirEmNovaAba, api, type Assunto, type Aula, type ItemCurso, type Modulo, type SubModulo } from "@/lib/api";
 import { emBrasilia, plural } from "@/lib/formato";
 import { Azulejo, BIBLIOTECA, type Executar, type Tipo } from "./comum";
@@ -64,48 +63,6 @@ export function AdicionarPdf({ titulo, legenda, aoEscolher, aoFechar }: { titulo
   return (
     <Painel tipo="pdf" titulo={titulo} legenda={legenda} {...saida} aoFechar={saida.fechar}>
       <EscolherPdf abertoDeInicio moldura={false} aoEscolher={aoEscolher} aoFechar={saida.fechar} />
-    </Painel>
-  );
-}
-
-// --- questão -------------------------------------------------------------------
-
-/** Uma linha de questão: criada agora, no editor, ou tirada do acervo. Já sai publicada. */
-export function AdicionarQuestao({ modulo, sub, executar, aoFechar }: { modulo: Modulo; sub: SubModulo; executar: Executar; aoFechar: () => void }) {
-  const saida = useSaida(aoFechar);
-  const jaNaAula = new Set<number | undefined>(sub.itens.map((i) => i.questao?.questao_id).filter((id) => id !== undefined));
-  const destino = encodeURIComponent(`${modulo.nome} › ${sub.nome}`);
-
-  return (
-    <Painel
-      tipo="questao"
-      titulo="Adicionar questão"
-      legenda={`Em ${sub.nome}. O aluno responde ali mesmo, uma vez só, e vê o gabarito e a resolução na hora. Entra publicada.`}
-      camada="offcanvas"
-      tamanho="grande"
-      {...saida}
-      aoFechar={saida.fechar}
-      rodape={
-        <div className="flex justify-end">
-          <Botao onClick={saida.fechar}>Fechar</Botao>
-        </div>
-      }
-    >
-      <div className="flex flex-col gap-5">
-        <div className="flex flex-wrap items-center gap-3 rounded-cartao border border-borda bg-canvas/60 p-4">
-          <p className="min-w-48 flex-1 text-[15px] text-tinta-2">A questão ainda não existe? Escreva agora; ela já entra nesta aula.</p>
-          <BotaoLink variante="primario" href={`/admin/questoes/editar/?submodulo=${sub.id}&modulo=${modulo.id}&destino=${destino}`}>Escrever uma questão nova</BotaoLink>
-        </div>
-        <div className="flex flex-col gap-2">
-          <h3 className="text-[15px] font-semibold text-tinta">Ou escolha do banco de questões</h3>
-          <BuscaNoBanco
-            jaNaProva={jaNaAula}
-            rotuloJaEsta="Na aula"
-            avisarReuso={false}
-            aoEscolher={(q) => void executar(() => api.questaoNoSubmodulo(sub.id, { questao_id: q.questao_id }), `Questão #${q.questao_id} adicionada em ${sub.nome}, já publicada.`)}
-          />
-        </div>
-      </div>
     </Painel>
   );
 }

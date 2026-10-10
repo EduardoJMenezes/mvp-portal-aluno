@@ -16,7 +16,8 @@ import { api, type Assunto, type Aula, type ItemCurso, type Modulo, type SubModu
 import { duracao } from "@/lib/formato";
 import { Alca, Azulejo, BIBLIOTECA, Marca, TIPOS, composicao, tipoDaLinha, useArrastar, type Arrastar, type Confirmar, type Executar, type Tipo } from "./comum";
 import { AdicionarVideos } from "./AdicionarVideos";
-import { AdicionarPdf, AdicionarQuestao, AssuntoDaLinha, AulasDoSubmodulo, Classificar, NovaAulaAoVivo } from "./Paineis";
+import { AdicionarQuestao } from "./AdicionarQuestao";
+import { AdicionarPdf, AssuntoDaLinha, AulasDoSubmodulo, Classificar, NovaAulaAoVivo } from "./Paineis";
 
 type Adicionando = "video" | "pdf" | "questao" | "aovivo" | "classificar" | null;
 
@@ -215,7 +216,7 @@ export function SecaoDoSubmodulo({
           aoFechar={fechar}
         />
       )}
-      {adicionando === "questao" && <AdicionarQuestao modulo={modulo} sub={sub} executar={executar} aoFechar={fechar} />}
+      {adicionando === "questao" && <AdicionarQuestao modulo={modulo} sub={sub} assuntos={assuntos} executar={executar} aoFechar={fechar} />}
       {adicionando === "aovivo" && <NovaAulaAoVivo turmas={modulo.turmas ?? []} sub={sub} categorias={categoriasDeAula} executar={executar} aoFechar={fechar} />}
       {adicionando === "classificar" && <Classificar modulo={modulo} sub={sub} assuntos={assuntos} executar={executar} aoFechar={fechar} />}
     </section>

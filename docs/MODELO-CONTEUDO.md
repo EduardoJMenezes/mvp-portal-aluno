@@ -187,6 +187,32 @@ seção "Em aberto", no fim.
 >   abrem a resolução. Primeiro o que é exatamente do sub-assunto, depois o
 >   que é só do assunto. Os demais vídeos do acervo continuam em `videos`.
 >   Vídeo de resolução não recebe assunto: ele é da questão.
+>
+> **Mudou em 10/10/2026: a questão entra na aula por um painel feito para quem
+> está com a apostila ao lado.** O off-canvas de "Adicionar › Questão"
+> (`curso/AdicionarQuestao`) fica aberto de uma questão para a outra:
+>
+> * A busca é automática e aceita um trecho do enunciado ou o número
+>   (`#46`, que o backend passou a entender em `QuestoesServico.buscar`). Cada
+>   resultado mostra só o começo do enunciado, sem figura, e o que distingue a
+>   questão; "Ver a questão" abre ali mesmo o enunciado inteiro, as
+>   alternativas com o gabarito e a resolução.
+> * **O nome da próxima linha anda sozinho**: depois de "Q04" vem "Q05"
+>   (`proximoNome`). O campo fica no rodapé e vale tanto para a questão do
+>   banco (a rota já aceitava `nome` com `questao_id`) quanto para a nova,
+>   que recebe o nome pelo endereço do editor (`&nome=`).
+> * No editor, vindo de um sub-módulo, **"Criar e escrever a próxima"** grava,
+>   limpa o formulário e avança o nome, mantendo assunto e dificuldade.
+>
+> **Mudou em 10/10/2026: vídeo se escolhe no explorador, não pelo número.** O
+> explorador do Vimeo saiu de "Montar o curso" e virou `ExploradorDoVimeo`, com
+> dois modos: `varios` (as linhas de um sub-módulo, como antes) e `um`. O campo
+> `CampoDeVideo` usa o segundo: mostra o vídeo escolhido (miniatura, título,
+> pasta, duração), com ver, trocar e tirar, e é ele que está no "Vídeo de
+> resolução" da questão. Duas coisas valem para os dois modos e existem por
+> causa de nome repetido ("Q01" há em toda pasta): a busca feita de dentro de
+> uma pasta lista **primeiro o que há nela**, e o modo `um` reabre na pasta do
+> último vídeo escolhido. Colar o link ou o número continua possível.
 
 ## O que está errado hoje
 

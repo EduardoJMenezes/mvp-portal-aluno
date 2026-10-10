@@ -31,6 +31,9 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class QuestoesServico {
 
+    /** A busca que é só um número, com ou sem "#": o número da questão no banco. */
+    private static final java.util.regex.Pattern NUMERO_DA_QUESTAO = java.util.regex.Pattern.compile("#?\\s*(\\d{1,9})");
+
     private final QuestaoRepositorio questoes;
     private final QuestaoAssuntoRepositorio classificacoes;
     private final FigurasServico figuras;
@@ -156,10 +159,19 @@ public class QuestoesServico {
         if (busca != null && !busca.isBlank()) {
             // O texto digitado é literal: % e _ não viram curinga.
             var literal = busca.strip().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_");
-            jpql.append(" and lower(q.enunciado) like lower(:busca) escape '\\'");
+            // "#46" ou "46" também é o número da questão, e ela vem na frente das que só têm o
+            // número no enunciado: quem já sabe qual é não precisa de um trecho do texto.
+            var numero = NUMERO_DA_QUESTAO.matcher(busca.strip());
+            if (numero.matches()) {
+                jpql.append(" and (q.id = :numero or lower(q.enunciado) like lower(:busca) escape '\\')");
+                parametros.put("numero", Integer.valueOf(numero.group(1)));
+            } else {
+                jpql.append(" and lower(q.enunciado) like lower(:busca) escape '\\'");
+            }
             parametros.put("busca", "%" + literal + "%");
         }
-        jpql.append(" order by q.id");
+        jpql.append(parametros.containsKey("numero") ? " order by case when q.id = :numero then 0 else 1 end, q.id"
+                : " order by q.id");
 
         var consulta = em.createQuery(jpql.toString(), Questao.class);
         parametros.forEach(consulta::setParameter);

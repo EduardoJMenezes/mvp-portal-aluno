@@ -73,6 +73,36 @@ class QuestaoNaAulaTest extends BaseDoPortal {
     }
 
     @Test
+    void aBuscaDoBancoAchaAQuestaoPeloNumeroComOuSemCerquilha() throws Exception {
+        var massa = criarQuestao("Calcule a massa molar", "C", "MEDIA", "PUBLICADO");
+        var outra = criarQuestao("Uma amostra de %d g de calcário".formatted(massa), "A", "MEDIA", "PUBLICADO");
+        var questoes = org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/api/admin/questoes")
+                .param("status", "PUBLICADO").cookie(sessao(ADMIN));
+
+        // Com a cerquilha, é o número da questão e mais nada.
+        mvc.perform(questoes.param("busca", "#" + massa))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$[0].questao_id").value(massa));
+        // Sem ela, o número também pode estar no enunciado: a questão daquele número vem na frente.
+        get("/api/admin/questoes?status=PUBLICADO&busca=" + massa, ADMIN)
+                .andExpect(jsonPath("$.length()").value(2))
+                .andExpect(jsonPath("$[0].questao_id").value(massa))
+                .andExpect(jsonPath("$[1].questao_id").value(outra));
+        get("/api/admin/questoes?busca=massa molar", ADMIN)
+                .andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$[0].questao_id").value(massa));
+    }
+
+    @Test
+    void questaoDoAcervoComNomeEntraComONomeDado() throws Exception {
+        var questao = criarQuestao("Calcule a massa molar", "C", "MEDIA", "PUBLICADO");
+        post("/api/admin/submodulos/" + apostila + "/questao", "{\"questao_id\": %d, \"nome\": \"Q05\"}".formatted(questao), ADMIN)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.nome").value("Q05"));
+    }
+
+    @Test
     void questaoDoAcervoViraLinhaMasNaoDuasVezesNoMesmoSubmodulo() throws Exception {
         var questao = criarQuestao("Calcule a massa molar", "C", "MEDIA", "PUBLICADO");
 
