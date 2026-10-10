@@ -54,7 +54,11 @@ public class Repeticoes {
     private final ConcurrentHashMap<Chave, Pedido> ultimos = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, AtomicLong> escritas = new ConcurrentHashMap<>();
     private final AtomicLong entradas = new AtomicLong();
-    private volatile long janelaEmNanos = Duration.ofSeconds(5).toNanos();
+    /**
+     * Dois segundos: pega o clique duplo e o reenvio da rede, que chegam em frações de segundo, e é
+     * curto o bastante para ninguém repetir a mesma ação de propósito dentro dele.
+     */
+    private volatile long janelaEmNanos = Duration.ofSeconds(2).toNanos();
 
     /**
      * Por quanto tempo, depois de dar certo, o pedido idêntico é respondido de memória. Zero desliga

@@ -92,7 +92,7 @@ de novo em dois casos.
 
 * **A primeira ainda está rodando.** A segunda espera e recebe a mesma
   resposta. Passados 30 s sem resposta, recebe 409.
-* **A primeira acabou de dar certo** (há menos de 5 s) **e a pessoa não
+* **A primeira acabou de dar certo** (há menos de 2 s) **e a pessoa não
   escreveu mais nada depois.** A segunda recebe a resposta guardada.
 
 A resposta repetida sai com o cabeçalho `X-Repetida: 1`, e é a da primeira,

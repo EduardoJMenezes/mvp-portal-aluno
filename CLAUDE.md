@@ -213,7 +213,7 @@ Ensaio geral dos quatro fluxos do §21, contra o servidor no ar:
 * **A escrita idêntica repetida em seguida não roda de novo.** Em `/api/**`, o
   `FiltroDaRepeticao` devolve a resposta da primeira (cabeçalho `X-Repetida`)
   quando o mesmo pedido da mesma pessoa chega enquanto o primeiro roda, ou até
-  5 s depois de ele dar certo sem nenhuma outra escrita no meio. Consequência
+  2 s depois de ele dar certo sem nenhuma outra escrita no meio. Consequência
   para quem testa na mão ou por script: mandar o mesmo `POST` duas vezes
   seguidas mostra a resposta guardada, não a regra de negócio recusando. Nos
   testes Java a janela é zero (`BaseDeComando`). Mora em memória, e isso só
