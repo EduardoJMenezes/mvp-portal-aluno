@@ -69,13 +69,15 @@ class PastasDoVimeoTest {
 
     @Test
     void oVideoDizEmQualPastaMora() {
-        // O Vimeo manda a pasta do vídeo em parent_project; a busca pelo título mostra de onde ele veio.
+        // O Vimeo manda a pasta do vídeo em parent_folder; a busca pelo título mostra de onde ele veio.
         var video = VimeoReal.video(java.util.Map.of("uri", "/videos/901", "name", "Q01",
-                "parent_project", java.util.Map.of("uri", "/users/9/projects/55", "name", "K01")), null);
+                "parent_folder", java.util.Map.of("uri", "/users/9/projects/55", "name", "K01")), null);
 
         assertThat(video.pastaId()).isEqualTo("55");
         assertThat(video.pasta()).isEqualTo("K01");
         assertThat(VimeoReal.video(java.util.Map.of("uri", "/videos/902", "name", "Solto"), null).pastaId()).isNull();
+        // E o pedido ao Vimeo precisa citar o campo: sem ele no `fields`, a resposta não o traz.
+        assertThat(VimeoReal.CAMPOS_VIDEO).contains("parent_folder.uri").doesNotContain("parent_project");
     }
 
     @Test

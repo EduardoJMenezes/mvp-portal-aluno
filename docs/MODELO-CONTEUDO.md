@@ -106,7 +106,7 @@ seção "Em aberto", no fim.
 > pastas diferentes — e grava tudo de uma vez, já publicado, na ordem em que
 > marcou. A busca é uma só: acha pastas de qualquer nível pelo nome e vídeos
 > do Vimeo inteiro pelo título, cada um com o caminho da pasta em que mora
-> (`pasta_id` em `GET /api/admin/vimeo/videos`, lido de `parent_project`). A
+> (`pasta_id` em `GET /api/admin/vimeo/videos`, lido de `parent_folder`). A
 > lista de pastas passou a dizer onde cada uma mora (`pai_id` em
 > `GET /api/admin/vimeo/pastas`), e `GET /api/admin/vimeo/pastas/{pasta}/videos`
 > devolve a pasta em ordem: pelo número do título quando há ("Q04"), e o resto

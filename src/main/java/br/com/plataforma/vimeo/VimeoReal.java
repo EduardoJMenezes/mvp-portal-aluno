@@ -29,7 +29,7 @@ public class VimeoReal implements Vimeo {
     static final String CAMPOS_PASTA = "uri,name,has_subfolder,metadata.connections.parent_folder,"
             + "metadata.connections.videos.total,metadata.connections.videos.deep_total";
     static final String CAMPOS_VIDEO = "uri,name,description,duration,link,player_embed_url,pictures.sizes,"
-            + "status,is_playable,privacy.view,privacy.embed,transcript.status,parent_project";
+            + "status,is_playable,privacy.view,privacy.embed,transcript.status,parent_folder.uri,parent_folder.name";
 
     private final String token;
     private final String base;
@@ -162,8 +162,10 @@ public class VimeoReal implements Vimeo {
                 && tamanhos.getLast() instanceof Map<?, ?> maior) {
             thumb = texto(maior.get("link"));
         }
-        // A pasta do vídeo vem em parent_project: um objeto com a uri, ou a uri solta.
-        var mae = d.get("parent_project");
+        // A pasta do vídeo vem em parent_folder (é o nome no schema do Vimeo; parent_project, que a
+        // primeira versão pedia, não existe e voltava sempre vazio): um objeto com uri e name, ou
+        // null quando o vídeo está solto na raiz.
+        var mae = d.get("parent_folder");
         var uriDaMae = mae instanceof Map<?, ?> m ? m.get("uri") : (mae instanceof String s ? s : null);
         var nomeDaMae = mae instanceof Map<?, ?> m ? texto(m.get("name")) : null;
         return new Video(idDoUri(d.get("uri")), d.get("name") == null ? "(sem título)" : texto(d.get("name")),
