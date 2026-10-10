@@ -3,7 +3,7 @@
 import { useSearchParams } from "next/navigation";
 import { Suspense, useState, type FormEvent, type ReactNode } from "react";
 import { Moldura } from "@/components/Moldura";
-import { Aviso, Botao } from "@/components/ui";
+import { Aviso, Botao, Carregando } from "@/components/ui";
 import { api, useDados, type PlanoPublico } from "@/lib/api";
 import { dataCurta, plural, reais } from "@/lib/formato";
 
@@ -24,7 +24,7 @@ function Assinar() {
   return (
     <Moldura>
       {plano.carregando ? (
-        <p className="text-suave">Carregando…</p>
+        <Carregando linhas={2} />
       ) : plano.erro || !plano.dados ? (
         <div className="rounded-cartao border border-borda bg-papel p-6">
           <h1 className="text-xl font-semibold text-tinta">Plano indisponível</h1>

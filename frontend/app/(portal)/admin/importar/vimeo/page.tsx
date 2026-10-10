@@ -249,7 +249,7 @@ function EscolherPasta({ aoEscolher }: { aoEscolher: (pasta: PastaVimeo) => void
         <input id="busca-pasta" value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar pasta pelo nome" className="campo min-w-48 flex-1" />
         <Botao type="submit" tamanho="pequeno" variante="secundario">Buscar</Botao>
       </form>
-      <Estado {...pastas} linhas={2}>
+      <Estado {...pastas} linhas={4} forma="lista">
         {(r) => (
           <>
             <p className="text-[13px] text-suave">Mostrando {r.mostrando} de {r.total_no_vimeo} pastas.</p>

@@ -23,7 +23,7 @@ export default function Rascunhos() {
         atual={filtro}
         aoTrocar={setFiltro}
       />
-      <Estado {...lista} linhas={4}>
+      <Estado {...lista} linhas={4} forma="lista">
         {(rascunhos) =>
           rascunhos.length === 0 ? (
             <Vazio titulo={filtro === "RASCUNHO" ? "Nada esperando aprovação" : "Nenhum rascunho publicado ainda"}>

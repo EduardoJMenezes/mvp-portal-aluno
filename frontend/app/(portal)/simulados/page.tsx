@@ -29,7 +29,7 @@ function Simulados() {
 
   return (
     <Pagina titulo={categoria ? `Simulados ${categoria}` : "Simulados"} legenda="Os simulados publicados para a sua turma. O resultado de cada um sai quando ele fecha.">
-      <Estado {...simulados} linhas={4}>
+      <Estado {...simulados} linhas={4} forma="lista">
         {(todos) => {
           const lista = todos.filter((s) => casaCategoria(categoria, s.categoria));
           return lista.length === 0 ? (

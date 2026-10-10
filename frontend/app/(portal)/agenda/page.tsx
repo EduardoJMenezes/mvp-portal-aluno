@@ -21,7 +21,7 @@ function Agenda() {
 
   return (
     <Pagina titulo={categoria ?? "Agenda"} legenda="O que aconteceu na sua turma até hoje. Clique numa aula para estudar ela.">
-      <Estado {...lista} linhas={4}>
+      <Estado {...lista} linhas={4} forma="lista">
         {(eventos) => {
           const daqui = eventos.filter((e) => casaCategoria(categoria, e.categoria));
           if (daqui.length === 0) {

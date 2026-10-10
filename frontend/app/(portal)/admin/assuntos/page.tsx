@@ -47,7 +47,7 @@ export default function Assuntos() {
       {dialogo}
       <NovoAssunto aoCriar={(nome, subs) => executar(() => api.cadastrarAssunto(nome, subs))} />
       {erro && <Aviso tom="erro">{erro}</Aviso>}
-      <Estado {...lista} linhas={4}>
+      <Estado {...lista} linhas={4} forma="lista">
         {(assuntos) =>
           assuntos.length === 0 ? (
             <Vazio titulo="Nenhum assunto cadastrado" />

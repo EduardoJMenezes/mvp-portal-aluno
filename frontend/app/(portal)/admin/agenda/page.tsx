@@ -91,7 +91,7 @@ export default function AgendaDoProfessor() {
           aoFechar={() => setNovo(false)}
         />
       )}
-      <Estado {...dados} linhas={4}>
+      <Estado {...dados} linhas={4} forma="lista">
         {({ eventos, turmas, opcoes }) =>
           eventos.length === 0 ? (
             <Vazio titulo="A agenda está vazia">Crie o primeiro evento aqui, ou mande a foto do calendário ao Claude.</Vazio>

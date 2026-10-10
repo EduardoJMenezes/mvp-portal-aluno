@@ -77,7 +77,7 @@ export default function AulasDoProfessor() {
       />
       {erro && <Aviso tom="erro">{erro}</Aviso>}
 
-      <Estado {...lista} linhas={3}>
+      <Estado {...lista} linhas={3} forma="lista">
         {(aulas) =>
           aulas.length === 0 ? (
             <Vazio titulo="Nenhuma aula agendada">Marque a primeira no formulário acima.</Vazio>

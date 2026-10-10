@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { api, type Exercicio as Dados } from "@/lib/api";
 import { TextoFormatado } from "@/lib/texto";
 import { VideoSobDemanda } from "./Player";
-import { Aviso, Botao, Etiqueta } from "./ui";
+import { Aviso, Botao, Carregamento, Esqueleto, Etiqueta } from "./ui";
 
 // A questão dentro da aula: o aluno marca, confirma e vê o gabarito na hora.
 // Vale a primeira resposta, e quem segura isso é o backend — antes de responder,
@@ -46,7 +46,7 @@ export function Exercicio({ item, aoResponder }: { item: number; aoResponder?: (
   }
 
   if (!dados) {
-    return erro ? <Aviso tom="erro">{erro}</Aviso> : <div aria-busy="true" className="h-64 animate-pulse rounded-cartao border border-borda bg-papel" />;
+    return erro ? <Aviso tom="erro">{erro}</Aviso> : <EsqueletoDaQuestao />;
   }
 
   // O professor abre a prévia com o gabarito, sem ter respondido.
@@ -151,5 +151,26 @@ export function Exercicio({ item, aoResponder }: { item: number; aoResponder?: (
         </div>
       )}
     </section>
+  );
+}
+
+/** A questão chegando: o enunciado e as alternativas. */
+function EsqueletoDaQuestao() {
+  return (
+    <Carregamento rotulo="Carregando a questão" className="flex flex-col gap-5 rounded-cartao border border-borda bg-papel p-5">
+      <div className="flex flex-col gap-2.5">
+        <Esqueleto className="h-4 w-full" />
+        <Esqueleto className="h-4 w-11/12" />
+        <Esqueleto className="h-4 w-3/5" />
+      </div>
+      <div className="flex flex-col gap-2.5">
+        {["w-2/5", "w-1/2", "w-1/3", "w-3/5"].map((largura, i) => (
+          <div key={i} className="flex items-center gap-3 rounded-campo border border-borda/70 px-3.5 py-3">
+            <Esqueleto className="size-6 shrink-0 rounded-full" />
+            <Esqueleto className={`h-4 ${largura}`} />
+          </div>
+        ))}
+      </div>
+    </Carregamento>
   );
 }

@@ -125,6 +125,16 @@ seção "Em aberto", no fim.
 > confirmação (`useConfirmar`) já é um `Modal`. Tela nova que precise abrir
 > algo por cima usa um dos dois, em vez de desenhar a própria camada. A
 > vitrine, com todos os tamanhos e lados, está em `/admin/componentes/`.
+>
+> **Mudou em 09/10/2026: o carregamento tem um padrão**
+> (`frontend/components/Esqueleto.tsx`). Enquanto os dados não chegam, a tela
+> mostra blocos cinza-azulados, com um brilho que passa, no formato do que vem.
+> `<Carregando forma>` traz os formatos prontos (lista, cartoes, tabela, texto,
+> blocos) e `<Esqueleto>` é o bloco solto, para desenhar um formato sob medida,
+> como o de "Montar o curso" e o das pastas do Vimeo. O `Estado` recebe `forma`
+> ou `esqueleto`. Tela nova não escreve "Carregando…" nem usa `animate-pulse`:
+> diz a forma. Com "reduzir movimento" o bloco fica parado. Também está na
+> vitrine.
 
 ## O que está errado hoje
 

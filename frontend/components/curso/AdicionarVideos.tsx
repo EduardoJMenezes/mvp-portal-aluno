@@ -7,7 +7,7 @@
 import { ChevronRight, Folder, LoaderCircle, RefreshCw, Search, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { OffCanvas } from "@/components/Camadas";
-import { Aviso, Botao, Carregando } from "@/components/ui";
+import { Aviso, Botao, Carregamento, Esqueleto } from "@/components/ui";
 import { api, type Modulo, type PastaVimeo, type SubModulo, type VideoDaPasta } from "@/lib/api";
 import { duracao, plural } from "@/lib/formato";
 import { BIBLIOTECA, type Executar } from "./comum";
@@ -39,6 +39,53 @@ const lerPastas = (deNovo = false) => {
 
 /** A coluna da caixa de seleção: a mesma largura na pasta e no vídeo, para as caixas se alinharem. */
 const COLUNA_DA_CAIXA = "flex w-12 shrink-0 items-center justify-center self-stretch";
+
+/** As pastas chegando: a caixa, a pasta, o nome e o que há dentro. */
+function EsqueletoDePastas() {
+  return (
+    <Carregamento rotulo="Lendo as pastas do Vimeo" className="divide-y divide-borda/70">
+      {["w-24", "w-40", "w-32", "w-56", "w-28", "w-44", "w-36"].map((largura, i) => (
+        <div key={i} className="flex items-center py-3 pr-4">
+          <span className={COLUNA_DA_CAIXA}>{i > 1 && <Esqueleto className="size-4 rounded" />}</span>
+          <Esqueleto className="mr-3 size-[18px] shrink-0 rounded" />
+          <div className="flex min-w-0 flex-1 flex-col gap-2">
+            <Esqueleto className={`h-4 ${largura}`} />
+            <Esqueleto className="h-3 w-20" />
+          </div>
+        </div>
+      ))}
+    </Carregamento>
+  );
+}
+
+/** Os vídeos de uma pasta chegando: o cabeçalho do "marcar todos" e uma linha por vídeo. */
+function EsqueletoDeVideos({ quantos, comCaminho = false, rotulo = "Lendo os vídeos da pasta" }: { quantos: number; comCaminho?: boolean; rotulo?: string }) {
+  const larguras = ["w-3/5", "w-2/5", "w-1/2", "w-2/3", "w-1/3"];
+  return (
+    <Carregamento rotulo={rotulo}>
+      <div className="flex items-center border-y border-borda bg-canvas/70 py-2.5 pr-5">
+        <span className={COLUNA_DA_CAIXA}>
+          <Esqueleto className="size-4 rounded" />
+        </span>
+        <Esqueleto className="h-3 w-20" />
+      </div>
+      <div className="divide-y divide-borda/70">
+        {Array.from({ length: Math.max(quantos, 1) }, (_, i) => (
+          <div key={i} className="flex items-center py-3 pr-5">
+            <span className={COLUNA_DA_CAIXA}>
+              <Esqueleto className="size-4 rounded" />
+            </span>
+            <div className="flex min-w-0 flex-1 flex-col gap-2">
+              <Esqueleto className={`h-4 ${larguras[i % larguras.length]}`} />
+              {comCaminho && <Esqueleto className="h-3 w-2/5" />}
+            </div>
+            <Esqueleto className="ml-3 h-3 w-9 shrink-0" />
+          </div>
+        ))}
+      </div>
+    </Carregamento>
+  );
+}
 
 export function AdicionarVideos({ modulo, sub, executar, aoFechar }: { modulo: Modulo; sub: SubModulo; executar: Executar; aoFechar: () => void }) {
   // Quem monta este painel só o faz para abrir; ao fechar, ele sai da tela e então avisa.
@@ -232,9 +279,9 @@ export function AdicionarVideos({ modulo, sub, executar, aoFechar }: { modulo: M
     const nadaNovo = !!paraMarcar && paraMarcar.length === 0;
     const conteudo = vazia ? "vazia" : dentro ? `${plural(dentro, "pasta")}, ${plural(total, "vídeo")}` : nadaNovo ? `${plural(videos, "vídeo")}, nenhum novo para ${sub.nome}` : plural(videos, "vídeo");
     return (
-      <li key={p.id} className={`flex items-stretch ${todos ? "bg-lilas/40" : ""}`}>
+      <li key={p.id} className={`flex items-stretch transition-colors ${todos ? "bg-lilas/40" : ""} ${vazia ? "" : todos ? "hover:bg-lilas/70" : "hover:bg-canvas"}`}>
         {comCaixa ? (
-          <label className={`${COLUNA_DA_CAIXA} ${nadaNovo ? "" : "cursor-pointer hover:bg-canvas"}`} title={nadaNovo ? undefined : todos ? "Desmarcar os vídeos desta pasta" : "Marcar todos os vídeos desta pasta"}>
+          <label className={`${COLUNA_DA_CAIXA} ${nadaNovo ? "" : "cursor-pointer"}`} title={nadaNovo ? undefined : todos ? "Desmarcar os vídeos desta pasta" : "Marcar todos os vídeos desta pasta"}>
             {marcandoPasta === p.id ? (
               <LoaderCircle aria-label={`Lendo a pasta ${p.nome}`} className="size-4 animate-spin text-acento" />
             ) : (
@@ -254,7 +301,7 @@ export function AdicionarVideos({ modulo, sub, executar, aoFechar }: { modulo: M
         ) : (
           <span aria-hidden="true" className={COLUNA_DA_CAIXA} />
         )}
-        <button type="button" disabled={vazia} onClick={() => abrirPasta(p.id)} className="flex min-w-0 flex-1 items-center gap-3 py-2.5 pr-4 text-left hover:bg-canvas disabled:cursor-default disabled:opacity-55 disabled:hover:bg-transparent">
+        <button type="button" disabled={vazia} onClick={() => abrirPasta(p.id)} className="flex min-w-0 flex-1 items-center gap-3 py-2.5 pr-4 text-left disabled:cursor-default disabled:opacity-55">
           <Folder aria-hidden="true" className="size-[18px] shrink-0 text-suave" strokeWidth={1.8} />
           <span className="min-w-0 flex-1">
             <span className="block truncate text-[15px] font-medium text-tinta">{p.nome}</span>
@@ -274,8 +321,8 @@ export function AdicionarVideos({ modulo, sub, executar, aoFechar }: { modulo: M
     const aqui = jaAqui.has(v.vimeo_id);
     const marcado = marcados.has(v.vimeo_id);
     return (
-      <li key={v.vimeo_id} className={marcado ? "bg-lilas/40" : ""}>
-        <label className={`flex items-stretch pr-5 ${aqui ? "opacity-60" : "cursor-pointer hover:bg-canvas"}`}>
+      <li key={v.vimeo_id} className={`transition-colors ${marcado ? "bg-lilas/40 hover:bg-lilas/70" : aqui ? "" : "hover:bg-canvas"}`}>
+        <label className={`flex items-stretch pr-5 ${aqui ? "opacity-60" : "cursor-pointer"}`}>
           <span className={COLUNA_DA_CAIXA}>
             <input type="checkbox" disabled={aqui} checked={marcado} onChange={(e) => (e.target.checked ? escolher([v], origem, caminho, pasta) : tirar([v.vimeo_id]))} className="size-4 accent-acento" />
           </span>
@@ -361,11 +408,7 @@ export function AdicionarVideos({ modulo, sub, executar, aoFechar }: { modulo: M
       </div>
     );
   } else if (!pastas) {
-    corpo = (
-      <div className="p-5">
-        <Carregando linhas={6} />
-      </div>
-    );
+    corpo = <EsqueletoDePastas />;
   } else if (termo) {
     // A busca: pastas de qualquer nível pelo nome, e vídeos do Vimeo inteiro pelo título.
     const prontos = achados && achados.termo === termoDigitado ? achados.videos : null;
@@ -384,10 +427,7 @@ export function AdicionarVideos({ modulo, sub, executar, aoFechar }: { modulo: M
         ) : termoDigitado.length < 2 ? (
           <p className="border-t border-borda px-5 py-4 text-[15px] text-suave">Digite mais uma letra para buscar também os vídeos.</p>
         ) : !videos ? (
-          <p className="flex items-center gap-2 border-t border-borda px-5 py-4 text-[15px] text-suave">
-            <LoaderCircle aria-hidden="true" className="size-4 animate-spin" />
-            Buscando vídeos…
-          </p>
+          <EsqueletoDeVideos quantos={4} comCaminho rotulo="Buscando vídeos" />
         ) : videos.length ? (
           <>
             {listaDeVideos(videos.length >= MAXIMO_NA_BUSCA ? `Os primeiros ${videos.length} vídeos` : plural(videos.length, "vídeo"), videos, SEM_PASTA, "Fora de pasta", undefined, true)}
@@ -412,11 +452,7 @@ export function AdicionarVideos({ modulo, sub, executar, aoFechar }: { modulo: M
                 </Aviso>
               </div>
             )}
-            {!videosDaAtual && !erroDosVideos[atual.id] && (
-              <div className="p-5">
-                <Carregando linhas={5} />
-              </div>
-            )}
+            {!videosDaAtual && !erroDosVideos[atual.id] && <EsqueletoDeVideos quantos={Math.min(atual.videos ?? 6, 8)} />}
             {videosDaAtual && listaDeVideos(noNivel.length ? `${plural(videosDaAtual.length, "vídeo solto", "vídeos soltos")} em ${atual.nome}` : plural(videosDaAtual.length, "vídeo"), videosDaAtual, atual.id, caminhoCom(atual), atual.nome)}
           </>
         )}
@@ -504,7 +540,10 @@ export function AdicionarVideos({ modulo, sub, executar, aoFechar }: { modulo: M
           )}
         </div>
       )}
-      {corpo}
+      {/* A chave troca quando se muda de pasta ou de vista: o conteúdo novo surge, em vez de pular. */}
+      <div key={`${vendo}:${termo ? "busca" : (aberta ?? "raiz")}`} className="surge">
+        {corpo}
+      </div>
     </OffCanvas>
   );
 }

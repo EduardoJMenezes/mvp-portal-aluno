@@ -11,7 +11,7 @@ import { EditorDoModulo } from "@/components/curso/EditorDoModulo";
 import { Indice } from "@/components/curso/Indice";
 import { NovoModulo } from "@/components/curso/NovoModulo";
 import { useRecado } from "@/components/Recado";
-import { Botao, Estado, Pagina, Vazio, useConfirmar } from "@/components/ui";
+import { Botao, Carregamento, Esqueleto, Estado, Pagina, Vazio, useConfirmar } from "@/components/ui";
 import { api, useDados, type Modulo } from "@/lib/api";
 
 export default function PaginaDoCurso() {
@@ -86,7 +86,7 @@ function Curso() {
       {dialogo}
       {recado}
       {copiar && dados.dados && <CopiarEntreTurmas turmas={dados.dados.turmas} executar={executar} aoFechar={() => setCopiar(false)} />}
-      <Estado {...dados} linhas={4}>
+      <Estado {...dados} esqueleto={<EsqueletoDoCurso />}>
         {({ modulos: todos, assuntos, aulas, turmas }) => {
           const modulos = turmaDoFiltro ? comoATurmaVe(todos, turmaDoFiltro.nome) : todos;
           // Grupos pela categoria, na ordem em que aparecem; sem categoria vai para o fim.
@@ -193,5 +193,54 @@ function Curso() {
         }}
       </Estado>
     </Pagina>
+  );
+}
+
+/** O curso chegando: o índice dos módulos de um lado e o módulo aberto, com os sub-módulos, do outro. */
+function EsqueletoDoCurso() {
+  return (
+    <Carregamento rotulo="Carregando o curso" className="grid gap-5 lg:grid-cols-[19rem_minmax(0,1fr)] lg:items-start">
+      <div className="flex flex-col gap-2">
+        <Esqueleto className="mb-2 h-10 w-full rounded-campo" />
+        {["w-32", "w-24", "w-40", "w-28", "w-36"].map((largura, i) => (
+          <div key={i} className="flex items-center gap-3 rounded-cartao px-3 py-2.5">
+            <Esqueleto className="size-9 shrink-0 rounded-xl" />
+            <div className="flex flex-col gap-2">
+              <Esqueleto className={`h-4 ${largura}`} />
+              <Esqueleto className="h-3 w-14" />
+            </div>
+          </div>
+        ))}
+      </div>
+      <div className="hidden overflow-hidden rounded-cartao border border-borda/70 bg-papel lg:block">
+        <div className="flex items-start gap-4 p-5">
+          <Esqueleto className="size-14 shrink-0 rounded-2xl" />
+          <div className="flex flex-1 flex-col gap-2.5">
+            <Esqueleto className="h-6 w-2/5" />
+            <Esqueleto className="h-3 w-20" />
+            <Esqueleto className="h-3 w-1/3" />
+          </div>
+        </div>
+        {[4, 3].map((linhas, s) => (
+          <div key={s} className="border-t border-borda">
+            <div className="flex items-center gap-3 bg-canvas/60 px-5 py-3">
+              <Esqueleto className="h-5 w-40" />
+              <Esqueleto className="ml-auto h-8 w-28 rounded-campo" />
+            </div>
+            <div className="divide-y divide-borda/70">
+              {Array.from({ length: linhas }, (_, i) => (
+                <div key={i} className="flex items-center gap-3 px-5 py-3">
+                  <Esqueleto className="size-8 shrink-0 rounded-lg" />
+                  <div className="flex flex-1 flex-col gap-2">
+                    <Esqueleto className={`h-4 ${["w-1/2", "w-2/5", "w-3/5", "w-1/3"][i % 4]}`} />
+                    <Esqueleto className="h-3 w-12" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </Carregamento>
   );
 }

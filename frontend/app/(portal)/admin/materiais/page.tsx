@@ -44,7 +44,7 @@ export default function MateriaisDoProfessor() {
       <Enviar turmas={turmas.dados?.map((t) => t.nome) ?? []} aoEnviar={(arquivo, titulo) => executar(() => api.enviarMaterial(arquivo, titulo, [], []))} />
       {erro && <Aviso tom="erro">{erro}</Aviso>}
 
-      <Estado {...lista} linhas={3}>
+      <Estado {...lista} linhas={3} forma="lista">
         {(materiais) =>
           materiais.length === 0 ? (
             <Vazio titulo="Nenhum material enviado">Mande o primeiro PDF no formulário acima.</Vazio>

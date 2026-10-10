@@ -26,7 +26,7 @@ function MeuCurso() {
 
   return (
     <Pagina titulo={categoria ?? "Meu curso"} legenda="Aulas e resoluções das turmas em que você está matriculado.">
-      <Estado {...conteudo} linhas={5}>
+      <Estado {...conteudo} linhas={6} forma="cartoes">
         {(todas) => {
           // O botão do menu mostra só os capítulos daquela categoria; turma sem nenhum some.
           const turmas = todas

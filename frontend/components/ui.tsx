@@ -4,6 +4,9 @@ import { ArrowLeft, CircleCheck, CircleX, Info, TriangleAlert, type LucideIcon }
 import Link from "next/link";
 import { useCallback, useEffect, useId, useRef, useState, type ButtonHTMLAttributes, type ReactNode } from "react";
 import { Modal } from "./Camadas";
+import { Carregando, type FormaDoCarregamento } from "./Esqueleto";
+
+export { Carregamento, Carregando, Esqueleto } from "./Esqueleto";
 
 // --- botão -------------------------------------------------------------------
 
@@ -168,20 +171,30 @@ export function Progresso({ feitos, total, rotulo, className = "" }: { feitos: n
   );
 }
 
-export function Carregando({ linhas = 3 }: { linhas?: number }) {
-  return (
-    <div aria-busy="true" aria-label="Carregando" className="flex flex-col gap-3">
-      {Array.from({ length: linhas }, (_, i) => (
-        <div key={i} className="h-16 animate-pulse rounded-cartao border border-borda/70 bg-papel" />
-      ))}
-    </div>
-  );
-}
-
-/** Conteúdo com os três estados de uma busca: carregando, erro e pronto. */
-export function Estado<T>({ carregando, erro, dados, children, linhas }: { carregando: boolean; erro: string; dados: T | null; children: (dados: T) => ReactNode; linhas?: number }) {
+/**
+ * Conteúdo com os três estados de uma busca: carregando, erro e pronto.
+ * `forma`: o formato do esqueleto mostrado enquanto os dados não chegam (ver Esqueleto.tsx).
+ * `esqueleto`: um desenho sob medida, quando nenhum formato pronto parece com a tela.
+ */
+export function Estado<T>({
+  carregando,
+  erro,
+  dados,
+  children,
+  linhas,
+  forma,
+  esqueleto,
+}: {
+  carregando: boolean;
+  erro: string;
+  dados: T | null;
+  children: (dados: T) => ReactNode;
+  linhas?: number;
+  forma?: FormaDoCarregamento;
+  esqueleto?: ReactNode;
+}) {
   if (erro) return <Aviso tom="erro" titulo="Não deu para carregar">{erro}</Aviso>;
-  if (carregando && dados === null) return <Carregando linhas={linhas} />;
+  if (carregando && dados === null) return esqueleto ?? <Carregando linhas={linhas} forma={forma} />;
   if (dados === null) return null;
   return <>{children(dados)}</>;
 }

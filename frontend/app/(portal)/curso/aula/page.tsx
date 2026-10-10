@@ -221,7 +221,7 @@ function VideoDaAula({ item, acompanha, aoMudar }: { item: ItemCurso; acompanha:
   const parou = useDados(() => (registra ? api.progressoDoItem(item.id).catch(() => null) : Promise.resolve(null)), [item.id, registra]);
 
   if (!registra) return <Player video={video} />;
-  if (parou.carregando) return <div aria-busy="true" aria-label="Carregando o vídeo" className="aspect-video w-full animate-pulse rounded-cartao bg-tinta/10" />;
+  if (parou.carregando) return <div aria-busy="true" aria-label="Carregando o vídeo" className="esqueleto aspect-video w-full rounded-cartao" />;
 
   const total = video.duracao_segundos ?? 0;
   const p = parou.dados;

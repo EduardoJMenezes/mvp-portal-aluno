@@ -46,7 +46,7 @@ function Lives() {
       legenda="A aula ao vivo aparece em destaque quando a sala abre, 15 minutos antes. Embaixo, as próximas e as que já aconteceram."
     >
       {erro && <Aviso tom="erro">{erro}</Aviso>}
-      <Estado {...lista} linhas={3}>
+      <Estado {...lista} linhas={3} forma="lista">
         {(aulas) => {
           const daqui = aulas.filter((a) => casaCategoria(categoria, a.categoria));
           const noAr = daqui.filter((a) => a.estado === "ABERTA" || a.estado === "AGUARDANDO");

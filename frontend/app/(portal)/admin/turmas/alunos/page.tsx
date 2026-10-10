@@ -76,7 +76,7 @@ function Alunos() {
         </SegredoUmaVez>
       )}
       {erro && <Aviso tom="erro">{erro}</Aviso>}
-      <Estado {...alunos} linhas={3}>
+      <Estado {...alunos} linhas={5} forma="tabela">
         {(dados) =>
           dados.alunos.length === 0 ? (
             <Vazio titulo="Nenhum aluno nesta turma">Matricule pelo e-mail acima.</Vazio>

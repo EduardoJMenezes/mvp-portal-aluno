@@ -21,7 +21,7 @@ function MateriaisDoAluno() {
 
   return (
     <Pagina titulo={categoria ?? "Materiais"} legenda="Apostilas e listas da sua turma. Pode riscar por cima: o que você marcar fica salvo na sua conta.">
-      <Estado {...lista} linhas={3}>
+      <Estado {...lista} linhas={3} forma="lista">
         {(todos) => {
           const materiais = todos.filter((m) => casaCategoria(categoria, m.categoria));
           return materiais.length === 0 ? (

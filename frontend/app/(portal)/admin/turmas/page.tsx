@@ -17,7 +17,7 @@ export default function Turmas() {
       acoes={!criando && <Botao variante="primario" onClick={() => setCriando(true)}>Nova turma</Botao>}
     >
       {criando && <NovaTurma aoCriar={() => { setCriando(false); void turmas.recarregar(); }} aoCancelar={() => setCriando(false)} />}
-      <Estado {...turmas} linhas={3}>
+      <Estado {...turmas} linhas={3} forma="lista">
         {(lista) =>
           lista.length === 0 ? (
             <Vazio titulo="Nenhuma turma ainda">Crie a primeira turma para montar o curso e matricular os alunos.</Vazio>

@@ -47,7 +47,7 @@ export default function SimuladosDoProfessor() {
         </select>
       </div>
       {erro && <Aviso tom="erro">{erro}</Aviso>}
-      <Estado {...lista} linhas={4}>
+      <Estado {...lista} linhas={4} forma="lista">
         {(simulados) =>
           simulados.length === 0 ? (
             <Vazio titulo="Nenhum simulado">Monte um aqui, importe o .docx da equipe ou peça ao Claude.</Vazio>
