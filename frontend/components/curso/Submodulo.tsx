@@ -19,7 +19,7 @@ import { AdicionarQuestao, AulasDoSubmodulo, Classificar, NovaAulaAoVivo, Painel
 type Adicionando = "video" | "pdf" | "questao" | "aovivo" | "classificar" | null;
 
 const O_QUE_ENTRA: { tipo: Tipo; rotulo: string; dica: string }[] = [
-  { tipo: "video", rotulo: "Vídeos", dica: "Do Vimeo: uma pasta inteira ou alguns pelo título." },
+  { tipo: "video", rotulo: "Vídeos", dica: "Do Vimeo: navegue pelas pastas e marque os que quiser." },
   { tipo: "pdf", rotulo: "PDF", dica: "Um material que já existe ou um arquivo novo." },
   { tipo: "questao", rotulo: "Questão", dica: "Nova, ou do banco de questões." },
   { tipo: "aovivo", rotulo: "Aula ao vivo", dica: "Agenda no Zoom; a gravação entra aqui." },
@@ -137,7 +137,7 @@ export function SecaoDoSubmodulo({
       )}
       <p aria-live="polite" className="sr-only">{arrastar.anuncio}</p>
 
-      {vazio && !adicionando && (
+      {vazio && (!adicionando || adicionando === "video") && (
         <div className="px-4 py-5 sm:px-5">
           <p className="text-[15px] text-suave">
             {nomeDaTurma ? `${nomeDaTurma} não vê nada em ${sub.nome}.` : `${sub.nome} ainda está vazio.`} Comece por:
@@ -156,9 +156,11 @@ export function SecaoDoSubmodulo({
         </div>
       )}
 
-      {adicionando && (
+      {/* Os vídeos abrem num off-canvas, por cima da página; o resto abre aqui, dentro do sub-módulo. */}
+      {adicionando === "video" && <AdicionarVideos modulo={modulo} sub={sub} executar={executar} aoFechar={fechar} />}
+
+      {adicionando && adicionando !== "video" && (
         <div className="px-3 pb-4 pt-3 sm:px-4">
-          {adicionando === "video" && <AdicionarVideos modulo={modulo} sub={sub} executar={executar} aoFechar={fechar} />}
           {adicionando === "pdf" && (
             <Painel tipo="pdf" titulo="Adicionar PDF" legenda={`Entra em ${sub.nome}, já publicado. Para o PDF que acompanha um vídeo, use "Anexar PDF" no menu do vídeo.`} aoFechar={fechar}>
               <EscolherPdf

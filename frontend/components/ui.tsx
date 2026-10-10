@@ -3,6 +3,7 @@
 import { ArrowLeft, CircleCheck, CircleX, Info, TriangleAlert, type LucideIcon } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useId, useRef, useState, type ButtonHTMLAttributes, type ReactNode } from "react";
+import { Modal } from "./Camadas";
 
 // --- botão -------------------------------------------------------------------
 
@@ -225,52 +226,46 @@ export function Abas<T extends string>({ abas, atual, aoTrocar }: { abas: { valo
 
 type PedidoDeConfirmacao = { titulo: string; texto?: ReactNode; confirmar: string; perigo?: boolean };
 
-/** `confirmar()` abre um <dialog> nativo (foco preso e Esc de graça) e devolve a escolha. */
+/** `confirmar()` abre um modal pequeno e devolve a escolha. */
 export function useConfirmar(): [ReactNode, (pedido: PedidoDeConfirmacao) => Promise<boolean>] {
+  // O pedido fica guardado depois de respondido: o modal ainda o mostra enquanto sai da tela.
   const [pedido, setPedido] = useState<PedidoDeConfirmacao | null>(null);
+  const [aberto, setAberto] = useState(false);
   const resolver = useRef<(sim: boolean) => void>(() => {});
-  const dialogo = useRef<HTMLDialogElement>(null);
-
-  useEffect(() => {
-    if (pedido && dialogo.current && !dialogo.current.open) dialogo.current.showModal();
-  }, [pedido]);
 
   const fechar = useCallback((sim: boolean) => {
-    dialogo.current?.close();
-    setPedido(null);
+    setAberto(false);
     resolver.current(sim);
   }, []);
 
   const confirmar = useCallback((novo: PedidoDeConfirmacao) => {
     setPedido(novo);
+    setAberto(true);
     return new Promise<boolean>((resolve) => {
       resolver.current = resolve;
     });
   }, []);
 
-  const elemento = pedido ? (
-    <dialog
-      ref={dialogo}
-      onCancel={(e) => {
-        e.preventDefault();
-        fechar(false);
-      }}
-      className="m-auto w-[min(92vw,480px)] rounded-cartao border border-borda bg-papel p-0 text-tinta shadow-suave backdrop:bg-tinta/40"
+  const elemento = (
+    <Modal
+      aberto={aberto}
+      aoFechar={() => fechar(false)}
+      titulo={pedido?.titulo}
+      tamanho="pequeno"
+      rodape={
+        <div className="flex flex-wrap justify-end gap-2">
+          <Botao onClick={() => fechar(false)} data-foco-inicial>
+            Cancelar
+          </Botao>
+          <Botao variante={pedido?.perigo ? "perigo" : "primario"} onClick={() => fechar(true)}>
+            {pedido?.confirmar}
+          </Botao>
+        </div>
+      }
     >
-      <div className="px-6 pb-2 pt-5">
-        <h2 className="text-lg font-semibold">{pedido.titulo}</h2>
-        {pedido.texto && <div className="mt-2 text-[15px] text-tinta-2">{pedido.texto}</div>}
-      </div>
-      <div className="flex flex-wrap justify-end gap-2 px-6 pb-5 pt-4">
-        <Botao onClick={() => fechar(false)} autoFocus>
-          Cancelar
-        </Botao>
-        <Botao variante={pedido.perigo ? "perigo" : "primario"} onClick={() => fechar(true)}>
-          {pedido.confirmar}
-        </Botao>
-      </div>
-    </dialog>
-  ) : null;
+      {pedido?.texto && <div className="text-[15px] text-tinta-2">{pedido.texto}</div>}
+    </Modal>
+  );
 
   return [elemento, confirmar];
 }

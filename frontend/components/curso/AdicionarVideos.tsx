@@ -1,63 +1,24 @@
 "use client";
 
-// Vídeos do Vimeo entrando num sub-módulo: a pasta inteira, que é como o acervo está guardado, ou
-// alguns vídeos achados pelo título.
+// Vídeos do Vimeo entrando num sub-módulo. O professor passeia pelas pastas como elas estão no
+// Vimeo, marca o que quer (um vídeo, vários, a pasta inteira, de pastas diferentes) e grava tudo
+// de uma vez. Abre num off-canvas: o curso continua à vista atrás.
 
-import { ArrowLeft, ChevronRight, Folder, FolderOpen, RefreshCw } from "lucide-react";
-import { useEffect, useMemo, useState, type FormEvent } from "react";
-import { Abas, Aviso, Botao, Campo, Carregando, Etiqueta } from "@/components/ui";
-import { api, useDados, type Modulo, type PastaVimeo, type SubModulo, type VideoDaPasta, type VideoVimeo } from "@/lib/api";
+import { ChevronRight, Folder, ListChecks, RefreshCw, Search, X } from "lucide-react";
+import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { OffCanvas } from "@/components/Camadas";
+import { Aviso, Botao, Carregando } from "@/components/ui";
+import { api, type Modulo, type PastaVimeo, type SubModulo, type VideoDaPasta } from "@/lib/api";
 import { duracao, plural } from "@/lib/formato";
 import { partesDoNome } from "@/lib/icones";
 import { BIBLIOTECA, type Executar } from "./comum";
-import { Painel } from "./Paineis";
 
-type ParaEntrar = { vimeo_id: string; titulo: string; embed_url?: string | null; url?: string | null; thumbnail_url?: string | null; duracao_segundos?: number | null; pasta?: string };
+/** Um vídeo marcado para entrar, com a pasta de onde veio. A ordem da lista é a ordem de entrada. */
+type Escolhido = { vimeo_id: string; titulo: string; embed_url?: string | null; url?: string | null; thumbnail_url?: string | null; duracao_segundos?: number | null; pasta?: string; origem: string; caminho: string };
+/** Um vídeo na lista, venha de uma pasta ou da busca pelo título. */
+type NaLista = Omit<Escolhido, "origem" | "caminho" | "pasta"> & { avisos: string[] };
 
-export function AdicionarVideos({ modulo, sub, executar, aoFechar }: { modulo: Modulo; sub: SubModulo; executar: Executar; aoFechar: () => void }) {
-  const [modo, setModo] = useState<"pasta" | "titulo">("pasta");
-  const jaAqui = useMemo(() => new Set(sub.itens.map((i) => i.vimeo_id).filter((id): id is string => !!id)), [sub.itens]);
-
-  async function adicionar(videos: ParaEntrar[]) {
-    let recusados: string[] = [];
-    const ok = await executar(
-      async () => {
-        recusados = (await api.adicionarVideos(BIBLIOTECA, modulo.id, sub.id, videos)).erros;
-      },
-      () => {
-        const entraram = videos.length - recusados.length;
-        return (
-          `${plural(entraram, "vídeo adicionado", "vídeos adicionados")} em ${sub.nome}, já ${entraram === 1 ? "publicado" : "publicados"}.` +
-          (recusados.length ? ` Ficaram de fora: ${recusados.join("; ")}.` : "")
-        );
-      },
-    );
-    if (ok) aoFechar();
-  }
-
-  return (
-    <Painel tipo="video" titulo="Adicionar vídeos" legenda={`Do Vimeo para o fim de ${sub.nome}, já publicados.`} aoFechar={aoFechar}>
-      <div className="flex flex-col gap-4">
-        <Abas
-          abas={[
-            { valor: "pasta", rotulo: "Pasta inteira" },
-            { valor: "titulo", rotulo: "Pelo título" },
-          ]}
-          atual={modo}
-          aoTrocar={setModo}
-        />
-        {modo === "pasta" ? (
-          <DaPasta modulo={modulo.nome} sub={sub} jaAqui={jaAqui} aoAdicionar={adicionar} />
-        ) : (
-          <PeloTitulo jaAqui={jaAqui} aoAdicionar={adicionar} />
-        )}
-      </div>
-    </Painel>
-  );
-}
-
-// --- a pasta inteira -----------------------------------------------------------
-
+const BUSCA = "busca";
 const ALFABETICA = new Intl.Collator("pt-BR", { numeric: true, sensitivity: "base" });
 /** "QUESTÕES" e "questoes" são a mesma busca. */
 const semAcento = (texto: string) => texto.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
@@ -88,40 +49,39 @@ const lerPastas = (deNovo = false) => {
   return pastasLidas;
 };
 
-function DaPasta({ modulo, sub, jaAqui, aoAdicionar }: { modulo: string; sub: SubModulo; jaAqui: Set<string>; aoAdicionar: (videos: ParaEntrar[]) => Promise<void> }) {
-  const [pasta, setPasta] = useState<{ pasta: PastaVimeo; caminho: string } | null>(null);
-  // A navegação fica aqui em cima: quem volta de uma pasta cai na mesma prateleira de onde saiu.
+export function AdicionarVideos({ modulo, sub, executar, aoFechar }: { modulo: Modulo; sub: SubModulo; executar: Executar; aoFechar: () => void }) {
+  // Quem monta este painel só o faz para abrir; ao fechar, ele sai da tela e então avisa.
+  const [aberto, setAberto] = useState(true);
+  const jaAqui = useMemo(() => new Set(sub.itens.map((i) => i.vimeo_id).filter((id): id is string => !!id)), [sub.itens]);
+  const pista = useMemo(() => pistaDoModulo(modulo.nome), [modulo.nome]);
+
+  // --- o acervo ---
+  const [pastas, setPastas] = useState<PastaVimeo[] | null>(null);
+  const [erroDasPastas, setErroDasPastas] = useState("");
+  const [lendo, setLendo] = useState(true);
   const [aberta, setAberta] = useState<string | null>(null);
   const [filtro, setFiltro] = useState("");
+  // Os vídeos de cada pasta já aberta: voltar a ela não lê o Vimeo de novo.
+  const [videosDe, setVideosDe] = useState<Record<string, VideoDaPasta[]>>({});
+  const [erroDosVideos, setErroDosVideos] = useState<Record<string, string>>({});
+  const pedidos = useRef(new Map<string, Promise<VideoDaPasta[]>>());
+  const [porTitulo, setPorTitulo] = useState<{ termo: string; videos: NaLista[] } | null>(null);
+  const [buscando, setBuscando] = useState(false);
+  const [erroDaBusca, setErroDaBusca] = useState("");
 
-  if (pasta) return <VideosDaPastaEscolhida {...pasta} sub={sub} jaAqui={jaAqui} aoTrocar={() => setPasta(null)} aoAdicionar={aoAdicionar} />;
-  return <EscolherPasta modulo={modulo} aberta={aberta} aoAbrir={setAberta} filtro={filtro} aoFiltrar={setFiltro} aoEscolher={(p, caminho) => setPasta({ pasta: p, caminho })} />;
-}
-
-function EscolherPasta({
-  modulo,
-  aberta,
-  aoAbrir,
-  filtro,
-  aoFiltrar,
-  aoEscolher,
-}: {
-  modulo: string;
-  aberta: string | null;
-  aoAbrir: (id: string | null) => void;
-  filtro: string;
-  aoFiltrar: (texto: string) => void;
-  aoEscolher: (pasta: PastaVimeo, caminho: string) => void;
-}) {
-  const [pastas, setPastas] = useState<PastaVimeo[] | null>(null);
+  // --- o que foi marcado ---
+  const [escolhidos, setEscolhidos] = useState<Escolhido[]>([]);
+  const [vendo, setVendo] = useState<"vimeo" | "escolhidos">("vimeo");
+  const [marcandoPasta, setMarcandoPasta] = useState<string | null>(null);
+  const [gravando, setGravando] = useState(false);
   const [erro, setErro] = useState("");
-  const [lendo, setLendo] = useState(true);
+  const [saindo, setSaindo] = useState(false);
 
   const ler = (deNovo: boolean) => {
     setLendo(true);
-    setErro("");
+    setErroDasPastas("");
     lerPastas(deNovo)
-      .then(setPastas, (ex: Error) => setErro(ex.message))
+      .then(setPastas, (ex: Error) => setErroDasPastas(ex.message))
       .finally(() => setLendo(false));
   };
   useEffect(() => ler(false), []);
@@ -145,296 +105,384 @@ function EscolherPasta({
     return trilha;
   };
   const caminhoDe = (p: PastaVimeo) => ancestrais(p).map((a) => a.nome).join(" › ");
+  const caminhoCom = (p: PastaVimeo) => [...ancestrais(p), p].map((a) => a.nome).join(" › ");
 
-  if (erro) {
-    return (
-      <Aviso tom="erro">
-        {erro} <button type="button" onClick={() => ler(true)} className="font-semibold underline">Tentar de novo</button>
-      </Aviso>
-    );
-  }
-  if (!pastas) return <Carregando linhas={4} />;
-  if (pastas.length === 0) return <p className="text-[15px] text-suave">O Vimeo não tem nenhuma pasta. Os vídeos soltos entram por &quot;Pelo título&quot;.</p>;
-
-  const termo = semAcento(filtro.trim());
-  const pista = pistaDoModulo(modulo);
-  const atual = aberta ? porId.get(aberta) : undefined;
-  const trilha = atual ? [...ancestrais(atual), atual] : [];
-  const noNivel = filhas.get(atual?.id ?? null) ?? [];
-  const achadas = termo ? pastas.filter((p) => semAcento(p.nome).includes(termo)).sort((a, b) => ALFABETICA.compare(a.nome, b.nome)) : [];
-  const doModulo = !termo && !atual ? pastas.filter((p) => (p.videos ?? 0) > 0 && pista.casa(p.nome)).sort((a, b) => ALFABETICA.compare(caminhoDe(b), caminhoDe(a))) : [];
-
-  const linha = (p: PastaVimeo, comCaminho: boolean) => {
-    const dentro = filhas.get(p.id)?.length ?? 0;
-    const videos = p.videos ?? 0;
-    const total = p.videos_com_subpastas ?? videos;
-    const caminho = caminhoDe(p);
-    const vazia = !dentro && !videos;
-    return (
-      <li key={p.id}>
-        <button
-          type="button"
-          disabled={vazia}
-          onClick={() => (dentro ? (aoFiltrar(""), aoAbrir(p.id)) : aoEscolher(p, caminho))}
-          className="flex w-full items-center gap-3 px-3 py-2.5 text-left hover:bg-canvas disabled:cursor-default disabled:opacity-55 disabled:hover:bg-transparent"
-        >
-          <Folder aria-hidden="true" className="size-[18px] shrink-0 text-suave" strokeWidth={1.8} />
-          <span className="min-w-0 flex-1">
-            <span className="block truncate text-[15px] font-medium text-tinta">{p.nome}</span>
-            {comCaminho && caminho && <span className="block truncate text-[13px] text-suave">{caminho}</span>}
-          </span>
-          <span className="shrink-0 text-[13px] tabular-nums text-suave">
-            {vazia ? "vazia" : dentro ? `${plural(dentro, "pasta")}, ${plural(total, "vídeo")}` : plural(videos, "vídeo")}
-          </span>
-          {dentro > 0 && <ChevronRight aria-hidden="true" className="size-4 shrink-0 text-suave" />}
-        </button>
-      </li>
-    );
+  const lerVideos = (pastaId: string) => {
+    let pedido = pedidos.current.get(pastaId);
+    if (!pedido) {
+      pedido = api.videosDaPasta(pastaId).then((r) => r.videos);
+      pedidos.current.set(pastaId, pedido);
+      setErroDosVideos((atual) => ({ ...atual, [pastaId]: "" }));
+      pedido.then(
+        (videos) => setVideosDe((atual) => ({ ...atual, [pastaId]: videos })),
+        (ex: Error) => {
+          pedidos.current.delete(pastaId);
+          setErroDosVideos((atual) => ({ ...atual, [pastaId]: ex.message }));
+        },
+      );
+    }
+    return pedido;
   };
 
-  const lista = "max-h-72 divide-y divide-borda overflow-y-auto rounded-xl border border-borda bg-papel";
+  const atual = aberta ? porId.get(aberta) : undefined;
+  useEffect(() => {
+    if (atual && (atual.videos ?? 0) > 0) void lerVideos(atual.id).catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [atual?.id]);
 
-  return (
-    <div className="flex flex-col gap-3">
-      <div className="flex flex-wrap items-end gap-2">
-        <Campo rotulo="Pasta no Vimeo" className="min-w-60 flex-1">
-          {(id) => <input id={id} type="search" value={filtro} onChange={(e) => aoFiltrar(e.target.value)} placeholder="Filtrar pelo nome, ex.: K01" className="campo" />}
-        </Campo>
-        <Botao variante="texto" tamanho="pequeno" disabled={lendo} onClick={() => ler(true)} title="Ler as pastas do Vimeo de novo">
-          <RefreshCw aria-hidden="true" className={`size-4 ${lendo ? "animate-spin" : ""}`} />
-          Atualizar
-        </Botao>
-      </div>
+  // --- marcar e desmarcar ---
+  const marcados = useMemo(() => new Set(escolhidos.map((e) => e.vimeo_id)), [escolhidos]);
+  // Quantos marcados há em cada pasta, contando as de dentro: é o que a linha da pasta mostra.
+  const marcadosNaPasta = useMemo(() => {
+    const conta = new Map<string, number>();
+    for (const e of escolhidos) {
+      for (let p = porId.get(e.origem), n = 0; p && n < 20; p = p.pai_id ? porId.get(p.pai_id) : undefined, n++) conta.set(p.id, (conta.get(p.id) ?? 0) + 1);
+    }
+    return conta;
+  }, [escolhidos, porId]);
 
-      {termo ? (
-        achadas.length ? (
-          <>
-            <p className="text-[13px] text-suave">{plural(achadas.length, "pasta")} com &quot;{filtro.trim()}&quot; no nome.</p>
-            <ul className={lista}>{achadas.slice(0, 80).map((p) => linha(p, true))}</ul>
-          </>
-        ) : (
-          <p className="text-[15px] text-suave">Nenhuma pasta com &quot;{filtro.trim()}&quot; no nome.</p>
-        )
-      ) : (
-        <>
-          {doModulo.length > 0 && (
-            <div className="flex flex-col gap-1.5">
-              <p className="text-[13px] font-semibold text-tinta-2">Com &quot;{pista.texto}&quot; no nome</p>
-              <ul className={lista}>{doModulo.slice(0, 12).map((p) => linha(p, true))}</ul>
-            </div>
-          )}
-          <div className="flex flex-col gap-1.5">
-            <nav aria-label="Onde você está no Vimeo" className="flex flex-wrap items-center gap-1 text-[13px]">
-              <button type="button" onClick={() => aoAbrir(null)} disabled={!atual} className="font-semibold text-acento hover:underline disabled:text-tinta-2 disabled:no-underline">
-                {doModulo.length > 0 && !atual ? "Todas as pastas" : "Vimeo"}
-              </button>
-              {trilha.map((p, i) => (
-                <span key={p.id} className="flex items-center gap-1">
-                  <ChevronRight aria-hidden="true" className="size-3.5 text-suave" />
-                  <button type="button" onClick={() => aoAbrir(p.id)} disabled={i === trilha.length - 1} className="font-semibold text-acento hover:underline disabled:text-tinta-2 disabled:no-underline">
-                    {p.nome}
-                  </button>
-                </span>
-              ))}
-            </nav>
-            <ul className={lista}>
-              {atual && (atual.videos ?? 0) > 0 && (
-                <li>
-                  <button type="button" onClick={() => aoEscolher(atual, caminhoDe(atual))} className="flex w-full items-center gap-3 bg-lilas/50 px-3 py-2.5 text-left hover:bg-lilas">
-                    <FolderOpen aria-hidden="true" className="size-[18px] shrink-0 text-acento" strokeWidth={1.8} />
-                    <span className="min-w-0 flex-1 text-[15px] font-semibold text-acento-forte">Os vídeos soltos em {atual.nome}</span>
-                    <span className="shrink-0 text-[13px] tabular-nums text-acento-forte">{plural(atual.videos ?? 0, "vídeo")}</span>
-                  </button>
-                </li>
-              )}
-              {noNivel.map((p) => linha(p, false))}
-            </ul>
-          </div>
-        </>
-      )}
-    </div>
-  );
-}
+  const podeEntrar = (v: NaLista) => !jaAqui.has(v.vimeo_id);
+  const escolher = (videos: NaLista[], origem: string, caminho: string, pasta?: string) =>
+    setEscolhidos((lista) => {
+      const tem = new Set(lista.map((e) => e.vimeo_id));
+      const novos = videos.filter((v) => podeEntrar(v) && !tem.has(v.vimeo_id)).map(({ avisos: _, ...v }) => ({ ...v, origem, caminho, pasta }));
+      return [...lista, ...novos];
+    });
+  const tirar = (ids: string[]) => setEscolhidos((lista) => lista.filter((e) => !ids.includes(e.vimeo_id)));
 
-function VideosDaPastaEscolhida({
-  pasta,
-  caminho,
-  sub,
-  jaAqui,
-  aoTrocar,
-  aoAdicionar,
-}: {
-  pasta: PastaVimeo;
-  caminho: string;
-  sub: SubModulo;
-  jaAqui: Set<string>;
-  aoTrocar: () => void;
-  aoAdicionar: (videos: ParaEntrar[]) => Promise<void>;
-}) {
-  const lidos = useDados(() => api.videosDaPasta(pasta.id), [pasta.id]);
-  // Só o que o professor mudou à mão; o resto segue a regra de `marcado`.
-  const [escolha, setEscolha] = useState<Record<string, boolean>>({});
-  const [enviando, setEnviando] = useState(false);
+  /** "Todos" não leva o vídeo que o aluno não conseguiria assistir: esse o professor marca à mão. */
+  const marcaveis = (videos: NaLista[]) => videos.filter((v) => podeEntrar(v) && v.avisos.length === 0);
 
-  const videos = lidos.dados?.videos ?? [];
-  const novos = videos.filter((v) => !jaAqui.has(v.vimeo_id));
-  // Vídeo com aviso é o que o aluno não conseguiria assistir: fica de fora até o professor decidir.
-  const marcado = (v: VideoDaPasta) => !jaAqui.has(v.vimeo_id) && (escolha[v.vimeo_id] ?? v.avisos.length === 0);
-  const marcados = videos.filter(marcado);
-  const todos = novos.length > 0 && marcados.length === novos.length;
-
-  async function adicionar() {
-    setEnviando(true);
-    await aoAdicionar(marcados.map((v) => ({ vimeo_id: v.vimeo_id, titulo: v.titulo, embed_url: v.embed_url, url: v.url, thumbnail_url: v.thumbnail_url, duracao_segundos: v.duracao_segundos, pasta: pasta.nome })));
-    setEnviando(false);
+  async function alternarPasta(p: PastaVimeo) {
+    setErro("");
+    setMarcandoPasta(p.id);
+    try {
+      const videos = await lerVideos(p.id);
+      const todos = marcaveis(videos);
+      if (todos.length > 0 && todos.every((v) => marcados.has(v.vimeo_id))) tirar(todos.map((v) => v.vimeo_id));
+      else escolher(todos, p.id, caminhoCom(p), p.nome);
+    } catch (ex) {
+      setErro(`Não deu para ler a pasta ${p.nome}: ${(ex as Error).message}`);
+    } finally {
+      setMarcandoPasta(null);
+    }
   }
 
-  return (
-    <div className="flex flex-col gap-3">
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-        <Botao tamanho="pequeno" onClick={aoTrocar}>
-          <ArrowLeft aria-hidden="true" className="size-4" />
-          Trocar de pasta
-        </Botao>
-        <p className="min-w-0 flex-1">
-          <span className="block truncate font-semibold text-tinta">{pasta.nome}</span>
-          {caminho && <span className="block truncate text-[13px] text-suave">{caminho}</span>}
-        </p>
-      </div>
-
-      {lidos.carregando && <Carregando linhas={4} />}
-      {lidos.erro && <Aviso tom="erro">{lidos.erro}</Aviso>}
-      {lidos.dados && videos.length === 0 && <p className="text-[15px] text-suave">Esta pasta não tem vídeos soltos. Se eles estão numa pasta de dentro, volte e abra essa pasta.</p>}
-      {lidos.dados && videos.length > 0 && novos.length === 0 && <Aviso tom="info">{videos.length === 1 ? "O vídeo desta pasta já está" : `Os ${videos.length} vídeos desta pasta já estão`} em {sub.nome}.</Aviso>}
-
-      {videos.length > 0 && (
-        <>
-          {novos.length > 0 && (
-            <label className="flex cursor-pointer items-center gap-3 px-3 text-[13px] font-semibold text-tinta-2">
-              <input
-                type="checkbox"
-                checked={todos}
-                ref={(el) => {
-                  if (el) el.indeterminate = marcados.length > 0 && !todos;
-                }}
-                onChange={(e) => setEscolha(Object.fromEntries(novos.map((v) => [v.vimeo_id, e.target.checked])))}
-                className="size-4 accent-acento"
-              />
-              <span className="flex-1">
-                {marcados.length} de {plural(novos.length, "vídeo novo", "vídeos novos")}
-                {novos.length < videos.length && `; ${videos.length - novos.length === 1 ? "1 já está" : `${videos.length - novos.length} já estão`} em ${sub.nome}`}
-              </span>
-            </label>
-          )}
-          <ol className="max-h-80 divide-y divide-borda overflow-y-auto rounded-xl border border-borda bg-papel">
-            {videos.map((v) => {
-              const aqui = jaAqui.has(v.vimeo_id);
-              return (
-                <li key={v.vimeo_id}>
-                  <label className={`flex items-start gap-3 px-3 py-2.5 ${aqui ? "opacity-60" : "cursor-pointer hover:bg-canvas"}`}>
-                    <input
-                      type="checkbox"
-                      disabled={aqui}
-                      checked={marcado(v)}
-                      onChange={(e) => setEscolha((atual) => ({ ...atual, [v.vimeo_id]: e.target.checked }))}
-                      className="mt-1 size-4 shrink-0 accent-acento"
-                    />
-                    <span className="min-w-0 flex-1">
-                      <span className="block text-[15px] text-tinta">{v.titulo}</span>
-                      {aqui && <span className="block text-[13px] text-suave">Já está em {sub.nome}</span>}
-                      {!aqui && v.avisos.length > 0 && <span className="block text-[13px] text-atencao">{v.avisos.join("; ")}</span>}
-                    </span>
-                    <span className="shrink-0 pt-0.5 text-[13px] tabular-nums text-suave">{duracao(v.duracao_segundos)}</span>
-                  </label>
-                </li>
-              );
-            })}
-          </ol>
-          {novos.length > 0 && (
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-              <Botao variante="primario" disabled={!marcados.length || enviando} onClick={() => void adicionar()}>
-                {enviando ? "Adicionando…" : marcados.length ? `Adicionar ${plural(marcados.length, "vídeo")}` : "Marque os vídeos"}
-              </Botao>
-              <p className="text-[13px] text-suave">Entram nesta ordem. Depois dá para arrastar, renomear e tirar.</p>
-            </div>
-          )}
-        </>
-      )}
-    </div>
-  );
-}
-
-// --- pelo título ---------------------------------------------------------------
-
-function PeloTitulo({ jaAqui, aoAdicionar }: { jaAqui: Set<string>; aoAdicionar: (videos: ParaEntrar[]) => Promise<void> }) {
-  const [busca, setBusca] = useState("");
-  const [resultados, setResultados] = useState<VideoVimeo[] | null>(null);
-  const [escolhidos, setEscolhidos] = useState<Record<string, VideoVimeo>>({});
-  const [buscando, setBuscando] = useState(false);
-  const [erro, setErro] = useState("");
-
-  async function buscar(e: FormEvent) {
+  async function buscarPorTitulo(e: FormEvent) {
     e.preventDefault();
+    const termo = filtro.trim();
+    if (!termo) return;
     setBuscando(true);
-    setErro("");
+    setErroDaBusca("");
     try {
-      setResultados(await api.videosVimeo({ busca: busca.trim(), limite: 25 }));
+      const achados = await api.videosVimeo({ busca: termo, limite: 50 });
+      setPorTitulo({ termo, videos: achados.map((v) => ({ vimeo_id: v.id, titulo: v.titulo, embed_url: v.embed_url, url: v.url, thumbnail_url: v.thumbnail_url, duracao_segundos: v.duracao_segundos, avisos: [] })) });
     } catch (ex) {
-      setErro((ex as Error).message);
+      setErroDaBusca((ex as Error).message);
     } finally {
       setBuscando(false);
     }
   }
 
-  const quantos = Object.keys(escolhidos).length;
+  // --- gravar e sair ---
+  async function gravar() {
+    setGravando(true);
+    setErro("");
+    try {
+      const videos = escolhidos.map(({ origem: _, caminho: __, ...v }) => v);
+      const recusados = (await api.adicionarVideos(BIBLIOTECA, modulo.id, sub.id, videos)).erros;
+      const entraram = videos.length - recusados.length;
+      // O recado mora na página, atrás desta camada: só aparece quando ela fecha.
+      void executar(
+        () => Promise.resolve(),
+        `${plural(entraram, "vídeo adicionado", "vídeos adicionados")} em ${sub.nome}, já ${entraram === 1 ? "publicado" : "publicados"}.` + (recusados.length ? ` Ficaram de fora: ${recusados.join("; ")}.` : ""),
+      );
+      setAberto(false);
+    } catch (ex) {
+      setErro((ex as Error).message);
+    } finally {
+      setGravando(false);
+    }
+  }
 
-  return (
-    <div className="flex flex-col gap-3">
-      <form onSubmit={buscar} className="flex flex-wrap items-end gap-2">
-        <Campo rotulo="Título no Vimeo" className="min-w-60 flex-1">
-          {(id) => <input id={id} value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Ex.: Aula 3, ou Q04" className="campo" />}
-        </Campo>
-        <Botao type="submit" variante="secundario" disabled={buscando}>{buscando ? "Buscando…" : "Buscar"}</Botao>
-      </form>
+  const pedirParaSair = () => {
+    if (gravando) return;
+    if (escolhidos.length > 0 && !saindo) setSaindo(true);
+    else setAberto(false);
+  };
+
+  // --- as linhas ---
+  const termo = semAcento(filtro.trim());
+  const trilha = atual ? [...ancestrais(atual), atual] : [];
+  const noNivel = filhas.get(atual?.id ?? null) ?? [];
+  const achadas = termo && pastas ? pastas.filter((p) => semAcento(p.nome).includes(termo)).sort((a, b) => ALFABETICA.compare(a.nome, b.nome)) : [];
+  const doModulo = !termo && !atual && pastas ? pastas.filter((p) => (p.videos ?? 0) > 0 && pista.casa(p.nome)).sort((a, b) => ALFABETICA.compare(caminhoDe(b), caminhoDe(a))) : [];
+
+  const abrirPasta = (id: string | null) => {
+    setFiltro("");
+    setPorTitulo(null);
+    setAberta(id);
+  };
+
+  const linhaDaPasta = (p: PastaVimeo, comCaminho: boolean) => {
+    const dentro = filhas.get(p.id)?.length ?? 0;
+    const videos = p.videos ?? 0;
+    const total = p.videos_com_subpastas ?? videos;
+    const caminho = caminhoDe(p);
+    const vazia = !dentro && !videos;
+    const marcadosAqui = marcadosNaPasta.get(p.id) ?? 0;
+    const lidos = videosDe[p.id];
+    const todosMarcados = !!lidos && marcaveis(lidos).length > 0 && marcaveis(lidos).every((v) => marcados.has(v.vimeo_id));
+    return (
+      <li key={p.id} className="flex items-stretch">
+        <button type="button" disabled={vazia} onClick={() => abrirPasta(p.id)} className="flex min-w-0 flex-1 items-center gap-3 py-2.5 pl-5 pr-2 text-left hover:bg-canvas disabled:cursor-default disabled:opacity-55 disabled:hover:bg-transparent">
+          <Folder aria-hidden="true" className="size-[18px] shrink-0 text-suave" strokeWidth={1.8} />
+          <span className="min-w-0 flex-1">
+            <span className="block truncate text-[15px] font-medium text-tinta">{p.nome}</span>
+            <span className="block truncate text-[13px] text-suave">
+              {vazia ? "vazia" : dentro ? `${plural(dentro, "pasta")}, ${plural(total, "vídeo")}` : plural(videos, "vídeo")}
+              {comCaminho && caminho ? ` · ${caminho}` : ""}
+            </span>
+          </span>
+          {marcadosAqui > 0 && <span className="shrink-0 rounded-full bg-acento px-2 py-0.5 text-xs font-bold tabular-nums text-white">{marcadosAqui}</span>}
+          <ChevronRight aria-hidden="true" className={`size-4 shrink-0 text-suave ${vazia ? "invisible" : ""}`} />
+        </button>
+        {videos > 0 && (
+          <button
+            type="button"
+            disabled={marcandoPasta === p.id}
+            onClick={() => void alternarPasta(p)}
+            aria-label={todosMarcados ? `Desmarcar os vídeos de ${p.nome}` : `Marcar todos os vídeos de ${p.nome}`}
+            className="shrink-0 border-l border-borda/70 px-4 text-sm font-semibold text-acento hover:bg-lilas hover:text-acento-forte disabled:text-apagado"
+          >
+            {marcandoPasta === p.id ? "Lendo…" : todosMarcados ? "Desmarcar" : dentro ? `Marcar os ${videos}` : "Marcar todos"}
+          </button>
+        )}
+      </li>
+    );
+  };
+
+  const linhaDoVideo = (v: NaLista, origem: string, caminho: string, pasta?: string) => {
+    const aqui = jaAqui.has(v.vimeo_id);
+    return (
+      <li key={v.vimeo_id}>
+        <label className={`flex items-start gap-3 py-2.5 pl-5 pr-5 ${aqui ? "opacity-60" : "cursor-pointer hover:bg-canvas"}`}>
+          <input
+            type="checkbox"
+            disabled={aqui}
+            checked={marcados.has(v.vimeo_id)}
+            onChange={(e) => (e.target.checked ? escolher([v], origem, caminho, pasta) : tirar([v.vimeo_id]))}
+            className="mt-1 size-4 shrink-0 accent-acento"
+          />
+          <span className="min-w-0 flex-1">
+            <span className="block text-[15px] text-tinta">{v.titulo}</span>
+            {aqui && <span className="block text-[13px] text-suave">Já está em {sub.nome}</span>}
+            {!aqui && v.avisos.length > 0 && <span className="block text-[13px] text-atencao">{v.avisos.join("; ")}</span>}
+          </span>
+          <span className="shrink-0 pt-0.5 text-[13px] tabular-nums text-suave">{duracao(v.duracao_segundos)}</span>
+        </label>
+      </li>
+    );
+  };
+
+  /** A lista de vídeos com o "marcar todos" no cabeçalho. */
+  const listaDeVideos = (titulo: string, videos: NaLista[], origem: string, caminho: string, pasta?: string) => {
+    const todos = marcaveis(videos);
+    const quantos = todos.filter((v) => marcados.has(v.vimeo_id)).length;
+    const completo = todos.length > 0 && quantos === todos.length;
+    return (
+      <section>
+        <label className={`flex items-center gap-3 border-y border-borda bg-canvas/70 py-2 pl-5 pr-5 text-[13px] font-semibold text-tinta-2 ${todos.length ? "cursor-pointer" : ""}`}>
+          <input
+            type="checkbox"
+            disabled={!todos.length}
+            checked={completo}
+            ref={(el) => {
+              if (el) el.indeterminate = quantos > 0 && !completo;
+            }}
+            onChange={(e) => (e.target.checked ? escolher(todos, origem, caminho, pasta) : tirar(todos.map((v) => v.vimeo_id)))}
+            className="size-4 accent-acento"
+          />
+          <span className="flex-1">{titulo}</span>
+          {quantos > 0 && <span className="tabular-nums text-acento-forte">{plural(quantos, "marcado")}</span>}
+        </label>
+        <ol className="divide-y divide-borda/70">{videos.map((v) => linhaDoVideo(v, origem, caminho, pasta))}</ol>
+      </section>
+    );
+  };
+
+  const titulozinho = (texto: ReactNode) => <p className="border-b border-borda bg-canvas/70 py-2 pl-5 pr-5 text-[13px] font-semibold text-tinta-2">{texto}</p>;
+
+  // --- o corpo ---
+  let corpo: ReactNode;
+  if (vendo === "escolhidos") {
+    corpo = (
+      <div>
+        <div className="flex items-center gap-3 border-b border-borda bg-canvas/70 py-2 pl-5 pr-3 text-[13px] font-semibold text-tinta-2">
+          <span className="flex-1">Entram nesta ordem, no fim de {sub.nome}</span>
+          <Botao variante="texto" onClick={() => { setEscolhidos([]); setVendo("vimeo"); }}>Desmarcar todos</Botao>
+        </div>
+        <ol className="divide-y divide-borda/70">
+          {escolhidos.map((e, i) => (
+            <li key={e.vimeo_id} className="flex items-start gap-3 py-2.5 pl-5 pr-3">
+              <span className="w-6 shrink-0 pt-0.5 text-right text-[13px] font-semibold tabular-nums text-suave">{i + 1}</span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-[15px] text-tinta">{e.titulo}</span>
+                <span className="block truncate text-[13px] text-suave">{e.caminho}</span>
+              </span>
+              <span className="shrink-0 pt-0.5 text-[13px] tabular-nums text-suave">{duracao(e.duracao_segundos)}</span>
+              <button type="button" onClick={() => tirar([e.vimeo_id])} aria-label={`Desmarcar ${e.titulo}`} className="-my-1 flex size-8 shrink-0 items-center justify-center rounded-lg text-suave hover:bg-canvas hover:text-erro">
+                <X aria-hidden="true" className="size-4" />
+              </button>
+            </li>
+          ))}
+        </ol>
+      </div>
+    );
+  } else if (erroDasPastas) {
+    corpo = (
+      <div className="p-5">
+        <Aviso tom="erro">
+          {erroDasPastas} <button type="button" onClick={() => ler(true)} className="font-semibold underline">Tentar de novo</button>
+        </Aviso>
+      </div>
+    );
+  } else if (!pastas) {
+    corpo = (
+      <div className="p-5">
+        <Carregando linhas={6} />
+      </div>
+    );
+  } else if (termo) {
+    corpo = (
+      <div>
+        {titulozinho(achadas.length ? `${plural(achadas.length, "pasta")} com "${filtro.trim()}" no nome` : `Nenhuma pasta com "${filtro.trim()}" no nome`)}
+        {achadas.length > 0 && <ul className="divide-y divide-borda/70">{achadas.slice(0, 80).map((p) => linhaDaPasta(p, true))}</ul>}
+        {erroDaBusca && (
+          <div className="p-5">
+            <Aviso tom="erro">{erroDaBusca}</Aviso>
+          </div>
+        )}
+        {porTitulo && porTitulo.termo === filtro.trim() ? (
+          porTitulo.videos.length ? (
+            listaDeVideos(`${plural(porTitulo.videos.length, "vídeo")} com "${porTitulo.termo}" no título`, porTitulo.videos, BUSCA, `Busca por "${porTitulo.termo}"`)
+          ) : (
+            <p className="border-t border-borda px-5 py-4 text-[15px] text-suave">Nenhum vídeo com &quot;{porTitulo.termo}&quot; no título.</p>
+          )
+        ) : (
+          <div className="border-t border-borda px-5 py-4">
+            <Botao type="submit" form="busca-no-vimeo" variante="secundario" tamanho="pequeno" disabled={buscando}>
+              <Search aria-hidden="true" className="size-4" />
+              {buscando ? "Buscando…" : `Buscar vídeos com "${filtro.trim()}" no título`}
+            </Botao>
+          </div>
+        )}
+      </div>
+    );
+  } else {
+    const videosDaAtual = atual ? videosDe[atual.id] : undefined;
+    corpo = (
+      <div>
+        {doModulo.length > 0 && (
+          <>
+            {titulozinho(`Com "${pista.texto}" no nome`)}
+            <ul className="divide-y divide-borda/70 border-b border-borda">{doModulo.slice(0, 12).map((p) => linhaDaPasta(p, true))}</ul>
+            {titulozinho("Todas as pastas")}
+          </>
+        )}
+        {noNivel.length > 0 && <ul className="divide-y divide-borda/70">{noNivel.map((p) => linhaDaPasta(p, false))}</ul>}
+        {atual && (atual.videos ?? 0) > 0 && (
+          <>
+            {erroDosVideos[atual.id] && (
+              <div className="p-5">
+                <Aviso tom="erro">
+                  {erroDosVideos[atual.id]} <button type="button" onClick={() => void lerVideos(atual.id).catch(() => {})} className="font-semibold underline">Tentar de novo</button>
+                </Aviso>
+              </div>
+            )}
+            {!videosDaAtual && !erroDosVideos[atual.id] && (
+              <div className="p-5">
+                <Carregando linhas={5} />
+              </div>
+            )}
+            {videosDaAtual && listaDeVideos(noNivel.length ? `${plural(videosDaAtual.length, "vídeo solto", "vídeos soltos")} em ${atual.nome}` : plural(videosDaAtual.length, "vídeo"), videosDaAtual, atual.id, caminhoCom(atual), atual.nome)}
+          </>
+        )}
+        {atual && !noNivel.length && !(atual.videos ?? 0) && <p className="px-5 py-6 text-[15px] text-suave">Esta pasta está vazia.</p>}
+        {!atual && pastas.length === 0 && <p className="px-5 py-6 text-[15px] text-suave">O Vimeo não tem nenhuma pasta. Use a busca acima para achar um vídeo pelo título.</p>}
+      </div>
+    );
+  }
+
+  const rodape = saindo ? (
+    <div className="flex flex-wrap items-center justify-between gap-3">
+      <p className="text-[15px] font-medium text-tinta">Sair sem adicionar {escolhidos.length === 1 ? "o vídeo marcado" : `os ${escolhidos.length} vídeos marcados`}?</p>
+      <div className="flex gap-2">
+        <Botao onClick={() => setSaindo(false)}>Continuar escolhendo</Botao>
+        <Botao variante="perigo" onClick={() => setAberto(false)}>Sair</Botao>
+      </div>
+    </div>
+  ) : (
+    <div className="flex flex-col gap-2.5">
       {erro && <Aviso tom="erro">{erro}</Aviso>}
-      {resultados && resultados.length === 0 && <p className="text-[15px] text-suave">Nenhum vídeo com esse título. Tente uma parte menor do nome.</p>}
-      {resultados && resultados.length > 0 && (
-        <ul className="max-h-72 divide-y divide-borda overflow-y-auto rounded-xl border border-borda bg-papel">
-          {resultados.map((v) => {
-            const aqui = jaAqui.has(v.id);
-            return (
-              <li key={v.id}>
-                <label className={`flex items-center gap-3 px-3 py-2.5 ${aqui ? "opacity-60" : "cursor-pointer hover:bg-canvas"}`}>
-                  <input
-                    type="checkbox"
-                    disabled={aqui}
-                    checked={!!escolhidos[v.id]}
-                    onChange={(e) =>
-                      setEscolhidos((atual) => {
-                        const novo = { ...atual };
-                        if (e.target.checked) novo[v.id] = v;
-                        else delete novo[v.id];
-                        return novo;
-                      })
-                    }
-                    className="size-4 accent-acento"
-                  />
-                  <span className="min-w-0 flex-1 truncate text-[15px]">{v.titulo}</span>
-                  {aqui && <Etiqueta>Já está aqui</Etiqueta>}
-                  <span className="shrink-0 text-[13px] tabular-nums text-suave">{duracao(v.duracao_segundos)}</span>
-                </label>
-              </li>
-            );
-          })}
-        </ul>
-      )}
-      {resultados && resultados.length > 0 && (
-        <div>
-          <Botao variante="primario" disabled={!quantos} onClick={() => void aoAdicionar(Object.values(escolhidos).map((v) => ({ vimeo_id: v.id, titulo: v.titulo, embed_url: v.embed_url, url: v.url, thumbnail_url: v.thumbnail_url, duracao_segundos: v.duracao_segundos })))}>
-            {quantos ? `Adicionar ${plural(quantos, "vídeo")}` : "Marque os vídeos"}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        {escolhidos.length > 0 ? (
+          <Botao variante="texto" onClick={() => setVendo(vendo === "vimeo" ? "escolhidos" : "vimeo")} aria-pressed={vendo === "escolhidos"}>
+            <ListChecks aria-hidden="true" className="size-4" />
+            {vendo === "vimeo" ? `Ver ${escolhidos.length === 1 ? "o marcado" : `os ${escolhidos.length} marcados`}` : "Voltar ao Vimeo"}
+          </Botao>
+        ) : (
+          <p className="text-sm text-suave">Marque os vídeos; pode ser de pastas diferentes.</p>
+        )}
+        <div className="flex gap-2">
+          <Botao onClick={pedirParaSair} disabled={gravando}>Cancelar</Botao>
+          <Botao variante="primario" disabled={!escolhidos.length || gravando} onClick={() => void gravar()}>
+            {gravando ? "Adicionando…" : escolhidos.length ? `Adicionar ${plural(escolhidos.length, "vídeo")}` : "Adicionar"}
           </Botao>
         </div>
-      )}
+      </div>
     </div>
+  );
+
+  return (
+    <OffCanvas
+      aberto={aberto}
+      aoFechar={pedirParaSair}
+      aoSumir={aoFechar}
+      lado="direita"
+      tamanho="grande"
+      titulo="Adicionar vídeos do Vimeo"
+      legenda={`Entram no fim de ${sub.nome}, em ${modulo.nome}, já publicados.`}
+      semMargem
+      rodape={rodape}
+    >
+      {vendo === "vimeo" && (
+        <div className="sticky top-0 z-10 flex flex-col gap-2.5 border-b border-borda bg-papel px-5 py-3">
+          <form id="busca-no-vimeo" onSubmit={buscarPorTitulo} className="flex items-center gap-2">
+            <label htmlFor="filtro-do-vimeo" className="sr-only">Filtrar as pastas ou buscar um vídeo pelo título</label>
+            <div className="relative min-w-0 flex-1">
+              <Search aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-apagado" />
+              <input id="filtro-do-vimeo" type="search" value={filtro} onChange={(e) => setFiltro(e.target.value)} placeholder="Nome da pasta ou título do vídeo" className="campo pl-9" />
+            </div>
+            <Botao variante="texto" disabled={lendo} onClick={() => ler(true)} title="Ler as pastas do Vimeo de novo">
+              <RefreshCw aria-hidden="true" className={`size-4 ${lendo ? "animate-spin" : ""}`} />
+              <span className="max-sm:sr-only">Atualizar</span>
+            </Botao>
+          </form>
+          {!termo && (
+            <nav aria-label="Onde você está no Vimeo" className="flex flex-wrap items-center gap-1 text-[13px]">
+              <button type="button" onClick={() => abrirPasta(null)} disabled={!atual} className="font-semibold text-acento hover:underline disabled:text-tinta-2 disabled:no-underline">Vimeo</button>
+              {trilha.map((p, i) => (
+                <span key={p.id} className="flex items-center gap-1">
+                  <ChevronRight aria-hidden="true" className="size-3.5 text-suave" />
+                  <button type="button" onClick={() => abrirPasta(p.id)} disabled={i === trilha.length - 1} className="font-semibold text-acento hover:underline disabled:text-tinta-2 disabled:no-underline">{p.nome}</button>
+                </span>
+              ))}
+            </nav>
+          )}
+        </div>
+      )}
+      {corpo}
+    </OffCanvas>
   );
 }

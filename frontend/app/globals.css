@@ -159,6 +159,65 @@
     }
   }
 
+  /* Modal e off-canvas (components/Camadas.tsx). O <dialog> toma a tela inteira, transparente, e
+     só posiciona a caixa; o escuro é o ::backdrop. A caixa entra de onde --camada-de manda
+     (@starting-style) e, ao fechar, o <dialog> espera a transição antes de sumir (allow-discrete).
+     O tempo é o mesmo de SAIDA_MS no componente. */
+  dialog.camada {
+    position: fixed;
+    inset: 0;
+    width: 100vw;
+    height: 100dvh;
+    max-width: none;
+    max-height: none;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    overflow: hidden;
+    background: transparent;
+    color: inherit;
+    transition:
+      display 220ms allow-discrete,
+      overlay 220ms allow-discrete;
+  }
+  dialog.camada[open] {
+    display: flex;
+  }
+  dialog.camada::backdrop {
+    background: rgb(10 37 80 / 0);
+    transition:
+      background-color 220ms ease,
+      display 220ms allow-discrete,
+      overlay 220ms allow-discrete;
+  }
+  dialog.camada[open]::backdrop {
+    background: rgb(10 37 80 / 0.42);
+  }
+  .camada-caixa {
+    opacity: var(--camada-opacidade, 1);
+    transform: var(--camada-de);
+    transition:
+      transform 220ms cubic-bezier(0.2, 0.8, 0.2, 1),
+      opacity 160ms ease;
+  }
+  dialog.camada[open] .camada-caixa {
+    opacity: 1;
+    transform: none;
+  }
+  @starting-style {
+    dialog.camada[open]::backdrop {
+      background: rgb(10 37 80 / 0);
+    }
+    dialog.camada[open] .camada-caixa {
+      opacity: var(--camada-opacidade, 1);
+      transform: var(--camada-de);
+    }
+  }
+  /* Com uma camada aberta, a página de trás não rola. */
+  html:has(dialog.camada[open]) {
+    overflow: hidden;
+  }
+
   /* Capítulo concluído: hexágonos, bolhas e átomos sobem em leque do pé da tela e somem.
      Com "reduzir movimento", a regra lá de cima zera a duração: não aparece nada, só o cartão. */
   .particula {
