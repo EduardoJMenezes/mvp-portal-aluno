@@ -52,6 +52,16 @@ class PastaDoVimeoNoCursoTest extends BaseDoPortal {
     }
 
     @Test
+    void aBuscaPeloTituloDizDeQuePastaEOVideo() throws Exception {
+        get("/api/admin/vimeo/videos?busca=reagente limitante", ADMIN)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$[0].id").value("920000203"))
+                .andExpect(jsonPath("$[0].pasta_id").value("demo-2"))
+                .andExpect(jsonPath("$[0].pasta").value("Estequiometria"));
+    }
+
+    @Test
     void oAlunoNaoLeOVimeo() throws Exception {
         get("/api/admin/vimeo/pastas/demo-2/videos", ALUNO).andExpect(status().isForbidden());
     }

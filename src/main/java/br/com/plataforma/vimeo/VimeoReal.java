@@ -162,12 +162,17 @@ public class VimeoReal implements Vimeo {
                 && tamanhos.getLast() instanceof Map<?, ?> maior) {
             thumb = texto(maior.get("link"));
         }
+        // A pasta do vídeo vem em parent_project: um objeto com a uri, ou a uri solta.
+        var mae = d.get("parent_project");
+        var uriDaMae = mae instanceof Map<?, ?> m ? m.get("uri") : (mae instanceof String s ? s : null);
+        var nomeDaMae = mae instanceof Map<?, ?> m ? texto(m.get("name")) : null;
         return new Video(idDoUri(d.get("uri")), d.get("name") == null ? "(sem título)" : texto(d.get("name")),
-                texto(d.get("link")), thumb, inteiro(d.get("duration")), pasta, texto(d.get("description")),
+                texto(d.get("link")), thumb, inteiro(d.get("duration")), pasta != null ? pasta : nomeDaMae,
+                texto(d.get("description")),
                 texto(d.get("player_embed_url")), texto(d.get("status")),
                 d.get("is_playable") instanceof Boolean b ? b : null,
                 texto(mergulhar(d, "privacy.view")), texto(mergulhar(d, "privacy.embed")),
-                texto(mergulhar(d, "transcript.status")));
+                texto(mergulhar(d, "transcript.status")), idDoUri(uriDaMae));
     }
 
     @Override

@@ -16,30 +16,31 @@ public class VimeoDemo implements Vimeo {
     private final Map<String, List<Video>> pastas = new LinkedHashMap<>();
 
     public VimeoDemo() {
-        pastas.put("Atomística", demo("Atomística", List.of(
+        pastas.put("Atomística", demo("demo-1", "Atomística", List.of(
                 Map.entry("910000101", "Atomística — Questão 01 — Modelo de Rutherford"),
                 Map.entry("910000102", "Atomística — Questão 02 — Distribuição eletrônica"),
                 Map.entry("910000103", "Atomística — Questão 03 — Isótopos e isóbaros"))));
-        pastas.put("Estequiometria", demo("Estequiometria", List.of(
+        pastas.put("Estequiometria", demo("demo-2", "Estequiometria", List.of(
                 Map.entry("920000201", "Estequiometria — Questão 01 — Balanceamento"),
                 Map.entry("920000202", "Estequiometria — Questão 02 — Mol e massa molar"),
                 Map.entry("920000203", "Estequiometria — Questão 03 — Reagente limitante"),
                 Map.entry("920000204", "Estequiometria — Questão 04 — Rendimento de reação"),
                 Map.entry("920000205", "Estequiometria — Questão 05 — Pureza de reagentes"))));
-        pastas.put("Cinética", demo("Cinética", List.of(
+        pastas.put("Cinética", demo("demo-3", "Cinética", List.of(
                 Map.entry("930000301", "Cinética — Questão 01 — Velocidade média"),
                 Map.entry("930000302", "Cinética — Questão 02 — Fatores que alteram a velocidade"),
                 Map.entry("930000303", "Cinética — Questão 03 — Energia de ativação"))));
     }
 
-    private static List<Video> demo(String pasta, List<Map.Entry<String, String>> ids) {
+    /** {@code pastaId} é o mesmo que {@link #listarPastas()} dá à pasta: "demo-" e a posição dela. */
+    private static List<Video> demo(String pastaId, String pasta, List<Map.Entry<String, String>> ids) {
         var saida = new ArrayList<Video>();
         for (int i = 0; i < ids.size(); i++) {
             var vid = ids.get(i).getKey();
             var titulo = ids.get(i).getValue();
             saida.add(new Video(vid, titulo, "https://vimeo.com/" + vid, null, 300 + i * 37, pasta,
                     "Resolução em vídeo — " + titulo, "https://player.vimeo.com/video/" + vid,
-                    "available", true, "unlisted", "public", null));
+                    "available", true, "unlisted", "public", null, pastaId));
         }
         return saida;
     }

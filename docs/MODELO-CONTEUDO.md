@@ -102,8 +102,11 @@ seção "Em aberto", no fim.
 > **Mudou em 09/10/2026: o Vimeo se navega pela tela.** Em "Montar o curso",
 > "Adicionar › Vídeos" abre um off-canvas com o acervo como ele está guardado:
 > o professor desce pelas pastas (ano › curso › capítulo), marca o que quer —
-> um vídeo, vários, a pasta inteira, de pastas diferentes, ou achados pelo
-> título — e grava tudo de uma vez, já publicado, na ordem em que marcou. A
+> um vídeo, vários, a pasta inteira (a caixa de seleção da própria pasta), de
+> pastas diferentes — e grava tudo de uma vez, já publicado, na ordem em que
+> marcou. A busca é uma só: acha pastas de qualquer nível pelo nome e vídeos
+> do Vimeo inteiro pelo título, cada um com o caminho da pasta em que mora
+> (`pasta_id` em `GET /api/admin/vimeo/videos`, lido de `parent_project`). A
 > lista de pastas passou a dizer onde cada uma mora (`pai_id` em
 > `GET /api/admin/vimeo/pastas`), e `GET /api/admin/vimeo/pastas/{pasta}/videos`
 > devolve a pasta em ordem: pelo número do título quando há ("Q04"), e o resto

@@ -26,7 +26,7 @@ class PastasDoVimeoTest {
         static Video video(String id, String titulo, String status, String embed) {
             return new Video(id, titulo, "https://vimeo.com/" + id, null, 60, null, null,
                     "https://player.vimeo.com/video/" + id + "?h=abc", status, "available".equals(status),
-                    "unlisted", embed, null);
+                    "unlisted", embed, null, "3");
         }
 
         @Override
@@ -65,6 +65,17 @@ class PastasDoVimeoTest {
 
     private static ImportacaoVimeo com(Vimeo vimeo) {
         return new ImportacaoVimeo(vimeo, null, null, null);
+    }
+
+    @Test
+    void oVideoDizEmQualPastaMora() {
+        // O Vimeo manda a pasta do vídeo em parent_project; a busca pelo título mostra de onde ele veio.
+        var video = VimeoReal.video(java.util.Map.of("uri", "/videos/901", "name", "Q01",
+                "parent_project", java.util.Map.of("uri", "/users/9/projects/55", "name", "K01")), null);
+
+        assertThat(video.pastaId()).isEqualTo("55");
+        assertThat(video.pasta()).isEqualTo("K01");
+        assertThat(VimeoReal.video(java.util.Map.of("uri", "/videos/902", "name", "Solto"), null).pastaId()).isNull();
     }
 
     @Test

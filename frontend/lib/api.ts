@@ -593,7 +593,8 @@ export type TokenMcp = { id: number; nome: string; criado_em: string | null; ult
 export type PastaVimeo = { id: string; nome: string; dentro_de: string | null; videos: number | null; videos_com_subpastas: number | null; tem_subpasta: boolean; pai_id?: string | null };
 /** Um vídeo da pasta, na ordem em que entraria no curso. `avisos`: o que impediria o aluno de assistir. */
 export type VideoDaPasta = { vimeo_id: string; titulo: string; duracao_segundos: number | null; url: string | null; embed_url: string | null; thumbnail_url: string | null; avisos: string[] };
-export type VideoVimeo = { id: string; titulo: string; url?: string | null; thumbnail_url?: string | null; duracao_segundos?: number | null; embed_url?: string | null };
+/** `pasta_id`: a pasta em que o vídeo mora no Vimeo, quando ele está em alguma. */
+export type VideoVimeo = { id: string; titulo: string; url?: string | null; thumbnail_url?: string | null; duracao_segundos?: number | null; embed_url?: string | null; pasta?: string | null; pasta_id?: string | null };
 
 export type ItemDoPlano = { numero: number | null; titulo: string; vimeo_id: string; duracao_segundos: number | null; confianca_do_numero: string; avisos: string[] };
 export type Destino = { faixa: string; modulo: string; submodulo: string; assunto?: string; subassunto?: string };

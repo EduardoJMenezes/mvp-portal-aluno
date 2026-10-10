@@ -13,10 +13,14 @@ public interface Vimeo {
     record Pasta(String id, String nome, String uri, String paiUri, boolean temSubpasta,
             Integer totalVideos, Integer totalVideosComSubpastas) {}
 
-    /** {@code embedUrl} vai como o Vimeo devolve: vídeo unlisted só toca com o hash que vem nela. */
+    /**
+     * {@code embedUrl} vai como o Vimeo devolve: vídeo unlisted só toca com o hash que vem nela.
+     * {@code pastaId}: a pasta em que o vídeo mora, quando o Vimeo diz — é o que deixa a busca pelo
+     * título mostrar de onde veio cada achado.
+     */
     record Video(String id, String titulo, String url, String thumbnailUrl, Integer duracaoSegundos,
             String pasta, String descricao, String embedUrl, String status, Boolean reproduzivel,
-            String privacidadeView, String privacidadeEmbed, String transcricaoStatus) {
+            String privacidadeView, String privacidadeEmbed, String transcricaoStatus, String pastaId) {
 
         public boolean publicavel() {
             return Boolean.TRUE.equals(reproduzivel) && "available".equals(status);
