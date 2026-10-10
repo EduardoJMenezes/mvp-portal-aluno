@@ -35,7 +35,7 @@ export default function MeuDesempenho() {
                 )}
               </section>
 
-              {d.onde_revisar.length > 0 && <OndeRevisar analise={d.onde_revisar} legenda="Os pontos em que você mais errou e os vídeos que explicam cada um." />}
+              {d.onde_revisar.length > 0 && <OndeRevisar analise={d.onde_revisar} legenda="Os pontos em que você mais errou, com o que há no seu curso sobre cada um: o que assistir, ler, praticar e rever." />}
 
               {h.simulados.length > 0 && (
                 <section className="flex flex-col gap-3" aria-labelledby="titulo-simulados">

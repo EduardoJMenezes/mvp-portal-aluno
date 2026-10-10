@@ -13,6 +13,9 @@ interface VideoAssuntoRepositorio extends JpaRepository<VideoAssunto, Integer> {
     Optional<VideoAssunto> findFirstByVideoAndAssuntoAndSubassunto(
             Video video, Assunto assunto, SubAssunto subassunto);
 
+    /** Todos, com os de assunto removido: é o que se apaga ao trocar a etiqueta. */
+    List<VideoAssunto> findByVideo(Video video);
+
     /** Só os vínculos cujo assunto ainda existe; ver a nota em QuestaoAssuntoRepositorio. */
     @Query("""
             select va from VideoAssunto va

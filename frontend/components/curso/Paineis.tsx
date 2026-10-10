@@ -11,8 +11,8 @@ import { ColocarVideo } from "@/components/ColocarVideo";
 import { BuscaNoBanco } from "@/components/MontarProva";
 import { EscolherPdf, PdfDaAulaAoVivo } from "@/components/Pdf";
 import { Aviso, Botao, BotaoLink, Campo } from "@/components/ui";
-import { abrirEmNovaAba, api, type Assunto, type Aula, type Modulo, type SubModulo } from "@/lib/api";
-import { emBrasilia } from "@/lib/formato";
+import { abrirEmNovaAba, api, type Assunto, type Aula, type ItemCurso, type Modulo, type SubModulo } from "@/lib/api";
+import { emBrasilia, plural } from "@/lib/formato";
 import { Azulejo, BIBLIOTECA, type Executar, type Tipo } from "./comum";
 
 /**
@@ -256,23 +256,124 @@ export function AulasDoSubmodulo({ aulas, executar }: { aulas: Aula[]; executar:
   );
 }
 
-// --- etiqueta de assunto -------------------------------------------------------
+// --- assunto ---------------------------------------------------------------------
 
-export function Classificar({ modulo, sub, assuntos, executar, aoFechar }: { modulo: Modulo; sub: SubModulo; assuntos: Assunto[]; executar: Executar; aoFechar: () => void }) {
+/** Os dois campos de sempre: o assunto e, dentro dele, o sub-assunto. Os valores são os ids. */
+function EscolherAssunto({ assuntos, assunto, subassunto, aoMudar, comVazio = false }: { assuntos: Assunto[]; assunto: string; subassunto: string; aoMudar: (assunto: string, subassunto: string) => void; comVazio?: boolean }) {
+  const escolhido = assuntos.find((a) => String(a.id) === assunto);
+  return (
+    <>
+      <div data-foco-inicial>
+        <Campo rotulo="Assunto">
+          {(id) => (
+            <select id={id} required={!comVazio} value={assunto} onChange={(e) => aoMudar(e.target.value, "")} className="campo">
+              <option value="">{comVazio ? "Sem assunto" : "Escolha…"}</option>
+              {assuntos.map((a) => (
+                <option key={a.id} value={a.id}>{a.nome}</option>
+              ))}
+            </select>
+          )}
+        </Campo>
+      </div>
+      <Campo rotulo="Sub-assunto" dica={escolhido && !escolhido.subassuntos.length ? "Este assunto não tem sub-assuntos cadastrados." : undefined}>
+        {(id) => (
+          <select id={id} value={subassunto} onChange={(e) => aoMudar(assunto, e.target.value)} className="campo" disabled={!escolhido?.subassuntos.length}>
+            <option value="">Nenhum</option>
+            {escolhido?.subassuntos.map((s) => (
+              <option key={s.id} value={s.id}>{s.nome}</option>
+            ))}
+          </select>
+        )}
+      </Campo>
+    </>
+  );
+}
+
+const SEM_ASSUNTOS = (
+  <Aviso tom="atencao">
+    Nenhum assunto cadastrado. <Link href="/admin/assuntos/" className="font-semibold underline">Cadastre em Assuntos</Link>.
+  </Aviso>
+);
+
+/**
+ * O assunto de uma linha. Ele é do conteúdo (a questão, o vídeo ou o PDF), não da linha: o texto
+ * diz isso, porque trocar aqui vale em todo lugar onde aquele conteúdo aparece.
+ */
+export function AssuntoDaLinha({ item, tipo, assuntos, executar, aoFechar }: { item: ItemCurso; tipo: Tipo; assuntos: Assunto[]; executar: Executar; aoFechar: () => void }) {
+  const atual = item.assuntos?.[0];
+  const [assunto, setAssunto] = useState(atual ? String(atual.assunto_id) : "");
+  const [subassunto, setSubassunto] = useState(atual?.subassunto_id ? String(atual.subassunto_id) : "");
+  const [salvando, setSalvando] = useState(false);
+  const saida = useSaida(aoFechar);
+  const idDoFormulario = useId();
+
+  async function salvar(e: FormEvent) {
+    e.preventDefault();
+    setSalvando(true);
+    const ok = await executar(() => api.assuntoDoItem(item.id, { assunto, subassunto: subassunto || undefined }), assunto ? `Assunto de "${item.nome}" salvo.` : `"${item.nome}" ficou sem assunto.`);
+    setSalvando(false);
+    if (ok) saida.fechar();
+  }
+
+  const deQuem =
+    tipo === "questao"
+      ? "É o assunto do cadastro da questão: muda em todo lugar onde ela aparece, e é por ele que o desempenho do aluno é contado."
+      : tipo === "pdf"
+        ? "Fica no PDF: vale em toda linha onde este material estiver."
+        : "Fica no vídeo: vale em todo módulo onde este vídeo estiver, e é por ele que o aluno recebe o vídeo para revisar.";
+
+  return (
+    <Painel
+      titulo={`Assunto de "${item.nome}"`}
+      legenda={deQuem}
+      tamanho="pequeno"
+      {...saida}
+      aoFechar={() => !salvando && saida.fechar()}
+      rodape={
+        <div className="flex flex-wrap justify-end gap-2">
+          <Botao onClick={saida.fechar} disabled={salvando}>{assuntos.length ? "Cancelar" : "Fechar"}</Botao>
+          {assuntos.length > 0 && <Botao type="submit" form={idDoFormulario} variante="primario" disabled={salvando}>{salvando ? "Salvando…" : "Salvar"}</Botao>}
+        </div>
+      }
+    >
+      {!assuntos.length ? (
+        SEM_ASSUNTOS
+      ) : (
+        <form id={idDoFormulario} onSubmit={salvar} className="flex flex-col gap-3">
+          <EscolherAssunto assuntos={assuntos} assunto={assunto} subassunto={subassunto} aoMudar={(a, s) => { setAssunto(a); setSubassunto(s); }} comVazio />
+        </form>
+      )}
+    </Painel>
+  );
+}
+
+/**
+ * O assunto de muitas linhas de uma vez: as de um sub-módulo (todas ou uma faixa) ou as do módulo
+ * inteiro. Vale para vídeo, PDF e questão.
+ */
+export function Classificar({ modulo, sub, assuntos, executar, aoFechar }: { modulo: Modulo; sub?: SubModulo; assuntos: Assunto[]; executar: Executar; aoFechar: () => void }) {
   const [assunto, setAssunto] = useState("");
   const [subassunto, setSubassunto] = useState("");
   const [faixa, setFaixa] = useState("");
+  const [soSemAssunto, setSoSemAssunto] = useState(true);
   const [aplicando, setAplicando] = useState(false);
   const saida = useSaida(aoFechar);
   const idDoFormulario = useId();
-  const escolhido = assuntos.find((a) => String(a.id) === assunto);
+  const onde = sub ? sub.nome : modulo.nome;
 
   async function aplicar(e: FormEvent) {
     e.preventDefault();
     setAplicando(true);
+    let feito = { classificadas: 0, puladas: 0 };
+    const dados = { assunto, subassunto: subassunto || undefined, so_sem_assunto: soSemAssunto };
     const ok = await executar(
-      () => api.classificar(BIBLIOTECA, modulo.id, sub.id, { assunto, subassunto: subassunto || undefined, itens: faixa.trim() || undefined }),
-      `Assunto aplicado aos vídeos de ${sub.nome}.`,
+      async () => {
+        feito = sub ? await api.assuntoDoSubmodulo(sub.id, { ...dados, itens: faixa.trim() || undefined }) : await api.assuntoDoModulo(modulo.id, dados);
+      },
+      () =>
+        feito.classificadas === 0
+          ? `Nenhuma linha de ${onde} mudou: todas já tinham assunto.`
+          : `${plural(feito.classificadas, "linha classificada", "linhas classificadas")} em ${onde}.` + (feito.puladas ? ` ${plural(feito.puladas, "ficou como estava", "ficaram como estavam")}.` : ""),
     );
     setAplicando(false);
     if (ok) saida.fechar();
@@ -280,8 +381,8 @@ export function Classificar({ modulo, sub, assuntos, executar, aoFechar }: { mod
 
   return (
     <Painel
-      titulo="Classificar os vídeos por assunto"
-      legenda={`O assunto é o que alimenta o desempenho do aluno. Vale para os vídeos de ${sub.nome}.`}
+      titulo={sub ? "Classificar o sub-módulo por assunto" : "Classificar o módulo por assunto"}
+      legenda={`Vale para as linhas de ${onde}: vídeos, PDFs e questões. Depois dá para afinar linha a linha, no menu de cada uma.`}
       {...saida}
       aoFechar={() => !aplicando && saida.fechar()}
       rodape={
@@ -292,36 +393,22 @@ export function Classificar({ modulo, sub, assuntos, executar, aoFechar }: { mod
       }
     >
       {!assuntos.length ? (
-        <Aviso tom="atencao">
-          Nenhum assunto cadastrado. <Link href="/admin/assuntos/" className="font-semibold underline">Cadastre em Assuntos</Link>.
-        </Aviso>
+        SEM_ASSUNTOS
       ) : (
         <form id={idDoFormulario} onSubmit={aplicar} className="flex flex-col gap-3">
-          <div data-foco-inicial>
-            <Campo rotulo="Assunto">
-              {(id) => (
-                <select id={id} required value={assunto} onChange={(e) => { setAssunto(e.target.value); setSubassunto(""); }} className="campo">
-                  <option value="">Escolha…</option>
-                  {assuntos.map((a) => (
-                    <option key={a.id} value={a.id}>{a.nome}</option>
-                  ))}
-                </select>
-              )}
+          <EscolherAssunto assuntos={assuntos} assunto={assunto} subassunto={subassunto} aoMudar={(a, s) => { setAssunto(a); setSubassunto(s); }} />
+          {sub && (
+            <Campo rotulo="Quais linhas" dica="Em branco, todas. Ou uma faixa, ex.: Q01-Q03.">
+              {(id) => <input id={id} value={faixa} onChange={(e) => setFaixa(e.target.value)} placeholder="Q01-Q03" className="campo" />}
             </Campo>
-          </div>
-          <Campo rotulo="Sub-assunto">
-            {(id) => (
-              <select id={id} value={subassunto} onChange={(e) => setSubassunto(e.target.value)} className="campo" disabled={!escolhido?.subassuntos.length}>
-                <option value="">Nenhum</option>
-                {escolhido?.subassuntos.map((s) => (
-                  <option key={s.id} value={s.id}>{s.nome}</option>
-                ))}
-              </select>
-            )}
-          </Campo>
-          <Campo rotulo="Quais vídeos" dica="Em branco, todos. Ou uma faixa, ex.: Q01-Q03.">
-            {(id) => <input id={id} value={faixa} onChange={(e) => setFaixa(e.target.value)} placeholder="Q01-Q03" className="campo" />}
-          </Campo>
+          )}
+          <label className="flex cursor-pointer items-start gap-2.5 text-[15px] text-tinta">
+            <input type="checkbox" checked={soSemAssunto} onChange={(e) => setSoSemAssunto(e.target.checked)} className="mt-1 size-4 accent-acento" />
+            <span>
+              Só as linhas que ainda não têm assunto
+              <span className="block text-[13px] text-suave">Desmarcado, troca também o assunto das que já têm.</span>
+            </span>
+          </label>
         </form>
       )}
     </Painel>

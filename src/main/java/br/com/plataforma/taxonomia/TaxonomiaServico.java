@@ -18,13 +18,18 @@ public class TaxonomiaServico {
     private final SubAssuntoRepositorio subassuntos;
     private final VideoAssuntoRepositorio vinculos;
     private final AcervoServico acervo;
+    private final MaterialAssuntoRepositorio doMaterial;
+    private final jakarta.persistence.EntityManager em;
 
     public TaxonomiaServico(AssuntoRepositorio assuntos, SubAssuntoRepositorio subassuntos,
-            VideoAssuntoRepositorio vinculos, AcervoServico acervo) {
+            VideoAssuntoRepositorio vinculos, AcervoServico acervo, MaterialAssuntoRepositorio doMaterial,
+            jakarta.persistence.EntityManager em) {
         this.assuntos = assuntos;
         this.subassuntos = subassuntos;
         this.vinculos = vinculos;
         this.acervo = acervo;
+        this.doMaterial = doMaterial;
+        this.em = em;
     }
 
     // --- leitura -------------------------------------------------------------
@@ -200,22 +205,82 @@ public class TaxonomiaServico {
     /**
      * Etiqueta o vídeo. A etiqueta vai no <b>vídeo</b>, não no item: o mesmo vídeo em 2026 e 2027
      * ensina a mesma coisa, então classificar uma vez basta.
+     *
+     * <p>Hoje é <b>um assunto por vídeo</b>: classificar troca o que havia. A tabela de ligação
+     * aceita vários de propósito — quando um vídeo precisar passar por mais de um assunto, muda
+     * esta regra e a tela, não o banco. {@code assunto} nulo deixa o vídeo sem assunto.
      */
     @Transactional
     public VideoAssunto classificarVideo(
             Identidade ident, Video video, Assunto assunto, SubAssunto subassunto) {
         ident.exigirOperador();
 
-        var existente = subassunto == null
-                ? vinculos.findFirstByVideoAndAssuntoAndSubassuntoIsNull(video, assunto)
-                : vinculos.findFirstByVideoAndAssuntoAndSubassunto(video, assunto, subassunto);
-        if (existente.isPresent()) {
-            return existente.get();
+        var atuais = vinculos.vivosDo(video);
+        if (assunto != null && atuais.size() == 1 && mesma(atuais.getFirst().getAssunto(),
+                atuais.getFirst().getSubassunto(), assunto, subassunto)) {
+            return atuais.getFirst();
         }
-
-        var vinculo = vinculos.save(new VideoAssunto(video, assunto, subassunto));
+        vinculos.deleteAll(vinculos.findByVideo(video));
+        vinculos.flush();
         acervo.tocar(ident, video);
-        return vinculo;
+        return assunto == null ? null : vinculos.save(new VideoAssunto(video, assunto, subassunto));
+    }
+
+    /** O mesmo do vídeo, para o material (PDF). */
+    @Transactional
+    public void classificarMaterial(
+            Identidade ident, br.com.plataforma.materiais.Material material, Assunto assunto, SubAssunto subassunto) {
+        ident.exigirOperador();
+
+        var atuais = doMaterial.findByMaterial(material);
+        if (assunto != null && atuais.size() == 1 && mesma(atuais.getFirst().getAssunto(),
+                atuais.getFirst().getSubassunto(), assunto, subassunto)) {
+            return;
+        }
+        doMaterial.deleteAll(atuais);
+        doMaterial.flush();
+        material.tocar(ident);
+        if (assunto != null) {
+            doMaterial.save(new MaterialAssunto(material, assunto, subassunto));
+        }
+    }
+
+    private static boolean mesma(Assunto a, SubAssunto sa, Assunto b, SubAssunto sb) {
+        return a.getId().equals(b.getId())
+                && java.util.Objects.equals(sa == null ? null : sa.getId(), sb == null ? null : sb.getId());
+    }
+
+    // --- as etiquetas de muitos, de uma vez ------------------------------------
+    // A árvore do curso mostra o assunto de cada linha: três consultas para o curso inteiro, e não
+    // uma por linha. O {@code join} no assunto tira os vínculos de assunto removido.
+
+    private java.util.Map<Integer, List<EtiquetaComId>> etiquetas(String entidade, String dono, java.util.Collection<Integer> ids) {
+        var saida = new java.util.HashMap<Integer, List<EtiquetaComId>>();
+        if (ids.isEmpty()) {
+            return saida;
+        }
+        em.createQuery("select v." + dono + ".id, a.id, a.nome, sa.id, sa.nome from " + entidade + " v"
+                        + " join v.assunto a left join v.subassunto sa where v." + dono + ".id in :ids order by v.id",
+                        Object[].class)
+                .setParameter("ids", ids).getResultList()
+                .forEach(l -> saida.computeIfAbsent((Integer) l[0], k -> new java.util.ArrayList<>())
+                        .add(new EtiquetaComId((Integer) l[1], (String) l[2], (Integer) l[3], (String) l[4])));
+        return saida;
+    }
+
+    @Transactional(readOnly = true)
+    public java.util.Map<Integer, List<EtiquetaComId>> etiquetasDosVideos(java.util.Collection<Integer> videos) {
+        return etiquetas("VideoAssunto", "video", videos);
+    }
+
+    @Transactional(readOnly = true)
+    public java.util.Map<Integer, List<EtiquetaComId>> etiquetasDasQuestoes(java.util.Collection<Integer> questoes) {
+        return etiquetas("QuestaoAssunto", "questao", questoes);
+    }
+
+    @Transactional(readOnly = true)
+    public java.util.Map<Integer, List<EtiquetaComId>> etiquetasDosMateriais(java.util.Collection<Integer> materiais) {
+        return etiquetas("MaterialAssunto", "material", materiais);
     }
 
     private static String exigirNome(String nome, String recado) {

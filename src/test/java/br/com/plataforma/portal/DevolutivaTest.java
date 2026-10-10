@@ -216,4 +216,44 @@ class DevolutivaTest extends BaseDoPortal {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.detail").value(containsString("visão do aluno")));
     }
+
+    // --- onde revisar, no curso do próprio aluno -----------------------------------
+
+    @Test
+    void ondeRevisarLevaALinhaDoCursoDoAlunoPeloAssuntoDoConteudo() throws Exception {
+        var aulas = jdbc.queryForObject("SELECT id FROM submodules WHERE nome = 'Aulas'", Integer.class);
+        // Um vídeo e um PDF de Mol, um vídeo só de Estequiometria e um de outro assunto.
+        var videoDeMol = criarItem(aulas, criarVideo("700001", "Aula de mol"), "Aula de mol", 1, "PUBLICADO");
+        var videoDoAssunto = criarItem(aulas, criarVideo("700002", "Visão geral"), "Visão geral", 2, "PUBLICADO");
+        var deOutro = criarItem(aulas, criarVideo("700003", "Rutherford"), "Rutherford", 3, "PUBLICADO");
+        var material = jdbc.queryForObject("""
+                INSERT INTO materials (titulo, tipo, tamanho, status, criado_por_id, conteudo)
+                VALUES ('Lista de mol', 'application/pdf', 4, 'PUBLICADO', ?, decode('25504446', 'hex')) RETURNING id""",
+                Integer.class, ADMIN);
+        var pdf = com.jayway.jsonpath.JsonPath.<Integer>read(post("/api/admin/submodulos/" + aulas + "/pdf",
+                "{\"material\": %d}".formatted(material), ADMIN).andReturn().getResponse().getContentAsString(), "$.item_id");
+        put("/api/admin/itens/" + videoDeMol + "/assunto", "{\"assunto\": \"Estequiometria\", \"subassunto\": \"Mol\"}", ADMIN).andExpect(status().isOk());
+        put("/api/admin/itens/" + videoDoAssunto + "/assunto", "{\"assunto\": \"Estequiometria\"}", ADMIN).andExpect(status().isOk());
+        put("/api/admin/itens/" + deOutro + "/assunto", "{\"assunto\": \"Atomística\"}", ADMIN).andExpect(status().isOk());
+        put("/api/admin/itens/" + pdf + "/assunto", "{\"assunto\": \"Estequiometria\", \"subassunto\": \"Mol\"}", ADMIN).andExpect(status().isOk());
+        // Uma questão de Mol que o aluno ainda não fez.
+        var porFazer = naAula(questao("Q7", jdbc.queryForObject("SELECT id FROM subjects WHERE nome = 'Estequiometria'", Integer.class),
+                jdbc.queryForObject("SELECT id FROM subtopics WHERE nome = 'Mol'", Integer.class)));
+
+        // Mol é o ponto mais fraco (errou as duas): o exato primeiro, depois o que é só do assunto.
+        get("/api/aluno/desempenho/assuntos", ALUNO)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.onde_revisar[0].topico").value("Mol"))
+                .andExpect(jsonPath("$.onde_revisar[0].no_curso[?(@.tipo == 'VIDEO')].item_id")
+                        .value(org.hamcrest.Matchers.contains(videoDeMol, videoDoAssunto)))
+                .andExpect(jsonPath("$.onde_revisar[0].no_curso[?(@.tipo == 'PDF')].item_id").value(org.hamcrest.Matchers.contains(pdf)))
+                .andExpect(jsonPath("$.onde_revisar[0].no_curso[?(@.tipo == 'QUESTAO')].item_id").value(org.hamcrest.Matchers.contains(porFazer)))
+                // As duas que ele errou levam à linha, onde está a resolução.
+                .andExpect(jsonPath("$.onde_revisar[0].no_curso[?(@.tipo == 'ERRO')].item_id").value(org.hamcrest.Matchers.hasSize(2)))
+                .andExpect(jsonPath("$.onde_revisar[0].no_curso[0].modulo").value("K01"))
+                // O vídeo de outro assunto não entra.
+                .andExpect(jsonPath("$.onde_revisar[0].no_curso[?(@.item_id == %d)]".formatted(deOutro)).isEmpty())
+                // O que já veio como linha do curso não se repete na lista do acervo.
+                .andExpect(jsonPath("$.onde_revisar[0].videos").isEmpty());
+    }
 }

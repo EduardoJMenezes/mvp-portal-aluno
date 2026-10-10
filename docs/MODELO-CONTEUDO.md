@@ -160,6 +160,33 @@ seção "Em aberto", no fim.
 > montada só quando abre, e o recado ao pé da tela (`useRecado`), que passa a
 > morar dentro da camada aberta — atrás dela, um erro ficaria no escuro. As
 > telas do aluno não mudaram.
+>
+> **Mudou em 10/10/2026 (migração V14): cada linha do curso mostra e troca o
+> assunto.** A regra é uma só: **o assunto é do conteúdo, nunca da linha**. A
+> linha aponta para uma questão, um vídeo ou um PDF, e o assunto mora nele — a
+> questão em `question_subjects` (é o campo do cadastro dela), o vídeo em
+> `video_subjects` e, agora, o PDF em `material_subjects`. "Trocar o assunto da
+> linha" troca o do conteúdo, e vale em todo lugar onde ele aparece; não existe
+> uma segunda informação para a mesma coisa (`catalogo/AssuntoDasLinhas`).
+>
+> * **Um assunto por conteúdo, por enquanto.** Classificar passou a
+>   **substituir** (antes só acrescentava, e um vídeo acabava com dois). As
+>   três tabelas continuam sendo de ligação de propósito: quando um vídeo
+>   precisar passar por mais de um assunto, muda a regra em
+>   `TaxonomiaServico.classificarVideo` e a tela, não o banco. Por isso a
+>   árvore já devolve `assuntos` em lista. O vídeo que já tinha dois continua
+>   com os dois até alguém trocar.
+> * **Rotas:** `PUT /api/admin/itens/{item}/assunto` (uma linha; vazio tira),
+>   `POST /api/admin/submodulos/{id}/assunto` e
+>   `POST /api/admin/modulos/{id}/assunto` (de uma vez, com `so_sem_assunto`
+>   para não mexer em quem já tem). A árvore do professor traz o assunto de
+>   cada linha em três consultas para o curso inteiro.
+> * **"Onde revisar" do aluno** passou a trazer, para cada ponto fraco, o que
+>   há no curso dele com o endereço da linha (`no_curso`): vídeos e PDFs
+>   daquele assunto, as questões que ainda não respondeu e as que errou, que
+>   abrem a resolução. Primeiro o que é exatamente do sub-assunto, depois o
+>   que é só do assunto. Os demais vídeos do acervo continuam em `videos`.
+>   Vídeo de resolução não recebe assunto: ele é da questão.
 
 ## O que está errado hoje
 

@@ -109,7 +109,7 @@ public class EstruturaServico {
     public record ItemNaArvore(
             Integer id, String nome, Integer ordem, Status status, Integer videoId,
             String vimeoId, List<String> turmas, MaterialLigado material, QuestaoDaLinha questao,
-            String embedUrl, Integer duracaoSegundos) {
+            String embedUrl, Integer duracaoSegundos, List<br.com.plataforma.taxonomia.EtiquetaComId> assuntos) {
 
         public static ItemNaArvore de(Item i) {
             var video = i.getVideo();
@@ -118,12 +118,21 @@ public class EstruturaServico {
                     video == null ? null : video.getVimeoId(), nomes(i.getTurmas()),
                     MaterialLigado.de(i.getMaterial()), QuestaoDaLinha.de(i.getQuestao()),
                     video == null ? null : video.getEmbedUrl(),
-                    video == null ? null : video.getDuracaoSegundos());
+                    video == null ? null : video.getDuracaoSegundos(), List.of());
         }
 
         /** A mesma linha sem o endereço do player: é assim que ela sai para quem não é o professor. */
         public ItemNaArvore semPrevia() {
-            return new ItemNaArvore(id, nome, ordem, status, videoId, vimeoId, turmas, material, questao, null, null);
+            return new ItemNaArvore(id, nome, ordem, status, videoId, vimeoId, turmas, material, questao, null, null, assuntos);
+        }
+
+        /**
+         * A linha com o assunto do que há nela. O assunto é do conteúdo (a questão, o vídeo ou o
+         * PDF), nunca da linha: aqui ele só é mostrado. Quem preenche é {@code AssuntoDasLinhas}.
+         */
+        public ItemNaArvore comAssuntos(List<br.com.plataforma.taxonomia.EtiquetaComId> etiquetas) {
+            return new ItemNaArvore(id, nome, ordem, status, videoId, vimeoId, turmas, material, questao,
+                    embedUrl, duracaoSegundos, etiquetas);
         }
     }
 
@@ -141,9 +150,14 @@ public class EstruturaServico {
 
         /** O módulo com as linhas sem o endereço do player (ver {@link ItemNaArvore#semPrevia()}). */
         public ModuloNaArvore semPrevia() {
+            return comLinhas(ItemNaArvore::semPrevia);
+        }
+
+        /** O mesmo módulo, com cada linha trocada por {@code troca}. */
+        public ModuloNaArvore comLinhas(java.util.function.UnaryOperator<ItemNaArvore> troca) {
             return new ModuloNaArvore(id, nome, ordem, categoria, turma, turmas, submodulos.stream()
                     .map(s -> new SubModuloNaArvore(s.id(), s.nome(), s.tipo(), s.ordem(),
-                            s.itens().stream().map(ItemNaArvore::semPrevia).toList()))
+                            s.itens().stream().map(troca).toList()))
                     .toList(), icone, fotoVersao);
         }
     }
@@ -259,6 +273,11 @@ public class EstruturaServico {
         return modulos.findAllByOrderByOrdemAscIdAsc().stream()
                 .map(ModuloDaBiblioteca::de)
                 .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public List<SubModulo> submodulosDo(Modulo modulo) {
+        return submodulos.findByModuloOrderByOrdemAsc(modulo);
     }
 
     @Transactional(readOnly = true)

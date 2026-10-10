@@ -1,5 +1,6 @@
 package br.com.plataforma.portal;
 
+import br.com.plataforma.catalogo.AssuntoDasLinhas;
 import br.com.plataforma.catalogo.CatalogoServico;
 import br.com.plataforma.comum.Identidade;
 import br.com.plataforma.comum.NaoEncontrado;
@@ -39,9 +40,11 @@ public class ModulosPortal {
     private final RascunhosServico rascunhos;
     private final PublicacaoServico publicacao;
     private final ImportacaoVimeo vimeo;
+    private final AssuntoDasLinhas assuntos;
 
     public ModulosPortal(EstruturaServico estrutura, CatalogoServico catalogo, MateriaisServico materiais,
-            RascunhosServico rascunhos, PublicacaoServico publicacao, ImportacaoVimeo vimeo) {
+            RascunhosServico rascunhos, PublicacaoServico publicacao, ImportacaoVimeo vimeo, AssuntoDasLinhas assuntos) {
+        this.assuntos = assuntos;
         this.estrutura = estrutura;
         this.catalogo = catalogo;
         this.materiais = materiais;
@@ -66,7 +69,40 @@ public class ModulosPortal {
     @GetMapping("/biblioteca/arvore")
     public List<EstruturaServico.ModuloNaArvore> arvore(@AuthenticationPrincipal Identidade ident) {
         ident.exigirOperador();
-        return estrutura.arvoreDaBiblioteca();
+        return assuntos.naArvore(estrutura.arvoreDaBiblioteca());
+    }
+
+    // --- o assunto de cada linha ------------------------------------------------
+
+    /** {@code assunto} vazio tira o assunto. Os dois aceitam id ou nome. */
+    public record AssuntoIn(String assunto, String subassunto) {}
+
+    public record AssuntoEmLoteIn(@NotBlank String assunto, String subassunto, String itens, Boolean soSemAssunto) {}
+
+    /** O assunto da linha é o do que há nela (a questão, o vídeo ou o PDF): trocar aqui troca lá. */
+    @PutMapping("/itens/{item}/assunto")
+    @Transactional
+    public AssuntoDasLinhas.AssuntoDaLinha assuntoDoItem(@AuthenticationPrincipal Identidade ident,
+            @PathVariable Integer item, @RequestBody AssuntoIn dados) {
+        return assuntos.definir(ident, exigirItem(item), dados.assunto(), dados.subassunto(), Instant.now());
+    }
+
+    /** O sub-módulo de uma vez: todas as linhas ou uma faixa; pode deixar quieto quem já tem assunto. */
+    @PostMapping("/submodulos/{submodulo}/assunto")
+    @Transactional
+    public AssuntoDasLinhas.EmLote assuntoDoSubmodulo(@AuthenticationPrincipal Identidade ident,
+            @PathVariable Integer submodulo, @Valid @RequestBody AssuntoEmLoteIn dados) {
+        return assuntos.noSubmodulo(ident, exigirSubmodulo(submodulo), dados.assunto(), dados.subassunto(),
+                dados.itens(), Boolean.TRUE.equals(dados.soSemAssunto()), Instant.now());
+    }
+
+    /** O módulo inteiro: "este capítulo é de tal assunto". */
+    @PostMapping("/modulos/{modulo}/assunto")
+    @Transactional
+    public AssuntoDasLinhas.EmLote assuntoDoModulo(@AuthenticationPrincipal Identidade ident,
+            @PathVariable Integer modulo, @Valid @RequestBody AssuntoEmLoteIn dados) {
+        return assuntos.noModulo(ident, exigirModulo(modulo), dados.assunto(), dados.subassunto(),
+                Boolean.TRUE.equals(dados.soSemAssunto()), Instant.now());
     }
 
     /** As turmas que recebem o módulo, trocadas de uma vez. */

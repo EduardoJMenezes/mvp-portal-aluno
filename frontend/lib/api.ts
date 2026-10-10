@@ -169,7 +169,14 @@ export type QuestaoDaLinha = { questao_id: number; resumo?: string; status?: Sta
  * Sem `video_id`, a linha é só o PDF de `material` ou a `questao` que o aluno responde ali.
  * `concluido` só vem para o aluno: ele já assistiu o vídeo, abriu o PDF ou respondeu a questão.
  */
-export type ItemCurso = { id: number; nome: string; ordem: number; status: StatusConteudo; video_id: number | null; vimeo_id?: string | null; embed_url?: string | null; duracao_segundos?: number | null; video?: Video | null; turmas?: string[]; material?: MaterialLigado | null; questao?: QuestaoDaLinha | null; concluido?: boolean };
+/** O assunto de um conteúdo, com os ids: é o que a linha do curso mostra e troca. */
+export type EtiquetaDaLinha = { assunto_id: number; assunto: string; subassunto_id?: number | null; subassunto?: string | null };
+
+/**
+ * `assuntos`: o assunto do que há na linha (a questão, o vídeo ou o PDF). É do conteúdo, não da linha;
+ * hoje é um só, mas vem em lista porque a ligação aceita vários.
+ */
+export type ItemCurso = { id: number; nome: string; ordem: number; status: StatusConteudo; video_id: number | null; vimeo_id?: string | null; embed_url?: string | null; duracao_segundos?: number | null; assuntos?: EtiquetaDaLinha[]; video?: Video | null; turmas?: string[]; material?: MaterialLigado | null; questao?: QuestaoDaLinha | null; concluido?: boolean };
 
 /** Aula assistida. `posicao_segundos`: de onde o vídeo continua. */
 export type ProgressoDoItem = { item_id: number; concluido: boolean; posicao_segundos: number };
@@ -307,7 +314,13 @@ export type Prova = SimuladoResumo & {
   resultado_em?: string;
 };
 
-export type Recomendacao = { topico: string; erros: number; videos: Video[] };
+/**
+ * Uma linha do curso do próprio aluno que trata do ponto fraco: `VIDEO` e `PDF` para estudar,
+ * `QUESTAO` para uma que ele ainda não respondeu, `ERRO` para uma que respondeu e errou.
+ */
+export type LinhaParaRevisar = { tipo: "VIDEO" | "PDF" | "QUESTAO" | "ERRO"; item_id: number; modulo_id: number; modulo: string; nome: string };
+/** `no_curso`: o que há sobre o tópico no curso do aluno; `videos`: os demais vídeos do acervo. */
+export type Recomendacao = { topico: string; erros: number; videos: Video[]; no_curso?: LinhaParaRevisar[] };
 
 /**
  * A devolutiva por assunto, juntando questão de aula e de simulado. `percentual` é o acerto cru;
@@ -853,6 +866,13 @@ export const api = {
     pedir<{ rascunho: Rascunho; erros: string[]; aviso: string }>(`/admin/turmas/${turma}/modulos/${modulo}/submodulos/${submodulo}/itens`, { method: "POST", json: { videos } }),
   classificar: (turma: number | string, modulo: number, submodulo: number, dados: { assunto: string; subassunto?: string; itens?: string }) =>
     pedir<{ videos_classificados: string[] }>(`/admin/turmas/${turma}/modulos/${modulo}/submodulos/${submodulo}/classificacao`, { method: "POST", json: dados }),
+  /** O assunto do conteúdo da linha. `assunto` vazio tira. */
+  assuntoDoItem: (item: number, dados: { assunto: string; subassunto?: string }) =>
+    pedir<{ item_id: number; nome: string; assuntos: EtiquetaDaLinha[] }>(`/admin/itens/${item}/assunto`, { method: "PUT", json: dados }),
+  assuntoDoSubmodulo: (submodulo: number, dados: { assunto: string; subassunto?: string; itens?: string; so_sem_assunto?: boolean }) =>
+    pedir<{ classificadas: number; puladas: number; assunto: string; subassunto?: string | null }>(`/admin/submodulos/${submodulo}/assunto`, { method: "POST", json: dados }),
+  assuntoDoModulo: (modulo: number, dados: { assunto: string; subassunto?: string; so_sem_assunto?: boolean }) =>
+    pedir<{ classificadas: number; puladas: number; assunto: string; subassunto?: string | null }>(`/admin/modulos/${modulo}/assunto`, { method: "POST", json: dados }),
 
   // assuntos
   cadastrarAssunto: (nome: string, subassuntos?: string[]) => pedir("/admin/assuntos", { method: "POST", json: { nome, subassuntos } }),

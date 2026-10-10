@@ -56,7 +56,24 @@ public class AnalyticsServico {
 
     // --- recomendação --------------------------------------------------------
 
-    public record Recomendacao(String topico, int erros, List<AcessoServico.VideoDescrito> videos) {}
+    /**
+     * Uma linha do curso do próprio aluno que trata do ponto fraco. {@code tipo}: {@code VIDEO} e
+     * {@code PDF} para estudar, {@code QUESTAO} para uma que ele ainda não respondeu, {@code ERRO}
+     * para uma que respondeu e errou (a linha abre a resolução).
+     */
+    public record LinhaParaRevisar(String tipo, Integer itemId, Integer moduloId, String modulo, String nome) {}
+
+    /**
+     * {@code noCurso}: o que há sobre o tópico no curso do aluno, com o endereço da linha; só a
+     * devolutiva dele preenche. {@code videos}: os demais vídeos do acervo sobre o tópico.
+     */
+    public record Recomendacao(String topico, int erros, List<AcessoServico.VideoDescrito> videos,
+            List<LinhaParaRevisar> noCurso) {
+
+        public Recomendacao(String topico, int erros, List<AcessoServico.VideoDescrito> videos) {
+            this(topico, erros, videos, List.of());
+        }
+    }
 
     /**
      * O elo que faltava: do erro do aluno para o vídeo que explica aquilo.

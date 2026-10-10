@@ -16,7 +16,7 @@ import { api, type Assunto, type Aula, type ItemCurso, type Modulo, type SubModu
 import { duracao } from "@/lib/formato";
 import { Alca, Azulejo, BIBLIOTECA, Marca, TIPOS, composicao, tipoDaLinha, useArrastar, type Arrastar, type Confirmar, type Executar, type Tipo } from "./comum";
 import { AdicionarVideos } from "./AdicionarVideos";
-import { AdicionarPdf, AdicionarQuestao, AulasDoSubmodulo, Classificar, NovaAulaAoVivo } from "./Paineis";
+import { AdicionarPdf, AdicionarQuestao, AssuntoDaLinha, AulasDoSubmodulo, Classificar, NovaAulaAoVivo } from "./Paineis";
 
 type Adicionando = "video" | "pdf" | "questao" | "aovivo" | "classificar" | null;
 
@@ -61,6 +61,7 @@ export function SecaoDoSubmodulo({
   const outros = modulo.submodulos.filter((s) => s.id !== sub.id);
   const arrastar = useArrastar(sub.itens.map((i) => i.id), Object.fromEntries(sub.itens.map((i) => [i.id, i.nome])), aoReordenar);
   const fechar = () => setAdicionando(null);
+  const semAssunto = sub.itens.filter((i) => !i.assuntos?.length).length;
   // A prévia do vídeo cru: qual linha está aberta, e se o painel está na tela (ao fechar, a linha
   // continua guardada enquanto ele sai).
   const [previa, setPrevia] = useState<number | null>(null);
@@ -105,7 +106,10 @@ export function SecaoDoSubmodulo({
         ) : (
           <>
             <h3 className="text-[17px] font-bold tracking-[-0.01em] text-tinta">{sub.nome}</h3>
-            <p className="text-[13px] text-suave">{composicao(sub.itens)}</p>
+            <p className="text-[13px] text-suave">
+              {composicao(sub.itens)}
+              {semAssunto > 0 && <span title="Sem assunto, a linha não entra no que o aluno recebe para revisar">, {semAssunto} sem assunto</span>}
+            </p>
             <div className="ml-auto flex items-center gap-1">
               <Menu rotulo={`Adicionar em ${sub.nome}`} itens={entradas} largura="w-80" className={botao("secundario", "pequeno")}>
                 <Plus aria-hidden="true" className="size-4" strokeWidth={2.4} />
@@ -142,6 +146,7 @@ export function SecaoDoSubmodulo({
               primeira={j === 0}
               ultima={j === sub.itens.length - 1}
               todasAsTurmas={todasAsTurmas}
+              assuntos={assuntos}
               executar={executar}
               confirmar={confirmar}
               aoVer={() => ver(item)}
@@ -228,6 +233,7 @@ function Linha({
   primeira,
   ultima,
   todasAsTurmas,
+  assuntos,
   executar,
   confirmar,
   aoVer,
@@ -240,12 +246,13 @@ function Linha({
   primeira: boolean;
   ultima: boolean;
   todasAsTurmas: string[];
+  assuntos: Assunto[];
   executar: Executar;
   confirmar: Confirmar;
   aoVer: () => void;
 }) {
   const router = useRouter();
-  const [modo, setModo] = useState<"nome" | "pdf" | "turmas" | null>(null);
+  const [modo, setModo] = useState<"nome" | "pdf" | "turmas" | "assunto" | null>(null);
   const [nome, setNome] = useState(item.nome);
   const tipo = tipoDaLinha(item);
   const restrita = !!item.turmas?.length;
@@ -274,6 +281,7 @@ function Linha({
     tipo === "pdf" && !!item.material && { rotulo: "Abrir o PDF", icone: ExternalLink, aoEscolher: () => router.push(`/materiais/ler/?id=${item.material!.material_id}`) },
     tipo !== "questao" && { rotulo: item.material ? "Trocar o PDF" : "Anexar PDF", icone: Paperclip, aoEscolher: () => setModo("pdf") },
     tipo === "video" && !!item.material && { rotulo: "Tirar o PDF", icone: Paperclip, aoEscolher: () => void executar(() => api.materialDoItem(item.id, null), `"${item.nome}" ficou sem PDF.`) },
+    { rotulo: item.assuntos?.length ? "Trocar o assunto" : "Pôr assunto", icone: Tags, aoEscolher: () => setModo("assunto") },
     { rotulo: restrita ? "Mudar as turmas que veem" : "Só para algumas turmas", icone: Users, aoEscolher: () => setModo("turmas") },
     "divisor",
     { rotulo: "Mover para cima", icone: ArrowUp, desabilitado: primeira, aoEscolher: () => arrastar.passo(item.id, -1) },
@@ -329,6 +337,7 @@ function Linha({
           aoFechar={voltar}
         />
       )}
+      {modo === "assunto" && <AssuntoDaLinha item={item} tipo={tipo} assuntos={assuntos} executar={executar} aoFechar={voltar} />}
       {modo === "turmas" && (
         <EscolherTurmas
           abertoDeInicio
@@ -345,15 +354,30 @@ function Linha({
   );
 }
 
-/** A segunda linha: o tipo por extenso e o que ajuda a reconhecer o conteúdo. */
+/** O assunto do conteúdo da linha, por extenso: "Estequiometria › Mol". Sem assunto, nada. */
+function AssuntoNaLinha({ item }: { item: ItemCurso }) {
+  if (!item.assuntos?.length) return null;
+  return (
+    <span className="ml-2 inline-flex items-center gap-1 align-middle font-medium text-tinta-2">
+      <Tags aria-hidden="true" className="size-3.5 text-suave" strokeWidth={2} />
+      <span className="sr-only">Assunto: </span>
+      {item.assuntos.map((a) => (a.subassunto ? `${a.assunto} › ${a.subassunto}` : a.assunto)).join(", ")}
+    </span>
+  );
+}
+
+/** A segunda linha: o tipo por extenso, o que ajuda a reconhecer o conteúdo e o assunto dele. */
 function Detalhe({ item, tipo }: { item: ItemCurso; tipo: Tipo }) {
   const classe = "mt-0.5 text-[13px] text-suave";
   if (tipo === "questao" && item.questao) {
     return (
-      <p className={`${classe} line-clamp-1`}>
-        Questão #{item.questao.questao_id}
-        {item.questao.status && item.questao.status !== "PUBLICADO" && " (em rascunho no banco)"}
-        {item.questao.resumo && `: ${item.questao.resumo}`}
+      <p className={classe}>
+        <span className="line-clamp-1">
+          Questão #{item.questao.questao_id}
+          {item.questao.status && item.questao.status !== "PUBLICADO" && " (em rascunho no banco)"}
+          {item.questao.resumo && `: ${item.questao.resumo}`}
+        </span>
+        {item.assuntos?.length ? <span className="-ml-2 block"><AssuntoNaLinha item={item} /></span> : null}
       </p>
     );
   }
@@ -366,6 +390,7 @@ function Detalhe({ item, tipo }: { item: ItemCurso; tipo: Tipo }) {
             : <Link href={`/materiais/ler/?id=${item.material.material_id}`} className="font-medium text-acento hover:underline">{item.material.titulo}</Link>
           </>
         )}
+        <AssuntoNaLinha item={item} />
       </p>
     );
   }
@@ -377,6 +402,7 @@ function Detalhe({ item, tipo }: { item: ItemCurso; tipo: Tipo }) {
           , com o PDF <Link href={`/materiais/ler/?id=${item.material.material_id}`} className="font-medium text-acento hover:underline">{item.material.titulo}</Link>
         </>
       )}
+      <AssuntoNaLinha item={item} />
     </p>
   );
 }

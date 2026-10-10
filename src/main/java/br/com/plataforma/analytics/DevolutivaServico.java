@@ -54,12 +54,14 @@ public class DevolutivaServico {
     private final ContasServico contas;
     private final EstruturaServico estrutura;
     private final ExerciciosServico exercicios;
+    private final br.com.plataforma.catalogo.CatalogoServico catalogo;
 
     @PersistenceContext
     private EntityManager em;
 
     public DevolutivaServico(TaxonomiaServico taxonomia, AcessoServico acesso, ContasServico contas,
-            EstruturaServico estrutura, ExerciciosServico exercicios) {
+            EstruturaServico estrutura, ExerciciosServico exercicios, br.com.plataforma.catalogo.CatalogoServico catalogo) {
+        this.catalogo = catalogo;
         this.taxonomia = taxonomia;
         this.acesso = acesso;
         this.contas = contas;
@@ -239,9 +241,26 @@ public class DevolutivaServico {
                 ajustado, nivelDe(ajustado), c.daAula, c.deSimulado);
     }
 
+    /** Uma linha do curso do aluno, com o que há nela e como ele está nela. */
+    private record LinhaDoCurso(Integer itemId, Integer moduloId, String modulo, String nome, Integer videoId,
+            Integer materialId, Integer questaoId, boolean respondida, Boolean correta) {}
+
+    /** Quantas linhas de cada tipo cabem numa recomendação: é para revisar, não para refazer o curso. */
+    private static final int LINHAS_POR_TIPO = 4;
+
+    private static boolean trata(List<br.com.plataforma.taxonomia.EtiquetaComId> etiquetas, Integer assuntoId, Integer subassuntoId, boolean exato) {
+        return etiquetas.stream().anyMatch(e -> e.assuntoId().equals(assuntoId)
+                && (subassuntoId == null || (exato ? subassuntoId.equals(e.subassuntoId()) : e.subassuntoId() == null)));
+    }
+
     /**
-     * Os pontos mais fracos, do pior para o melhor, com os vídeos que explicam cada um. Vai no
-     * sub-assunto quando o assunto tem; senão, no assunto. O que está indo bem não entra.
+     * Os pontos mais fracos, do pior para o melhor. Vai no sub-assunto quando o assunto tem; senão,
+     * no assunto. O que está indo bem não entra.
+     *
+     * <p>Para cada ponto, primeiro o que há no curso do próprio aluno, com o endereço da linha:
+     * os vídeos e os PDFs daquele assunto, as questões dele que ainda não respondeu e as que
+     * respondeu e errou. O assunto de cada um é o do conteúdo (ver {@code AssuntoDasLinhas}). Depois,
+     * os outros vídeos do acervo sobre o ponto, que podem aparecer bloqueados.
      */
     private List<AnalyticsServico.Recomendacao> ondeRevisar(Identidade ident, List<AssuntoNaDevolutiva> assuntos, Instant agora) {
         record Ponto(Integer assuntoId, Integer subassuntoId, String rotulo, int erros, double ajustado, Nivel nivel) {}
@@ -254,17 +273,65 @@ public class DevolutivaServico {
                 pontos.add(new Ponto(a.id(), s.id(), s.nome(), s.respostas() - s.acertos(), s.ajustado(), s.nivel()));
             }
         }
-        return pontos.stream()
+        var fracos = pontos.stream()
                 .filter(p -> p.nivel() != Nivel.BEM && p.erros() > 0)
                 .sorted(Comparator.comparingDouble(Ponto::ajustado))
                 .limit(4)
-                .map(p -> {
-                    var videos = taxonomia.videosQueExplicam(p.assuntoId(), p.subassuntoId(), 3);
-                    var liberados = acesso.videosLiberados(ident, videos.stream().map(Video::getId).toList(), agora);
-                    return new AnalyticsServico.Recomendacao(p.rotulo(), p.erros(),
-                            videos.stream().map(v -> AcessoServico.descrever(v, liberados.contains(v.getId()))).toList());
-                })
                 .toList();
+        if (fracos.isEmpty()) {
+            return List.of();
+        }
+
+        // O curso do aluno, uma vez só, e o assunto de tudo o que há nele: três consultas.
+        var linhas = new ArrayList<LinhaDoCurso>();
+        for (var turma : catalogo.conteudoDoAluno(ident, agora)) {
+            for (var m : turma.modulos()) {
+                for (var sub : m.submodulos()) {
+                    for (var i : sub.itens()) {
+                        var q = i.questao();
+                        linhas.add(new LinhaDoCurso(i.id(), m.id(), m.nome(), i.nome(),
+                                q == null ? i.videoId() : null,
+                                q == null && i.videoId() == null && i.material() != null ? i.material().materialId() : null,
+                                q == null ? null : q.questaoId(), q != null && q.respondida(), q == null ? null : q.correta()));
+                    }
+                }
+            }
+        }
+        var dosVideos = taxonomia.etiquetasDosVideos(linhas.stream().map(LinhaDoCurso::videoId).filter(java.util.Objects::nonNull).distinct().toList());
+        var dosMateriais = taxonomia.etiquetasDosMateriais(linhas.stream().map(LinhaDoCurso::materialId).filter(java.util.Objects::nonNull).distinct().toList());
+        var dasQuestoes = taxonomia.etiquetasDasQuestoes(linhas.stream().map(LinhaDoCurso::questaoId).filter(java.util.Objects::nonNull).distinct().toList());
+        java.util.function.Function<LinhaDoCurso, List<br.com.plataforma.taxonomia.EtiquetaComId>> etiquetasDa = l ->
+                l.questaoId() != null ? dasQuestoes.getOrDefault(l.questaoId(), List.of())
+                        : l.videoId() != null ? dosVideos.getOrDefault(l.videoId(), List.of())
+                        : l.materialId() != null ? dosMateriais.getOrDefault(l.materialId(), List.of()) : List.of();
+        java.util.function.Function<LinhaDoCurso, String> tipoDa = l ->
+                l.videoId() != null ? "VIDEO" : l.materialId() != null ? "PDF"
+                        : l.questaoId() == null ? null : !l.respondida() ? "QUESTAO" : Boolean.FALSE.equals(l.correta()) ? "ERRO" : null;
+
+        return fracos.stream().map(p -> {
+            // Primeiro quem é exatamente do sub-assunto; depois quem é do assunto, sem sub-assunto.
+            var doPonto = new ArrayList<LinhaDoCurso>();
+            for (var exato : new boolean[] {true, false}) {
+                if (!exato && p.subassuntoId() == null) {
+                    break;
+                }
+                linhas.stream().filter(l -> trata(etiquetasDa.apply(l), p.assuntoId(), p.subassuntoId(), exato))
+                        .filter(l -> !doPonto.contains(l)).forEach(doPonto::add);
+            }
+            var noCurso = new ArrayList<AnalyticsServico.LinhaParaRevisar>();
+            for (var tipo : List.of("VIDEO", "PDF", "QUESTAO", "ERRO")) {
+                doPonto.stream().filter(l -> tipo.equals(tipoDa.apply(l))).limit(LINHAS_POR_TIPO)
+                        .forEach(l -> noCurso.add(new AnalyticsServico.LinhaParaRevisar(tipo, l.itemId(), l.moduloId(), l.modulo(), l.nome())));
+            }
+
+            // O que já está no curso dele aparece como linha; aqui fica o resto do acervo.
+            var jaNoCurso = doPonto.stream().map(LinhaDoCurso::videoId).filter(java.util.Objects::nonNull).collect(java.util.stream.Collectors.toSet());
+            var videos = taxonomia.videosQueExplicam(p.assuntoId(), p.subassuntoId(), 3 + jaNoCurso.size()).stream()
+                    .filter(v -> !jaNoCurso.contains(v.getId())).limit(3).toList();
+            var liberados = acesso.videosLiberados(ident, videos.stream().map(Video::getId).toList(), agora);
+            return new AnalyticsServico.Recomendacao(p.rotulo(), p.erros(),
+                    videos.stream().map(v -> AcessoServico.descrever(v, liberados.contains(v.getId()))).toList(), noCurso);
+        }).toList();
     }
 
     // --- as três visões ------------------------------------------------------------

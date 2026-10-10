@@ -3,7 +3,7 @@
 // O módulo aberto na tela de montar o curso: a ficha dele (capa, nome, categoria, turmas) e, embaixo,
 // os sub-módulos com as linhas.
 
-import { ArrowDown, ArrowUp, ImageIcon, Pencil, Plus, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, ImageIcon, Pencil, Plus, Tags, Trash2 } from "lucide-react";
 import { useState, type FormEvent } from "react";
 import { Modal } from "@/components/Camadas";
 import { CapaDoModulo } from "@/components/CapaDoModulo";
@@ -15,6 +15,7 @@ import { Aviso, Botao, Cartao } from "@/components/ui";
 import { api, type Assunto, type Aula, type Modulo } from "@/lib/api";
 import { plural } from "@/lib/formato";
 import { BIBLIOTECA, composicao, type Confirmar, type Executar } from "./comum";
+import { Classificar } from "./Paineis";
 import { SecaoDoSubmodulo } from "./Submodulo";
 
 export function EditorDoModulo({
@@ -53,6 +54,7 @@ export function EditorDoModulo({
   const [renomeando, setRenomeando] = useState(false);
   const [nome, setNome] = useState(modulo.nome);
   const [trocandoCapa, setTrocandoCapa] = useState(false);
+  const [classificando, setClassificando] = useState(false);
   const [novoSub, setNovoSub] = useState(false);
   const [nomeSub, setNomeSub] = useState("");
   const itens = modulo.submodulos.flatMap((s) => s.itens);
@@ -155,6 +157,7 @@ export function EditorDoModulo({
           itens={[
             { rotulo: "Renomear", icone: Pencil, aoEscolher: () => { setNome(modulo.nome); setRenomeando(true); } },
             { rotulo: "Trocar a capa", icone: ImageIcon, aoEscolher: () => setTrocandoCapa(true) },
+            { rotulo: "Classificar por assunto", icone: Tags, aoEscolher: () => setClassificando(true) },
             { rotulo: "Mover para cima", icone: ArrowUp, desabilitado: !vizinhos.acima, aoEscolher: () => aoMover(-1) },
             { rotulo: "Mover para baixo", icone: ArrowDown, desabilitado: !vizinhos.abaixo, aoEscolher: () => aoMover(1) },
             "divisor",
@@ -164,6 +167,7 @@ export function EditorDoModulo({
       </header>
 
       {trocandoCapa && <TrocarCapa modulo={modulo} executar={executar} aoFechar={() => setTrocandoCapa(false)} />}
+      {classificando && <Classificar modulo={modulo} assuntos={assuntos} executar={executar} aoFechar={() => setClassificando(false)} />}
 
       {nomeDaTurma && !recebe && (
         <Aviso tom="atencao" className="mx-4 mb-4 sm:mx-5">
