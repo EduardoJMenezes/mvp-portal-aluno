@@ -202,7 +202,7 @@ export function Campo({ rotulo, dica, children, className = "" }: { rotulo: stri
 
 export function Abas<T extends string>({ abas, atual, aoTrocar }: { abas: { valor: T; rotulo: string }[]; atual: T; aoTrocar: (valor: T) => void }) {
   return (
-    <div role="tablist" className="flex gap-1 overflow-x-auto border-b border-borda">
+    <div role="tablist" className="flex gap-1 overflow-x-auto overflow-y-hidden border-b border-borda">
       {abas.map((aba) => (
         <button
           key={aba.valor}

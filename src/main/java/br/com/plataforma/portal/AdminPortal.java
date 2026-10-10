@@ -363,6 +363,14 @@ public class AdminPortal {
         return vimeoImportacao.listarPastas(busca, limite);
     }
 
+    /** A pasta inteira, já na ordem em que entraria no curso. */
+    @GetMapping("/vimeo/pastas/{pasta}/videos")
+    public ImportacaoVimeo.VideosDaPasta vimeoVideosDaPasta(@AuthenticationPrincipal Identidade ident,
+            @PathVariable String pasta) {
+        ident.exigirOperador();
+        return vimeoImportacao.videosDaPasta(pasta);
+    }
+
     @GetMapping("/vimeo/videos")
     public List<Vimeo.Video> vimeoVideos(@AuthenticationPrincipal Identidade ident,
             @RequestParam(required = false) String pasta, @RequestParam(required = false) String busca,

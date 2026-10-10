@@ -43,6 +43,8 @@ seção "Em aberto", no fim.
 > escolhe o ícone pelo nome do capítulo. Escolher um ícone tira a foto. A foto
 > mora em `modules.foto`, fora da entidade, e só chega a quem alcança o módulo
 > (`/api/aluno/modulos/{id}/foto`): professor, sempre; aluno, o da turma dele.
+> Pelo Claude vai só o ícone (`criar_modulo`, `editar_modulo`) — arquivo não
+> passa pelo chat.
 >
 > **Mudou em 07/10/2026: a ordem muda de uma vez.** A tela "Montar o curso"
 > (`/admin/biblioteca`, em `frontend/components/curso/`) reordena arrastando, e
@@ -96,8 +98,20 @@ seção "Em aberto", no fim.
 >   aluno lê o da alternativa que marcou e o da correta — na aula, logo depois
 >   de responder; no simulado, com o resultado. Como a resolução, muda mesmo
 >   com a prova aberta. E continua valendo: o aluno responde **uma vez**.
-> Pelo Claude vai só o ícone (`criar_modulo`, `editar_modulo`) — arquivo não
-> passa pelo chat.
+>
+> **Mudou em 09/10/2026: a pasta inteira do Vimeo entra pela tela.** Em
+> "Montar o curso", "Adicionar › Vídeos" abre o acervo como ele está guardado:
+> o professor desce pelas pastas (ano › curso › capítulo), escolhe uma e os
+> vídeos dela entram no sub-módulo de uma vez, já publicados. A lista de
+> pastas passou a dizer onde cada uma mora (`pai_id` em
+> `GET /api/admin/vimeo/pastas`), e `GET /api/admin/vimeo/pastas/{pasta}/videos`
+> devolve a pasta na ordem em que entra: pelo número do título quando há
+> ("Q04"), e o resto em ordem natural ("Aula 2" antes de "Aula 10"). Vídeo
+> que o aluno não conseguiria assistir vem com aviso e desmarcado; o que já
+> está no sub-módulo não entra de novo. A gravação continua sendo a rota de
+> sempre (`POST .../submodulos/{sub}/itens`). A importação por faixa de
+> números, que distribui uma pasta por vários módulos e gera rascunho,
+> continua em "Importar".
 
 ## O que está errado hoje
 

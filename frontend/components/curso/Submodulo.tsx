@@ -13,12 +13,13 @@ import { EscolherPdf } from "@/components/Pdf";
 import { Botao, Etiqueta, botao } from "@/components/ui";
 import { api, type Assunto, type Aula, type ItemCurso, type Modulo, type SubModulo } from "@/lib/api";
 import { Alca, Azulejo, BIBLIOTECA, Marca, TIPOS, composicao, tipoDaLinha, useArrastar, type Arrastar, type Confirmar, type Executar, type Tipo } from "./comum";
-import { AdicionarQuestao, AdicionarVideos, AulasDoSubmodulo, Classificar, NovaAulaAoVivo, Painel } from "./Paineis";
+import { AdicionarVideos } from "./AdicionarVideos";
+import { AdicionarQuestao, AulasDoSubmodulo, Classificar, NovaAulaAoVivo, Painel } from "./Paineis";
 
 type Adicionando = "video" | "pdf" | "questao" | "aovivo" | "classificar" | null;
 
 const O_QUE_ENTRA: { tipo: Tipo; rotulo: string; dica: string }[] = [
-  { tipo: "video", rotulo: "Vídeos", dica: "Do Vimeo, pelo título. Dá para marcar vários." },
+  { tipo: "video", rotulo: "Vídeos", dica: "Do Vimeo: uma pasta inteira ou alguns pelo título." },
   { tipo: "pdf", rotulo: "PDF", dica: "Um material que já existe ou um arquivo novo." },
   { tipo: "questao", rotulo: "Questão", dica: "Nova, ou do banco de questões." },
   { tipo: "aovivo", rotulo: "Aula ao vivo", dica: "Agenda no Zoom; a gravação entra aqui." },

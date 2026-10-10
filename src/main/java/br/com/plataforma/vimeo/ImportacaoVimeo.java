@@ -72,11 +72,9 @@ public class ImportacaoVimeo {
 
     public record Plano(String pastaId, String pastaNome, List<ItemDoPlano> itens) {}
 
-    private static List<String> avisosDoVideo(Vimeo.Video v, Integer numero) {
+    /** O que impede o aluno de assistir: vale para qualquer vídeo, com ou sem número no título. */
+    private static List<String> avisosDeReproducao(Vimeo.Video v) {
         var avisos = new ArrayList<String>();
-        if (numero == null) {
-            avisos.add("não consegui ler o número da questão no título");
-        }
         if (!v.publicavel()) {
             avisos.add("ainda não está pronto no Vimeo (status %s)".formatted(v.status()));
         }
@@ -88,6 +86,33 @@ public class ImportacaoVimeo {
         }
         return avisos;
     }
+
+    private static List<String> avisosDoVideo(Vimeo.Video v, Integer numero) {
+        var avisos = new ArrayList<String>();
+        if (numero == null) {
+            avisos.add("não consegui ler o número da questão no título");
+        }
+        avisos.addAll(avisosDeReproducao(v));
+        return avisos;
+    }
+
+    private static final java.util.regex.Pattern PEDACOS = java.util.regex.Pattern.compile("\\d+|\\D+");
+
+    /** "Aula 2" antes de "Aula 10": os números do título contam como número, não como letra. */
+    static final Comparator<String> ORDEM_NATURAL = (a, b) -> {
+        var ma = PEDACOS.matcher(a.toLowerCase(Locale.ROOT));
+        var mb = PEDACOS.matcher(b.toLowerCase(Locale.ROOT));
+        while (ma.find() && mb.find()) {
+            var pa = ma.group();
+            var pb = mb.group();
+            var numeros = Character.isDigit(pa.charAt(0)) && Character.isDigit(pb.charAt(0));
+            var c = numeros ? new java.math.BigInteger(pa).compareTo(new java.math.BigInteger(pb)) : pa.compareTo(pb);
+            if (c != 0) {
+                return c;
+            }
+        }
+        return Integer.compare(a.length(), b.length());
+    };
 
     /** Lê a pasta no Vimeo e ordena pelo número do título (a API devolve fora de ordem). */
     public Plano lerPlano(String pastaId) {
@@ -102,12 +127,39 @@ public class ImportacaoVimeo {
         }
         itens.sort(Comparator.comparing((ItemDoPlano i) -> i.numero() == null)
                 .thenComparing(i -> i.numero() == null ? 0 : i.numero())
-                .thenComparing(ItemDoPlano::titulo));
+                .thenComparing(ItemDoPlano::titulo, ORDEM_NATURAL));
         return new Plano(String.valueOf(pastaId), pasta.nome(), itens);
     }
 
+    /** Um vídeo da pasta, com o que o portal precisa para pôr no curso e tocar. */
+    public record VideoDaPasta(String vimeoId, String titulo, Integer duracaoSegundos, String url,
+            String embedUrl, String thumbnailUrl, List<String> avisos) {}
+
+    public record VideosDaPasta(PastaDoPlano pasta, List<VideoDaPasta> videos) {}
+
+    /**
+     * A pasta inteira, na ordem em que entraria no curso: pelo número do título quando há ("Q04"),
+     * e o resto pelo título em ordem natural. É a tela de montar o curso trazendo a pasta de uma vez.
+     */
+    public VideosDaPasta videosDaPasta(String pastaId) {
+        var pasta = vimeo.obterPasta(pastaId);
+        var videos = vimeo.listarVideosDaPasta(pastaId).stream()
+                .filter(v -> v.id() != null && !v.id().isBlank())
+                .sorted(Comparator.comparing((Vimeo.Video v) -> Nomes.inferirNumero(v.titulo()).numero() == null)
+                        .thenComparing(v -> {
+                            var numero = Nomes.inferirNumero(v.titulo()).numero();
+                            return numero == null ? 0 : numero;
+                        })
+                        .thenComparing(v -> v.titulo() == null ? "" : v.titulo(), ORDEM_NATURAL))
+                .map(v -> new VideoDaPasta(v.id(), v.titulo() == null ? "(sem título)" : v.titulo(),
+                        v.duracaoSegundos(), v.url(), v.embedUrl(), v.thumbnailUrl(), avisosDeReproducao(v)))
+                .toList();
+        return new VideosDaPasta(new PastaDoPlano(pasta.id(), pasta.nome()), videos);
+    }
+
+    /** {@code paiId}: a pasta em que esta mora; é com ele que a tela navega pela hierarquia. */
     public record PastaNaLista(String id, String nome, String dentroDe, Integer videos,
-            Integer videosComSubpastas, boolean temSubpasta) {}
+            Integer videosComSubpastas, boolean temSubpasta, String paiId) {}
 
     public record Pastas(int totalNoVimeo, int mostrando, List<PastaNaLista> pastas) {}
 
@@ -115,14 +167,19 @@ public class ImportacaoVimeo {
     public Pastas listarPastas(String busca, int limite) {
         var pastas = vimeo.listarPastas();
         var nomes = new LinkedHashMap<String, String>();
-        pastas.forEach(p -> nomes.put(p.uri(), p.nome()));
+        var ids = new LinkedHashMap<String, String>();
+        pastas.forEach(p -> {
+            nomes.put(p.uri(), p.nome());
+            ids.put(p.uri(), p.id());
+        });
         var termo = busca == null ? "" : busca.toLowerCase(Locale.ROOT);
         var filtradas = pastas.stream()
                 .filter(p -> termo.isEmpty() || (p.nome() == null ? "" : p.nome().toLowerCase(Locale.ROOT)).contains(termo))
                 .toList();
         return new Pastas(pastas.size(), Math.min(filtradas.size(), limite), filtradas.stream().limit(limite)
                 .map(p -> new PastaNaLista(p.id(), p.nome(), p.paiUri() == null ? null : nomes.get(p.paiUri()),
-                        p.totalVideos(), p.totalVideosComSubpastas(), p.temSubpasta()))
+                        p.totalVideos(), p.totalVideosComSubpastas(), p.temSubpasta(),
+                        p.paiUri() == null ? null : ids.get(p.paiUri())))
                 .toList());
     }
 

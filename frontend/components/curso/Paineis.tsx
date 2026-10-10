@@ -1,24 +1,32 @@
 "use client";
 
-// O que se abre dentro de um sub-módulo para pôr conteúdo nele: vídeos do Vimeo, questão, aula ao
-// vivo e a etiqueta de assunto. O PDF usa o EscolherPdf, que já existia.
+// O que se abre dentro de um sub-módulo para pôr conteúdo nele: questão, aula ao vivo e a etiqueta
+// de assunto. Os vídeos do Vimeo estão em AdicionarVideos; o PDF usa o EscolherPdf, que já existia.
 
 import { X } from "lucide-react";
 import Link from "next/link";
-import { useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { CampoCategoria } from "@/components/Categoria";
 import { ColocarVideo } from "@/components/ColocarVideo";
 import { BuscaNoBanco } from "@/components/MontarProva";
 import { PdfDaAulaAoVivo } from "@/components/Pdf";
 import { Aviso, Botao, BotaoLink, Campo } from "@/components/ui";
-import { abrirEmNovaAba, api, type Assunto, type Aula, type Modulo, type SubModulo, type VideoVimeo } from "@/lib/api";
-import { duracao, emBrasilia, plural } from "@/lib/formato";
+import { abrirEmNovaAba, api, type Assunto, type Aula, type Modulo, type SubModulo } from "@/lib/api";
+import { emBrasilia } from "@/lib/formato";
 import { Azulejo, BIBLIOTECA, type Executar, type Tipo } from "./comum";
 
 /** A moldura comum: o tipo do que entra, o que vai acontecer e o X de fechar. */
 export function Painel({ tipo, titulo, legenda, aoFechar, children }: { tipo?: Tipo; titulo: string; legenda?: ReactNode; aoFechar: () => void; children: ReactNode }) {
+  // O painel abre depois da última linha: num sub-módulo comprido, isso é fora da tela.
+  const moldura = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const caixa = moldura.current?.getBoundingClientRect();
+    if (!caixa || (caixa.top >= 0 && caixa.bottom <= window.innerHeight)) return;
+    moldura.current?.scrollIntoView({ block: "center", behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+  }, []);
+
   return (
-    <div className="rounded-cartao border border-borda bg-canvas/70 p-4">
+    <div ref={moldura} className="rounded-cartao border border-borda bg-canvas/70 p-4">
       <div className="mb-3 flex items-start gap-3">
         {tipo && <Azulejo tipo={tipo} />}
         <div className="min-w-0 flex-1">
@@ -31,92 +39,6 @@ export function Painel({ tipo, titulo, legenda, aoFechar, children }: { tipo?: T
       </div>
       {children}
     </div>
-  );
-}
-
-// --- vídeos do Vimeo -----------------------------------------------------------
-
-export function AdicionarVideos({ modulo, sub, executar, aoFechar }: { modulo: Modulo; sub: SubModulo; executar: Executar; aoFechar: () => void }) {
-  const [busca, setBusca] = useState("");
-  const [resultados, setResultados] = useState<VideoVimeo[] | null>(null);
-  const [escolhidos, setEscolhidos] = useState<Record<string, VideoVimeo>>({});
-  const [buscando, setBuscando] = useState(false);
-  const [erro, setErro] = useState("");
-
-  async function buscar(e: FormEvent) {
-    e.preventDefault();
-    setBuscando(true);
-    setErro("");
-    try {
-      setResultados(await api.videosVimeo({ busca: busca.trim(), limite: 25 }));
-    } catch (ex) {
-      setErro((ex as Error).message);
-    } finally {
-      setBuscando(false);
-    }
-  }
-
-  async function adicionar() {
-    const videos = Object.values(escolhidos).map((v) => ({ vimeo_id: v.id, titulo: v.titulo, embed_url: v.embed_url }));
-    let recusados: string[] = [];
-    const ok = await executar(
-      async () => {
-        recusados = (await api.adicionarVideos(BIBLIOTECA, modulo.id, sub.id, videos)).erros;
-      },
-      () =>
-        `${plural(videos.length - recusados.length, "vídeo adicionado", "vídeos adicionados")} em ${sub.nome}, já ${videos.length - recusados.length === 1 ? "publicado" : "publicados"}.` +
-        (recusados.length ? ` Ficaram de fora: ${recusados.join("; ")}.` : ""),
-    );
-    if (ok) aoFechar();
-  }
-
-  const quantos = Object.keys(escolhidos).length;
-
-  return (
-    <Painel tipo="video" titulo="Adicionar vídeos" legenda="Busque no Vimeo pelo título e marque quantos quiser. Entram no fim da lista, já publicados." aoFechar={aoFechar}>
-      <div className="flex flex-col gap-3">
-        <form onSubmit={buscar} className="flex flex-wrap items-end gap-2">
-          <Campo rotulo="Título no Vimeo" className="min-w-60 flex-1">
-            {(id) => <input id={id} autoFocus value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Ex.: Aula 3, ou Q04" className="campo" />}
-          </Campo>
-          <Botao type="submit" variante="secundario" disabled={buscando}>{buscando ? "Buscando…" : "Buscar"}</Botao>
-        </form>
-        {erro && <Aviso tom="erro">{erro}</Aviso>}
-        {resultados && resultados.length === 0 && <p className="text-[15px] text-suave">Nenhum vídeo com esse título. Tente uma parte menor do nome.</p>}
-        {resultados && resultados.length > 0 && (
-          <ul className="max-h-72 divide-y divide-borda overflow-y-auto rounded-xl border border-borda bg-papel">
-            {resultados.map((v) => (
-              <li key={v.id}>
-                <label className="flex cursor-pointer items-center gap-3 px-3 py-2.5 hover:bg-canvas">
-                  <input
-                    type="checkbox"
-                    checked={!!escolhidos[v.id]}
-                    onChange={(e) =>
-                      setEscolhidos((atual) => {
-                        const novo = { ...atual };
-                        if (e.target.checked) novo[v.id] = v;
-                        else delete novo[v.id];
-                        return novo;
-                      })
-                    }
-                    className="size-4 accent-acento"
-                  />
-                  <span className="min-w-0 flex-1 truncate text-[15px]">{v.titulo}</span>
-                  <span className="shrink-0 text-[13px] tabular-nums text-suave">{duracao(v.duracao_segundos)}</span>
-                </label>
-              </li>
-            ))}
-          </ul>
-        )}
-        {resultados && resultados.length > 0 && (
-          <div>
-            <Botao variante="primario" disabled={!quantos} onClick={() => void adicionar()}>
-              {quantos ? `Adicionar ${plural(quantos, "vídeo")}` : "Marque os vídeos"}
-            </Botao>
-          </div>
-        )}
-      </div>
-    </Painel>
   );
 }
 

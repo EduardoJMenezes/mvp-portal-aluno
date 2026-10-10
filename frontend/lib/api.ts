@@ -169,7 +169,7 @@ export type QuestaoDaLinha = { questao_id: number; resumo?: string; status?: Sta
  * Sem `video_id`, a linha é só o PDF de `material` ou a `questao` que o aluno responde ali.
  * `concluido` só vem para o aluno: ele já assistiu o vídeo, abriu o PDF ou respondeu a questão.
  */
-export type ItemCurso = { id: number; nome: string; ordem: number; status: StatusConteudo; video_id: number | null; video?: Video | null; turmas?: string[]; material?: MaterialLigado | null; questao?: QuestaoDaLinha | null; concluido?: boolean };
+export type ItemCurso = { id: number; nome: string; ordem: number; status: StatusConteudo; video_id: number | null; vimeo_id?: string | null; video?: Video | null; turmas?: string[]; material?: MaterialLigado | null; questao?: QuestaoDaLinha | null; concluido?: boolean };
 
 /** Aula assistida. `posicao_segundos`: de onde o vídeo continua. */
 export type ProgressoDoItem = { item_id: number; concluido: boolean; posicao_segundos: number };
@@ -590,7 +590,9 @@ export type Aluno = { id: number; nome: string; email: string; senha_temporaria:
 
 export type TokenMcp = { id: number; nome: string; criado_em: string | null; ultimo_uso_em: string | null; revogado: boolean };
 
-export type PastaVimeo = { id: string; nome: string; dentro_de: string | null; videos: number | null; videos_com_subpastas: number | null; tem_subpasta: boolean };
+export type PastaVimeo = { id: string; nome: string; dentro_de: string | null; videos: number | null; videos_com_subpastas: number | null; tem_subpasta: boolean; pai_id?: string | null };
+/** Um vídeo da pasta, na ordem em que entraria no curso. `avisos`: o que impediria o aluno de assistir. */
+export type VideoDaPasta = { vimeo_id: string; titulo: string; duracao_segundos: number | null; url: string | null; embed_url: string | null; thumbnail_url: string | null; avisos: string[] };
 export type VideoVimeo = { id: string; titulo: string; url?: string | null; thumbnail_url?: string | null; duracao_segundos?: number | null; embed_url?: string | null };
 
 export type ItemDoPlano = { numero: number | null; titulo: string; vimeo_id: string; duracao_segundos: number | null; confianca_do_numero: string; avisos: string[] };
@@ -846,7 +848,7 @@ export const api = {
     pedir(`/admin/turmas/${turma}/modulos/${modulo}/submodulos/${submodulo}/itens/${item}`, { method: "PATCH", json: dados }),
   removerItem: (turma: number | string, modulo: number, submodulo: number, item: number) =>
     pedir(`/admin/turmas/${turma}/modulos/${modulo}/submodulos/${submodulo}/itens/${item}`, { method: "DELETE" }),
-  adicionarVideos: (turma: number | string, modulo: number, submodulo: number, videos: { vimeo_id: string; titulo?: string; embed_url?: string | null; nome?: string }[]) =>
+  adicionarVideos: (turma: number | string, modulo: number, submodulo: number, videos: { vimeo_id: string; titulo?: string; embed_url?: string | null; nome?: string; url?: string | null; thumbnail_url?: string | null; duracao_segundos?: number | null; pasta?: string }[]) =>
     pedir<{ rascunho: Rascunho; erros: string[]; aviso: string }>(`/admin/turmas/${turma}/modulos/${modulo}/submodulos/${submodulo}/itens`, { method: "POST", json: { videos } }),
   classificar: (turma: number | string, modulo: number, submodulo: number, dados: { assunto: string; subassunto?: string; itens?: string }) =>
     pedir<{ videos_classificados: string[] }>(`/admin/turmas/${turma}/modulos/${modulo}/submodulos/${submodulo}/classificacao`, { method: "POST", json: dados }),
@@ -892,7 +894,8 @@ export const api = {
   ranking: (id: number) => pedir<Ranking>(`/admin/simulados/${id}/ranking`),
 
   // vimeo
-  pastasVimeo: (busca?: string) => pedir<{ total_no_vimeo: number; mostrando: number; pastas: PastaVimeo[] }>(`/admin/vimeo/pastas${q({ busca })}`),
+  pastasVimeo: (busca?: string, limite?: number) => pedir<{ total_no_vimeo: number; mostrando: number; pastas: PastaVimeo[] }>(`/admin/vimeo/pastas${q({ busca, limite })}`),
+  videosDaPasta: (pasta: string) => pedir<{ pasta: { id: string; nome: string }; videos: VideoDaPasta[] }>(`/admin/vimeo/pastas/${encodeURIComponent(pasta)}/videos`),
   videosVimeo: (filtro: { pasta?: string; busca?: string; limite?: number }) => pedir<VideoVimeo[]>(`/admin/vimeo/videos${q(filtro)}`),
   simularImportacao: (pasta: string, turma: string, destinos: Destino[]) =>
     pedir<SimulacaoVimeo>("/admin/vimeo/importacoes/simulacao", { method: "POST", json: { pasta, turma, destinos } }),
