@@ -51,7 +51,7 @@ export default function BancoDeQuestoes() {
       legenda="O acervo de questões: as de simulado e as que viram linha de aula, onde o aluno responde e vê o gabarito na hora."
       acoes={
         <>
-          <BotaoLink href="/admin/questoes/prints/">Figuras a partir de prints</BotaoLink>
+          <BotaoLink href="/admin/questoes/prints/">Questões a partir de prints</BotaoLink>
           <BotaoLink variante="primario" href="/admin/questoes/editar/">Nova questão</BotaoLink>
         </>
       }

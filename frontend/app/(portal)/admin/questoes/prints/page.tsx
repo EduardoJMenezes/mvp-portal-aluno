@@ -21,9 +21,9 @@ const PEDIDO = "Quero importar prints de questões.";
 /** O passo a passo dos dois caminhos: pelo Claude, que faz quase tudo, e à mão, por esta tela. */
 function Ajuda() {
   return (
-    <ComoFunciona titulo="Figuras a partir de prints" legenda="Para questão que está em imagem: print de prova, de PDF ou de site.">
+    <ComoFunciona titulo="Questões a partir de prints" legenda="Para questão que só existe em imagem: print de prova, de PDF ou de site.">
       <Caminho titulo="Pelo Claude" marca={<Etiqueta tom="info">O mais fácil</Etiqueta>}>
-        <p className="text-suave">Ele lê os prints, escreve as questões em rascunho e recorta as figuras.</p>
+        <p className="text-suave">É ele que transforma o print em questão: lê a imagem, escreve o enunciado e as alternativas em rascunho e recorta as figuras.</p>
         <Passos>
           <li>Se ainda não conectou o Claude ao portal, faça isso em <LinkNoTexto href="/admin/claude/">Conectar ao Claude</LinkNoTexto>.</li>
           <li>No chat, peça: “{PEDIDO}”</li>
@@ -33,17 +33,17 @@ function Ajuda() {
           <li>Confira o resultado em <LinkNoTexto href="/admin/rascunhos/">Rascunhos</LinkNoTexto>. Nada aparece para os alunos antes da sua aprovação.</li>
         </Passos>
       </Caminho>
-      <Caminho titulo="À mão, por esta tela">
-        <p className="text-suave">Você escreve a questão e marca no print onde está a figura.</p>
+      <Caminho titulo="Sem o Claude: só a figura">
+        <p className="text-suave">Esta tela não lê o texto do print. Você escreve a questão e usa a tela para recortar a figura de dentro dele.</p>
         <Passos>
           <li>Crie a questão em <LinkNoTexto href="/admin/questoes/editar/">Nova questão</LinkNoTexto> e deixe em rascunho. Onde a figura entra, escreva <code className="rounded-campo bg-canvas px-1.5 py-0.5 text-[13px]">![](figura:pendente)</code>.</li>
-          <li>Aqui, clique em “Enviar prints agora” e mande as imagens.</li>
+          <li>Aqui, clique em “Enviar prints para recortar” e mande as imagens.</li>
           <li>Em cada print, arraste sobre a figura, escolha a questão e clique em “Recortar para a questão”.</li>
         </Passos>
       </Caminho>
       <Caminho titulo="Os dois caminhos se encontram">
         <p className="text-suave">
-          Todo envio ganha um número de importação. Com o número que o Claude informar, você abre os prints aqui em “Já enviou?”. E o contrário também vale: envie por aqui e diga ao Claude o número.
+          Todo envio ganha um número de importação. Com o número que o Claude informar, você abre os prints aqui, em “Abra pelo número da importação”. E o contrário também vale: envie por aqui e diga ao Claude o número.
         </p>
         <p className="text-suave">Se a figura já é um arquivo de imagem, não precisa de nada disso: insira direto no editor da questão.</p>
       </Caminho>
@@ -90,8 +90,8 @@ function Envio() {
 
   return (
     <Pagina
-      titulo="Prints de questões"
-      legenda="Para questão que está em imagem: print de prova, de PDF ou de site. A figura sai recortada de dentro do print, direto para a questão em rascunho."
+      titulo="Questões a partir de prints"
+      legenda="Para questão que só existe em imagem: print de prova, de PDF ou de site. O Claude lê os prints e cria as questões em rascunho, com a figura no lugar."
       voltar={{ href: "/admin/questoes/", rotulo: "Banco de questões" }}
       acoes={<Ajuda />}
       estreita
@@ -117,10 +117,10 @@ function Envio() {
             </p>
           </Cartao>
           <Cartao className="flex flex-col gap-4 p-5">
-            <TituloDeSecao>À mão, por aqui</TituloDeSecao>
-            <p className="text-[15px]">Você envia os prints e marca, em cada um, onde está a figura e de qual questão em rascunho ela é. Cada envio ganha um número de importação; é por ele que os prints são achados depois.</p>
+            <TituloDeSecao>Sem o Claude: recortar uma figura de um print</TituloDeSecao>
+            <p className="text-[15px]">Esta tela não lê o texto do print: a questão você escreve em <LinkNoTexto href="/admin/questoes/editar/">Nova questão</LinkNoTexto>. Aqui você envia os prints e marca, em cada um, onde está a figura e de qual questão em rascunho ela é. Cada envio ganha um número de importação; é por ele que os prints são achados depois.</p>
             <div>
-              <Botao variante="primario" ocupado={ocupado} onClick={() => gerar()}>{ocupado ? "Preparando…" : "Enviar prints agora"}</Botao>
+              <Botao variante="secundario" ocupado={ocupado} onClick={() => gerar()}>{ocupado ? "Preparando…" : "Enviar prints para recortar"}</Botao>
             </div>
             <form
               className="flex flex-wrap items-end gap-2 border-t border-borda pt-4"
@@ -129,7 +129,7 @@ function Envio() {
                 if (Number(abrir) > 0) router.push(`/admin/questoes/prints/?importacao=${Number(abrir)}`);
               }}
             >
-              <Campo rotulo="Já enviou? Abra pelo número da importação" className="min-w-56 flex-1">
+              <Campo rotulo="Já enviou, por aqui ou pelo link do Claude? Abra pelo número da importação" className="min-w-56 flex-1">
                 {(id) => <input id={id} type="number" min={1} value={abrir} onChange={(e) => setAbrir(e.target.value)} className="campo" />}
               </Campo>
               <Botao type="submit">Abrir</Botao>
