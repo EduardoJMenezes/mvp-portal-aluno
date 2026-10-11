@@ -98,7 +98,8 @@ export default function NovoSimulado() {
       } catch {
         // Sem armazenamento, não havia o que apagar.
       }
-      router.replace(`/admin/rascunhos/revisar/?id=${rascunho.rascunho_id}`);
+      // Segue para a página do simulado, onde ele é conferido e publicado.
+      router.replace(rascunho.simulado ? `/admin/simulados/ver/?id=${rascunho.simulado.simulado_id}` : "/admin/simulados/");
     } catch (ex) {
       setErro((ex as Error).message);
       setSalvando(false);
@@ -106,7 +107,7 @@ export default function NovoSimulado() {
   }
 
   return (
-    <Pagina titulo="Novo simulado" legenda="Nasce em rascunho. Os alunos só veem depois que você aprovar, na revisão do rascunho." voltar={{ href: "/admin/simulados/", rotulo: "Simulados" }} estreita>
+    <Pagina titulo="Novo simulado" legenda="Nasce em rascunho. Os alunos só veem depois que você publicar, na página do simulado." voltar={{ href: "/admin/simulados/", rotulo: "Simulados" }} estreita>
       {retomado && (
         <Aviso tom="info" titulo="Você tinha um simulado começado">
           Ele voltou como estava, com {questoes.length === 1 ? "1 questão" : `${questoes.length} questões`}. Fica guardado neste navegador até você criar o rascunho.{" "}

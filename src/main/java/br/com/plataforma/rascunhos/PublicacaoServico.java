@@ -88,6 +88,27 @@ public class PublicacaoServico {
     }
 
     /**
+     * Publica o simulado em rascunho, a pedido do professor que o conferiu na página do próprio
+     * simulado: é a aprovação e a publicação do rascunho dele, sem a tela de Rascunhos no meio.
+     * O que barra é o mesmo de sempre ({@code pendenciasParaPublicar}).
+     */
+    @Transactional
+    public Publicacao publicarSimulado(Identidade ident, String referencia, Instant agora) {
+        ident.exigirOperador();
+        ident.exigirHumanoNoPortal("Publicar um simulado");
+
+        var s = simulados.resolver(referencia);
+        if (s.getStatus() == Status.PUBLICADO) {
+            throw new RegraDeNegocio("'%s' já está publicado.".formatted(s.getTitulo()));
+        }
+        if (s.getRascunhoId() == null) {
+            throw new RegraDeNegocio(
+                    "'%s' não nasceu de uma proposta e não tem como ser publicado por aqui.".formatted(s.getTitulo()));
+        }
+        return publicarPeloPortal(ident, s.getRascunhoId(), agora);
+    }
+
+    /**
      * Publica <b>uma</b> questão em rascunho, a pedido do professor que a conferiu no Banco de
      * questões.
      *

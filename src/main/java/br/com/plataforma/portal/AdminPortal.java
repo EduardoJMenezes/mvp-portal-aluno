@@ -665,6 +665,13 @@ public class AdminPortal {
                 vimeoImportacao.questoesComResolucao(dados.questoes()), dados.categoria()));
     }
 
+    /** O professor conferiu o simulado em rascunho na página dele e publica dali mesmo. */
+    @PostMapping("/simulados/{simulado}/publicacao")
+    public PublicacaoServico.Publicacao publicarSimulado(@AuthenticationPrincipal Identidade ident,
+            @PathVariable String simulado) {
+        return publicacao.publicarSimulado(ident, simulado, Instant.now());
+    }
+
     @DeleteMapping("/simulados/{simulado}")
     public SimuladosServico.SimuladoRemovido removerSimulado(@AuthenticationPrincipal Identidade ident,
             @PathVariable String simulado) {

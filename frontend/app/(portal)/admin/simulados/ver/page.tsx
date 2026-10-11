@@ -5,7 +5,7 @@ import { Suspense, useEffect, useState, type FormEvent } from "react";
 import { MontarProva, doBanco, faltaNaProva, paraApi, type EntradaDaProva } from "@/components/MontarProva";
 import { Abas, Aviso, Botao, BotaoLink, Campo, Cartao, Estado, Etiqueta, Pagina, TituloDeSecao, Vazio, useConfirmar } from "@/components/ui";
 import { api, useDados, type SimuladoDoProfessor } from "@/lib/api";
-import { paraCampoDataHora, plural, porcento } from "@/lib/formato";
+import { emBrasilia, paraCampoDataHora, plural, porcento } from "@/lib/formato";
 import { LETRAS, SITUACAO } from "@/lib/rotulos";
 import { TextoFormatado } from "@/lib/texto";
 
@@ -56,15 +56,49 @@ function Prova({ simulado: s, aoSalvar }: { simulado: SimuladoDoProfessor; aoSal
   const router = useRouter();
   const [dialogo, confirmar] = useConfirmar();
   const [erro, setErro] = useState("");
+  const [publicado, setPublicado] = useState("");
+  const pendencias = s.pendencias_para_publicar;
+  const tambemEmAula = s.questoes.filter((q) => q.aulas?.length).length;
+
+  // A aprovação é aqui: o professor conferiu a agenda e as questões nesta mesma tela.
+  async function publicar() {
+    const sim = await confirmar({
+      titulo: `Publicar "${s.titulo}"?`,
+      texto: (
+        <>
+          <p>
+            Fica visível para {s.turmas.join(", ") || "as turmas dele"}: abre em {emBrasilia(s.abre_em)} e fecha em {emBrasilia(s.fecha_em)}
+            {s.duracao_minutos ? `, com ${s.duracao_minutos} min de prova` : ""}. As questões novas entram no Banco de questões.
+          </p>
+          {tambemEmAula > 0 && (
+            <p className="mt-2">
+              {plural(tambemEmAula, "questão também está em aula", "questões também estão em aula")}: lá o aluno vê o gabarito ao responder.
+            </p>
+          )}
+          <p className="mt-2 text-suave">A aprovação fica registrada em seu nome.</p>
+        </>
+      ),
+      confirmar: "Publicar simulado",
+    });
+    if (!sim) return;
+    setErro("");
+    try {
+      const resposta = await api.publicarSimulado(s.simulado_id);
+      setPublicado(resposta.mensagem ?? "Publicado.");
+      aoSalvar();
+    } catch (ex) {
+      setErro((ex as Error).message);
+    }
+  }
 
   async function remover() {
     const sim = await confirmar({
-      titulo: `Remover "${s.titulo}"?`,
+      titulo: `${s.situacao === "RASCUNHO" ? "Descartar" : "Remover"} "${s.titulo}"?`,
       texto:
         s.situacao === "RASCUNHO"
-          ? "O rascunho vai junto, com as questões novas que nasceram nele."
+          ? "O rascunho vai junto, com as questões novas que nasceram nele. Nada chegou aos alunos."
           : "Os alunos deixam de ver o simulado. As provas feitas ficam guardadas.",
-      confirmar: "Remover simulado",
+      confirmar: s.situacao === "RASCUNHO" ? "Descartar simulado" : "Remover simulado",
       perigo: true,
     });
     if (!sim) return;
@@ -79,22 +113,29 @@ function Prova({ simulado: s, aoSalvar }: { simulado: SimuladoDoProfessor; aoSal
   return (
     <div className="flex flex-col gap-4">
       {dialogo}
+      {publicado && <Aviso tom="sucesso" titulo="Simulado publicado">{publicado}</Aviso>}
       {s.situacao === "RASCUNHO" && (
         <Aviso tom="atencao" titulo="Em rascunho: nenhum aluno vê">
-          {s.pendencias_para_publicar.length > 0 && (
-            <ul className="mt-1 list-disc pl-5">
-              {s.pendencias_para_publicar.map((p) => (
-                <li key={p}>{p}</li>
-              ))}
-            </ul>
+          {pendencias.length > 0 ? (
+            <>
+              Falta, para publicar:
+              <ul className="mt-1 list-disc pl-5">
+                {pendencias.map((p) => (
+                  <li key={p}>{p}</li>
+                ))}
+              </ul>
+            </>
+          ) : (
+            "Está pronto para publicar. Confira a agenda e as questões abaixo."
           )}
           {s.rascunho_id && (
             <div className="mt-2">
-              <BotaoLink tamanho="pequeno" variante="primario" href={`/admin/rascunhos/revisar/?id=${s.rascunho_id}`}>Revisar e publicar</BotaoLink>
+              <Botao tamanho="pequeno" variante="primario" disabled={pendencias.length > 0} onClick={() => publicar()}>Publicar simulado</Botao>
             </div>
           )}
         </Aviso>
       )}
+      {erro && <Aviso tom="erro">{erro}</Aviso>}
       <Edicao simulado={s} aoSalvar={aoSalvar} />
 
       <Cartao className="flex flex-col gap-3 p-5">
@@ -124,10 +165,9 @@ function Prova({ simulado: s, aoSalvar }: { simulado: SimuladoDoProfessor; aoSal
         </ol>
       </Cartao>
 
-      {erro && <Aviso tom="erro">{erro}</Aviso>}
       {s.situacao !== "ABERTO" && (
         <div>
-          <Botao variante="perigo" onClick={() => remover()}>Remover simulado</Botao>
+          <Botao variante="perigo" onClick={() => remover()}>{s.situacao === "RASCUNHO" ? "Descartar simulado" : "Remover simulado"}</Botao>
         </div>
       )}
     </div>

@@ -727,7 +727,7 @@ export const api = {
   criarSenhaDoPedido: (token: string, senha: string) =>
     pedir<{ entrou: boolean }>(`/vendas/pedidos/${encodeURIComponent(token)}/senha`, { method: "POST", json: { senha } }),
 
-  saude: () => pedir<{ ok: boolean; banco: string; vimeo: string; mcp: string; mcp_oauth: "github" | "token-bearer"; modo_demo: boolean }>("/saude"),
+  saude: () => pedir<{ ok: boolean; banco: string; vimeo: string; mcp: string | null; mcp_oauth: "github" | "token-bearer"; modo_demo: boolean }>("/saude"),
 
   // sessão
   sessaoConfig:() => pedir<{ modo_demo: boolean; contas_demo: { nome: string; email: string; papel: Papel; turmas: string[] }[] }>("/sessao/config"),
@@ -916,6 +916,8 @@ export const api = {
   simuladosDoProfessor: (turma?: string) => pedir<SimuladoResumo[]>(`/admin/simulados${q({ turma })}`),
   simulado: (id: number) => pedir<SimuladoDoProfessor>(`/admin/simulados/${id}`),
   criarSimulado: (dados: Record<string, unknown>) => pedir<Rascunho>("/admin/simulados", { method: "POST", json: dados }),
+  /** Aprova e publica o simulado em rascunho, pela página dele. */
+  publicarSimulado: (id: number) => pedir<{ publicado: boolean; mensagem?: string }>(`/admin/simulados/${id}/publicacao`, { method: "POST" }),
   editarSimulado: (id: number, dados: Record<string, unknown>) =>
     pedir<SimuladoResumo>(`/admin/simulados/${id}`, { method: "PATCH", json: dados }),
   removerSimulado: (id: number) => pedir<{ questoes_novas_removidas: number }>(`/admin/simulados/${id}`, { method: "DELETE" }),
