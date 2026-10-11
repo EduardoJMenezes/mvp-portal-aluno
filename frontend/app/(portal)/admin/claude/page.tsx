@@ -1,9 +1,23 @@
 "use client";
 
-import { useEffect, useState, type FormEvent } from "react";
-import { Aviso, Botao, Campo, Cartao, Estado, Etiqueta, Pagina, SegredoUmaVez, TituloDeSecao, useConfirmar } from "@/components/ui";
+import { Check, Copy } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { Aviso, Botao, Campo, Cartao, Estado, Etiqueta, Formulario, Pagina, Revelar, TituloDeSecao, useConfirmar } from "@/components/ui";
 import { api, useDados, type TokenMcp } from "@/lib/api";
 import { emBrasilia } from "@/lib/formato";
+
+const NOME_NO_CLAUDE = "portal-aluno";
+
+/**
+ * O endereço do MCP, pronto para colar. A API informa a base do adaptador (outro domínio, em
+ * produção); o MCP mora em /mcp dela. Um caminho relativo vale para o próprio portal.
+ */
+function enderecoDoMcp(base: string | null, origem: string) {
+  if (!base) return "";
+  const limpa = base.replace(/\/+$/, "");
+  const absoluta = /^https?:\/\//.test(limpa) ? limpa : `${origem}${limpa}`;
+  return absoluta.endsWith("/mcp") ? absoluta : `${absoluta}/mcp`;
+}
 
 export default function ConectarAoClaude() {
   const saude = useDados(() => api.saude());
@@ -11,10 +25,10 @@ export default function ConectarAoClaude() {
   const [origem, setOrigem] = useState("");
   const [novo, setNovo] = useState<(TokenMcp & { token: string }) | null>(null);
   const [erro, setErro] = useState("");
+  const [noSite, setNoSite] = useState(false);
   const [dialogo, confirmar] = useConfirmar();
 
   useEffect(() => setOrigem(window.location.origin), []);
-  const url = saude.dados ? `${origem}${saude.dados.mcp}` : "";
 
   async function revogar(t: TokenMcp) {
     const sim = await confirmar({
@@ -37,44 +51,65 @@ export default function ConectarAoClaude() {
   return (
     <Pagina titulo="Conectar ao Claude" legenda="O Claude opera o portal com as suas permissões: consulta, propõe rascunhos e edita. Publicar continua sendo aprovação sua." estreita>
       {dialogo}
-      <Estado {...saude} linhas={2}>
-        {(s) => (
-          <>
-            <Cartao className="flex flex-col gap-3 p-5">
-              <TituloDeSecao>No claude.ai</TituloDeSecao>
-              {s.mcp_oauth === "github" ? (
-                <ol className="list-decimal space-y-1.5 pl-5 text-[15px]">
-                  <li>Em Configurações › Conectores, adicione um conector personalizado.</li>
-                  <li>
-                    Cole o endereço: <Endereco valor={url} />
-                  </li>
-                  <li>Entre com o GitHub. O e-mail precisa ser o de um professor ou gerenciador cadastrado aqui.</li>
-                </ol>
-              ) : (
-                <Aviso tom="atencao">O login pelo GitHub não está configurado neste servidor, então o claude.ai não conecta. Use o Claude Code com um token, abaixo.</Aviso>
-              )}
-              <p className="text-[13px] text-suave">Depois de uma atualização do portal, ferramenta nova só aparece se você remover o conector e adicionar de novo.</p>
-            </Cartao>
+      <Estado {...saude} linhas={3}>
+        {(s) => {
+          const url = enderecoDoMcp(s.mcp, origem);
+          if (!url) return <Aviso tom="atencao" titulo="O Claude ainda não conecta neste servidor">Falta configurar o endereço do adaptador (MCP_BASE_URL).</Aviso>;
+          const comando = `claude mcp add --transport http ${NOME_NO_CLAUDE} ${url} --header "Authorization: Bearer ${novo ? novo.token : "SEU_TOKEN"}"`;
+          return (
+            <>
+              <Cartao className="flex flex-col gap-5 p-5">
+                <TituloDeSecao>No Claude Code</TituloDeSecao>
 
-            <Cartao className="flex flex-col gap-3 p-5">
-              <TituloDeSecao>No Claude Code</TituloDeSecao>
-              <p className="text-[15px]">Emita um token e rode no terminal:</p>
-              <pre className="overflow-x-auto rounded-cartao bg-tinta px-4 py-3 font-mono text-[13px] text-white">
-                claude mcp add --transport http portal-aluno {url} --header &quot;Authorization: Bearer {novo ? novo.token : "SEU_TOKEN"}&quot;
-              </pre>
-            </Cartao>
-          </>
-        )}
+                <Passo numero={1} titulo="Emita um token">
+                  <EmitirToken aoEmitir={(t) => { setNovo(t); void tokens.recarregar(); }} />
+                  {novo && (
+                    <Aviso tom="sucesso" titulo={`Token "${novo.nome}" emitido`}>
+                      Ele aparece só agora: o servidor guarda apenas um resumo dele. O comando abaixo já vem com ele.
+                    </Aviso>
+                  )}
+                </Passo>
+
+                <Passo numero={2} titulo="Rode este comando no terminal">
+                  <Bloco texto={comando} rotulo="Copiar comando" />
+                  {!novo && <p className="text-[13px] text-suave">Emita o token no passo 1: o comando passa a vir com ele no lugar de SEU_TOKEN.</p>}
+                </Passo>
+
+                <Passo numero={3} titulo="Confira">
+                  <p className="text-[15px]">
+                    Abra o Claude Code e digite <Codigo>/mcp</Codigo>. O <Codigo>{NOME_NO_CLAUDE}</Codigo> deve aparecer como conectado.
+                  </p>
+                  <p className="text-[13px] text-suave">
+                    Depois de uma atualização do portal, ferramenta nova só aparece em conversa nova. Se não aparecer, remova com <Codigo>claude mcp remove {NOME_NO_CLAUDE}</Codigo> e rode o comando de novo.
+                  </p>
+                </Passo>
+              </Cartao>
+
+              <Cartao className="flex flex-col gap-3 p-5">
+                <div>
+                  <Revelar aberto={noSite} aoAlternar={() => setNoSite((a) => !a)} aria-controls="no-site">
+                    Prefere usar pelo site claude.ai?
+                  </Revelar>
+                </div>
+                {noSite && (
+                  <ol id="no-site" className="list-decimal space-y-2 pl-5 text-[15px]">
+                    <li>Em Configurações › Conectores, adicione um conector personalizado.</li>
+                    <li>
+                      Cole este endereço:
+                      <Bloco texto={url} rotulo="Copiar endereço" />
+                    </li>
+                    <li>Entre com o GitHub. O e-mail precisa ser o de um professor ou gerenciador cadastrado aqui. Não precisa de token.</li>
+                    <li className="text-suave">Depois de uma atualização do portal, ferramenta nova só aparece se você remover o conector e adicionar de novo.</li>
+                  </ol>
+                )}
+              </Cartao>
+            </>
+          );
+        }}
       </Estado>
 
       <Cartao className="flex flex-col gap-4 p-5">
-        <TituloDeSecao>Seus tokens</TituloDeSecao>
-        <EmitirToken aoEmitir={(t) => { setNovo(t); void tokens.recarregar(); }} />
-        {novo && (
-          <SegredoUmaVez titulo={`Token "${novo.nome}"`} valor={novo.token}>
-            Copie agora: ele não aparece de novo. O servidor guarda só um resumo (hash) dele. O comando acima já está com ele.
-          </SegredoUmaVez>
-        )}
+        <TituloDeSecao>Tokens emitidos</TituloDeSecao>
         {erro && <Aviso tom="erro">{erro}</Aviso>}
         <Estado {...tokens} linhas={2}>
           {(lista) =>
@@ -113,43 +148,93 @@ export default function ConectarAoClaude() {
   );
 }
 
-function Endereco({ valor }: { valor: string }) {
-  const [copiado, setCopiado] = useState(false);
+function Passo({ numero, titulo, children }: { numero: number; titulo: string; children: React.ReactNode }) {
   return (
-    <span className="mt-1 flex flex-wrap items-center gap-2">
-      <code className="select-all break-all rounded-campo border border-borda bg-canvas px-2 py-1 font-mono text-[14px]">{valor}</code>
-      <Botao tamanho="pequeno" onClick={async () => { await navigator.clipboard?.writeText(valor); setCopiado(true); }}>{copiado ? "Copiado" : "Copiar"}</Botao>
-    </span>
+    <section className="flex gap-3">
+      <span aria-hidden="true" className="flex size-7 shrink-0 items-center justify-center rounded-full bg-lilas text-sm font-bold text-acento-forte">{numero}</span>
+      <div className="flex min-w-0 flex-1 flex-col gap-2">
+        <h3 className="pt-0.5 font-semibold text-tinta">
+          <span className="sr-only">Passo {numero}: </span>
+          {titulo}
+        </h3>
+        {children}
+      </div>
+    </section>
+  );
+}
+
+function Codigo({ children }: { children: React.ReactNode }) {
+  return <code className="rounded-campo bg-canvas px-1.5 py-0.5 font-mono text-[13px]">{children}</code>;
+}
+
+/** Põe o texto na área de transferência; onde o navegador não deixa, cai no jeito antigo. */
+async function copiar(texto: string) {
+  try {
+    await navigator.clipboard.writeText(texto);
+  } catch {
+    const area = document.createElement("textarea");
+    area.value = texto;
+    area.style.position = "fixed";
+    area.style.opacity = "0";
+    document.body.appendChild(area);
+    area.select();
+    document.execCommand("copy");
+    area.remove();
+  }
+}
+
+/** Um texto para copiar inteiro: quebra a linha em vez de rolar para o lado, e o botão copia tudo. */
+function Bloco({ texto, rotulo }: { texto: string; rotulo: string }) {
+  const [copiado, setCopiado] = useState(false);
+  const volta = useRef<ReturnType<typeof setTimeout>>(undefined);
+  useEffect(() => () => clearTimeout(volta.current), []);
+  // Texto novo (o token entrou no comando): o "Copiado" de antes já não vale.
+  useEffect(() => setCopiado(false), [texto]);
+
+  return (
+    <div className="flex flex-col gap-2">
+      <code className="block select-all break-all rounded-cartao bg-tinta px-4 py-3 font-mono text-[13px] leading-relaxed text-white">{texto}</code>
+      <div>
+        <Botao
+          tamanho="pequeno"
+          variante="secundario"
+          onClick={async () => {
+            await copiar(texto);
+            setCopiado(true);
+            clearTimeout(volta.current);
+            volta.current = setTimeout(() => setCopiado(false), 2500);
+          }}
+        >
+          {copiado ? <Check aria-hidden="true" className="size-4" /> : <Copy aria-hidden="true" className="size-4" />}
+          {copiado ? "Copiado" : rotulo}
+        </Botao>
+      </div>
+    </div>
   );
 }
 
 function EmitirToken({ aoEmitir }: { aoEmitir: (t: TokenMcp & { token: string }) => void }) {
   const [nome, setNome] = useState("Claude Code");
   const [erro, setErro] = useState("");
-  const [ocupado, setOcupado] = useState(false);
 
-  async function emitir(e: FormEvent) {
-    e.preventDefault();
+  async function emitir() {
     setErro("");
-    setOcupado(true);
     try {
       aoEmitir(await api.emitirToken(nome.trim()));
     } catch (ex) {
       setErro((ex as Error).message);
-    } finally {
-      setOcupado(false);
     }
   }
 
   return (
-    <form onSubmit={emitir} className="flex flex-col gap-2">
+    <Formulario onSubmit={emitir} className="flex flex-col gap-2">
       <div className="flex flex-wrap items-end gap-2">
-        <Campo rotulo="Nome do token" dica="Para lembrar onde ele está em uso." className="min-w-56 flex-1">
-          {(id) => <input id={id} maxLength={120} value={nome} onChange={(e) => setNome(e.target.value)} className="campo" />}
+        <Campo rotulo="Nome do token" dica="Para lembrar onde ele está em uso, ex.: o seu computador." className="min-w-56 flex-1">
+          {(id) => <input id={id} required maxLength={120} value={nome} onChange={(e) => setNome(e.target.value)} className="campo" />}
         </Campo>
-        <Botao type="submit" variante="primario" ocupado={ocupado} className="mb-6">{ocupado ? "Emitindo…" : "Emitir token"}</Botao>
+        <Botao type="submit" variante="primario" className="mb-6">Emitir token</Botao>
       </div>
       {erro && <Aviso tom="erro">{erro}</Aviso>}
-    </form>
+    </Formulario>
   );
 }
