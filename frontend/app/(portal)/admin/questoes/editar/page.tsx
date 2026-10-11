@@ -1,14 +1,14 @@
 "use client";
 
 import { useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
-import { CampoDeVideo, type VideoNoCampo } from "@/components/CampoDeVideo";
+import { Suspense, useEffect, useRef, useState, type FormEvent } from "react";
+import type { VideoNoCampo } from "@/components/CampoDeVideo";
+import { CamposDaQuestao, Previa, VAZIO, alternativasPreenchidas, comentariosPreenchidos, type Formulario } from "@/components/FormularioDaQuestao";
 import { proximoNome } from "@/components/curso/AdicionarQuestao";
-import { Aviso, Botao, Campo, Cartao, Carregando, Etiqueta, Pagina, Revelar, TituloDeSecao, useConfirmar } from "@/components/ui";
+import { Aviso, Botao, Campo, Cartao, Carregando, Pagina, Revelar, TituloDeSecao, useConfirmar } from "@/components/ui";
 import { api, useDados, type Assunto, type QuestaoDetalhada } from "@/lib/api";
 import { plural } from "@/lib/formato";
-import { DIFICULDADE, LETRAS } from "@/lib/rotulos";
-import { TextoFormatado } from "@/lib/texto";
+import { LETRAS } from "@/lib/rotulos";
 
 export default function PaginaDoEditor() {
   return (
@@ -17,33 +17,6 @@ export default function PaginaDoEditor() {
     </Suspense>
   );
 }
-
-type Formulario = {
-  enunciado: string;
-  alternativas: Record<string, string>;
-  /** Por letra: o que o aluno lê se marcar aquela alternativa. */
-  comentarios: Record<string, string>;
-  gabarito: string;
-  dificuldade: string;
-  assunto: string;
-  subassunto: string;
-  vimeo_id: string;
-  resolucao_comentada: string;
-  imagem_pendente: boolean;
-};
-
-const VAZIO: Formulario = {
-  enunciado: "",
-  alternativas: { A: "", B: "", C: "", D: "", E: "" },
-  comentarios: { A: "", B: "", C: "", D: "", E: "" },
-  gabarito: "",
-  dificuldade: "MEDIA",
-  assunto: "",
-  subassunto: "",
-  vimeo_id: "",
-  resolucao_comentada: "",
-  imagem_pendente: false,
-};
 
 function doDetalhe(q: QuestaoDetalhada, assuntos: Assunto[]): Formulario {
   const etiqueta = q.classificacao[0];
@@ -61,14 +34,6 @@ function doDetalhe(q: QuestaoDetalhada, assuntos: Assunto[]): Formulario {
     imagem_pendente: q.imagem_pendente,
   };
 }
-
-// A E é opcional: vazia, a questão vai de A a D.
-const alternativasPreenchidas = (alternativas: Record<string, string>) =>
-  Object.fromEntries(Object.entries(alternativas).filter(([letra, texto]) => letra !== "E" || texto.trim()));
-
-// Comentário só vale em alternativa que existe: a E em branco não leva o dela.
-const comentariosPreenchidos = (form: Formulario) =>
-  Object.fromEntries(LETRAS.filter((l) => form.alternativas[l]?.trim() && form.comentarios[l]?.trim()).map((l) => [l, form.comentarios[l].trim()]));
 
 function Editor() {
   const router = useRouter();
@@ -262,100 +227,7 @@ function Editor() {
               </Campo>
             </Cartao>
           )}
-          <Cartao className="flex flex-col gap-4 p-5">
-            <Campo rotulo="Enunciado" dica={<>Markdown. Fórmula entre $…$ (química em \ce&#123;…&#125;). Figura que ainda vai entrar: ![](figura:pendente).</>}>
-              {(cid) => <textarea id={cid} ref={enunciado} required rows={8} value={form.enunciado} onChange={(e) => muda("enunciado", e.target.value)} className="campo" />}
-            </Campo>
-            <fieldset className="flex flex-col gap-4">
-              <legend className="mb-1 text-sm font-semibold text-tinta-2">Alternativas, gabarito e comentários</legend>
-              <p className="-mt-2 text-[13px] text-suave">
-                Clique na letra para marcar o gabarito. Embaixo de cada alternativa, diga em uma ou duas frases por que o aluno costuma marcá-la e onde está o erro; na correta, por que é ela. O aluno lê o comentário da que marcou, logo depois de responder. É opcional, mas é o que transforma a correção em explicação.
-              </p>
-              {LETRAS.map((letra) => (
-                <div key={letra} className="flex items-start gap-2">
-                  <label className={`mt-1.5 flex size-8 shrink-0 items-center justify-center rounded-full border text-sm font-semibold cursor-pointer ${form.gabarito === letra ? "border-sucesso bg-sucesso text-white" : "border-borda-campo text-tinta-2"}`}>
-                    <input type="radio" name="gabarito" value={letra} checked={form.gabarito === letra} onChange={() => muda("gabarito", letra)} className="sr-only" />
-                    <span aria-hidden="true">{letra}</span>
-                    <span className="sr-only">Gabarito {letra}</span>
-                  </label>
-                  <div className="flex min-w-0 flex-1 flex-col gap-1.5">
-                    <textarea
-                      aria-label={letra === "E" ? "Alternativa E (opcional)" : `Alternativa ${letra}`}
-                      placeholder={publicada ? "Em branco, a alternativa sai da questão" : letra === "E" ? "Opcional: em branco, a questão vai de A a D" : undefined}
-                      required={letra !== "E" && !publicada}
-                      rows={2}
-                      value={form.alternativas[letra]}
-                      onChange={(e) => setForm((f) => ({ ...f, alternativas: { ...f.alternativas, [letra]: e.target.value } }))}
-                      className="campo min-h-0"
-                    />
-                    {(publicada ? form.alternativas[letra].trim() : letra !== "E" || form.alternativas.E.trim()) && (
-                      <textarea
-                        aria-label={`Comentário da alternativa ${letra}`}
-                        placeholder={form.gabarito === letra ? `Comentário: por que a ${letra} é a correta` : `Comentário: por que alguém marca a ${letra}, e onde está o erro`}
-                        rows={1}
-                        maxLength={1000}
-                        value={form.comentarios[letra]}
-                        onChange={(e) => setForm((f) => ({ ...f, comentarios: { ...f.comentarios, [letra]: e.target.value } }))}
-                        className="campo min-h-0 border-borda bg-canvas/60 font-sans text-[14px]"
-                      />
-                    )}
-                  </div>
-                </div>
-              ))}
-            </fieldset>
-          </Cartao>
-
-          <Cartao className="grid gap-4 p-5 sm:grid-cols-2">
-            <Campo rotulo="Dificuldade">
-              {(cid) => (
-                <select id={cid} value={form.dificuldade} onChange={(e) => muda("dificuldade", e.target.value)} className="campo">
-                  {Object.entries(DIFICULDADE).map(([valor, rotulo]) => (
-                    <option key={valor} value={valor}>{rotulo}</option>
-                  ))}
-                </select>
-              )}
-            </Campo>
-            <label className="flex items-center gap-2 self-end pb-2 text-[15px]">
-              <input type="checkbox" checked={form.imagem_pendente} onChange={(e) => muda("imagem_pendente", e.target.checked)} className="size-4 accent-acento" />
-              Imagem pendente
-            </label>
-            <Campo rotulo="Assunto">
-              {(cid) => (
-                <select id={cid} value={form.assunto} onChange={(e) => setForm((f) => ({ ...f, assunto: e.target.value, subassunto: "" }))} className="campo">
-                  <option value="">Sem classificação</option>
-                  {assuntos.dados?.map((a) => (
-                    <option key={a.id} value={a.id}>{a.nome}</option>
-                  ))}
-                </select>
-              )}
-            </Campo>
-            <Campo rotulo="Sub-assunto">
-              {(cid) => (
-                <select id={cid} value={form.subassunto} disabled={!assuntoEscolhido?.subassuntos.length} onChange={(e) => muda("subassunto", e.target.value)} className="campo">
-                  <option value="">Nenhum</option>
-                  {assuntoEscolhido?.subassuntos.map((s) => (
-                    <option key={s.id} value={s.id}>{s.nome}</option>
-                  ))}
-                </select>
-              )}
-            </Campo>
-          </Cartao>
-
-          <Cartao className="flex flex-col gap-4 p-5">
-            <CampoDeVideo
-              rotulo="Vídeo de resolução"
-              dica="O aluno assiste depois de responder. Escolha pelas pastas do Vimeo ou pela busca, e confira antes de usar."
-              tituloDaEscolha="Escolher o vídeo de resolução"
-              video={form.vimeo_id ? (video?.vimeo_id === form.vimeo_id ? video : { vimeo_id: form.vimeo_id }) : null}
-              aoMudar={(v) => {
-                setVideo(v);
-                muda("vimeo_id", v?.vimeo_id ?? "");
-              }}
-            />
-            <Campo rotulo="Resolução comentada" dica="O aluno vê depois que o simulado fecha — ou, na aula, assim que responde.">
-              {(cid) => <textarea id={cid} rows={5} value={form.resolucao_comentada} onChange={(e) => muda("resolucao_comentada", e.target.value)} className="campo" />}
-            </Campo>
-          </Cartao>
+          <CamposDaQuestao form={form} setForm={setForm} assuntos={assuntos.dados ?? []} publicada={publicada} video={video} setVideo={setVideo} enunciadoRef={enunciado} />
 
           {erro && <Aviso tom="erro">{erro}</Aviso>}
           {aviso && <Aviso tom="sucesso">{aviso}</Aviso>}
@@ -396,36 +268,6 @@ function Correcoes({ mudancas }: { mudancas: QuestaoDetalhada["historico"] }) {
           </li>
         ))}
       </ol>
-    </Cartao>
-  );
-}
-
-function Previa({ form, soPreenchidas = false }: { form: Formulario; soPreenchidas?: boolean }) {
-  const vazia = useMemo(() => !form.enunciado.trim(), [form.enunciado]);
-  return (
-    <Cartao className="flex flex-col gap-4 p-5">
-      <div className="flex items-center justify-between">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-suave">Como o aluno vê</h2>
-        {form.gabarito && <Etiqueta tom="sucesso">Gabarito {form.gabarito}</Etiqueta>}
-      </div>
-      {vazia ? <p className="text-[15px] text-suave">A prévia aparece enquanto você escreve.</p> : <TextoFormatado texto={form.enunciado} />}
-      <ul className="flex flex-col gap-2">
-        {LETRAS.filter((letra) => (soPreenchidas ? form.alternativas[letra]?.trim() : letra !== "E" || form.alternativas.E?.trim())).map((letra) => (
-          <li key={letra} className={`flex items-start gap-3 rounded-cartao border px-3 py-2 ${form.gabarito === letra ? "border-sucesso-borda bg-sucesso-fundo" : "border-borda"}`}>
-            <span className="mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-full border border-borda-campo text-xs font-semibold">{letra}</span>
-            <div className="min-w-0 flex-1">
-              <TextoFormatado texto={form.alternativas[letra] || " "} compacto />
-              {form.comentarios[letra]?.trim() && <p className="mt-1 border-t border-borda pt-1 text-[13px] text-suave">{form.comentarios[letra]}</p>}
-            </div>
-          </li>
-        ))}
-      </ul>
-      {form.resolucao_comentada.trim() && (
-        <div className="rounded-md bg-lilas p-3">
-          <p className="mb-1 text-[13px] font-semibold text-acento-forte">Resolução comentada</p>
-          <TextoFormatado texto={form.resolucao_comentada} compacto />
-        </div>
-      )}
     </Cartao>
   );
 }

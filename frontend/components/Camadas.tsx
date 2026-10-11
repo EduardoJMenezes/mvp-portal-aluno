@@ -161,6 +161,12 @@ function Camada({
         e.preventDefault();
         aoFechar();
       }}
+      // A camada pode estar aberta por cima de um formulário (o do simulado, por exemplo), e no DOM
+      // ela mora dentro dele: Enter num campo daqui não pode enviar o formulário que ficou atrás.
+      onKeyDown={(e) => {
+        const alvo = e.target;
+        if (e.key === "Enter" && alvo instanceof HTMLInputElement && alvo.form && !e.currentTarget.contains(alvo.form)) e.preventDefault();
+      }}
       // Só vale como clique fora o que começou e terminou fora: arrastar uma seleção de texto para
       // além da caixa não fecha nada.
       onMouseDown={(e) => {

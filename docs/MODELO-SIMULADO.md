@@ -285,3 +285,21 @@ painel de questões de "Montar o curso" (`BancoDeQuestoes.tsx`):
 * O painel não fecha ao adicionar: a questão entra no fim da prova e a linha
   passa a dizer "Na prova, questão N".
 
+## Escrever questão nova ao montar a prova
+
+Mudou em 11/10/2026. "Escrever questão nova" deixou de abrir um formulário
+curto embaixo da lista (enunciado, alternativas, gabarito e dificuldade) e
+passou a abrir um modal de tela cheia com **o mesmo formulário do editor do
+banco** (`FormularioDaQuestao.tsx`): comentário por alternativa, assunto e
+sub-assunto, vídeo de resolução pelo explorador do Vimeo, resolução comentada
+e imagem pendente, com a prévia de como o aluno vê ao lado. Questão criada por
+um caminho não pode nascer com menos campos que pelo outro.
+
+Nada é gravado no modal: a questão continua nascendo com o rascunho do
+simulado (`EntradasDaProva` já aceitava todos os campos). Por isso ela pode ser
+reaberta em "Editar", na lista da prova, até o rascunho ser criado. Figura só
+entra depois, no editor da questão; no texto fica a marca `![](figura:pendente)`.
+
+Como o modal mora, no DOM, dentro do formulário do simulado, a `Camada` passou
+a impedir que Enter num campo dela envie um formulário que está atrás.
+

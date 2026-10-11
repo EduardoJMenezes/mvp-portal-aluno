@@ -1,25 +1,53 @@
 "use client";
 
-import { Search } from "lucide-react";
+import { Plus, Search } from "lucide-react";
 import { useState } from "react";
 import { BancoDeQuestoes } from "@/components/BancoDeQuestoes";
-import { OffCanvas, useSaida } from "@/components/Camadas";
-import { Aviso, Botao, Campo, Etiqueta } from "@/components/ui";
-import type { Questao } from "@/lib/api";
+import { Modal, OffCanvas, useSaida } from "@/components/Camadas";
+import type { VideoNoCampo } from "@/components/CampoDeVideo";
+import { CamposDaQuestao, Previa, VAZIO, alternativasPreenchidas, comentariosPreenchidos, faltaNaQuestao, type Formulario } from "@/components/FormularioDaQuestao";
+import { Botao, Etiqueta } from "@/components/ui";
+import { api, useDados, type Questao } from "@/lib/api";
 import { plural } from "@/lib/formato";
-import { DIFICULDADE, LETRAS } from "@/lib/rotulos";
 import { TextoFormatado } from "@/lib/texto";
 
-// Uma questão da prova: do banco (pelo id) ou nova, que nasce no rascunho do simulado.
-export type EntradaDaProva =
-  | { chave: string; questao_id: number; enunciado: string; gabarito?: string | null }
-  | { chave: string; questao_id?: undefined; enunciado: string; alternativas: Record<string, string>; gabarito: string; dificuldade: string };
+/**
+ * A questão escrita na hora, que nasce no rascunho do simulado. Leva tudo o que o editor do banco
+ * leva: `form` é o formulário como foi preenchido (para reabrir e corrigir antes de criar o
+ * simulado), e `assunto`/`subassunto` são os nomes, que é o que a API recebe.
+ */
+export type QuestaoNovaNaProva = {
+  chave: string;
+  questao_id?: undefined;
+  enunciado: string;
+  alternativas: Record<string, string>;
+  gabarito: string;
+  dificuldade: string;
+  assunto?: string;
+  subassunto?: string;
+  form?: Formulario;
+  video?: VideoNoCampo | null;
+};
+
+// Uma questão da prova: do banco (pelo id) ou nova.
+export type EntradaDaProva = { chave: string; questao_id: number; enunciado: string; gabarito?: string | null } | QuestaoNovaNaProva;
 
 export const paraApi = (entradas: EntradaDaProva[]) =>
   entradas.map((e) =>
     e.questao_id !== undefined
       ? e.questao_id
-      : { enunciado: e.enunciado, alternativas: e.alternativas, gabarito: e.gabarito, dificuldade: e.dificuldade },
+      : {
+          enunciado: e.enunciado,
+          alternativas: e.alternativas,
+          gabarito: e.gabarito,
+          dificuldade: e.dificuldade,
+          assunto: e.assunto || undefined,
+          subassunto: e.subassunto || undefined,
+          vimeo_id: e.form?.vimeo_id.trim() || undefined,
+          resolucao_comentada: e.form?.resolucao_comentada.trim() || undefined,
+          comentarios: e.form ? comentariosPreenchidos(e.form) : undefined,
+          imagem_pendente: e.form?.imagem_pendente || undefined,
+        },
   );
 
 export const doBanco = (q: { questao_id: number; enunciado: string; gabarito?: string | null }): EntradaDaProva => ({
@@ -38,7 +66,9 @@ export function MontarProva({
   aoMudar: (entradas: EntradaDaProva[]) => void;
   permiteNova: boolean;
 }) {
-  const [painel, setPainel] = useState<"banco" | "nova" | null>(null);
+  // "nova" abre o formulário em branco; um número reabre a questão nova daquela posição.
+  const [painel, setPainel] = useState<"banco" | "nova" | number | null>(null);
+  const editada = typeof painel === "number" ? entradas[painel] : undefined;
 
   const mover = (i: number, passo: -1 | 1) => {
     const nova = [...entradas];
@@ -59,12 +89,16 @@ export function MontarProva({
                 <div className="mb-1 flex flex-wrap gap-1.5">
                   {e.questao_id !== undefined ? <Etiqueta>#{e.questao_id}</Etiqueta> : <Etiqueta tom="atencao">Nova</Etiqueta>}
                   {e.gabarito && <Etiqueta tom="sucesso">Gabarito {e.gabarito}</Etiqueta>}
+                  {e.questao_id === undefined && e.assunto && <Etiqueta tom="info">{e.subassunto ? `${e.assunto} › ${e.subassunto}` : e.assunto}</Etiqueta>}
                 </div>
                 <div className="line-clamp-2 text-[15px]">
                   <TextoFormatado texto={e.enunciado} compacto />
                 </div>
               </div>
               <div className="flex shrink-0 items-center gap-0.5">
+                {e.questao_id === undefined && permiteNova && (
+                  <Botao tamanho="mini" className="mr-1" onClick={() => setPainel(i)}>Editar</Botao>
+                )}
                 <BotaoIcone rotulo={`Subir questão ${i + 1}`} disabled={i === 0} onClick={() => mover(i, -1)}>↑</BotaoIcone>
                 <BotaoIcone rotulo={`Descer questão ${i + 1}`} disabled={i === entradas.length - 1} onClick={() => mover(i, 1)}>↓</BotaoIcone>
                 <BotaoIcone rotulo={`Tirar questão ${i + 1}`} onClick={() => aoMudar(entradas.filter((_, j) => j !== i))}>×</BotaoIcone>
@@ -80,16 +114,23 @@ export function MontarProva({
           Escolher do banco
         </Botao>
         {permiteNova && (
-          <Botao tamanho="pequeno" variante={painel === "nova" ? "secundario" : "neutro"} onClick={() => setPainel(painel === "nova" ? null : "nova")}>Escrever questão nova</Botao>
+          <Botao tamanho="pequeno" onClick={() => setPainel("nova")}>
+            <Plus aria-hidden="true" className="size-4" />
+            Escrever questão nova
+          </Botao>
         )}
       </div>
       {painel === "banco" && <EscolherDoBanco entradas={entradas} aoEscolher={(q) => aoMudar([...entradas, doBanco(q)])} aoFechar={() => setPainel(null)} />}
-      {painel === "nova" && (
-        <QuestaoNova
-          aoCriar={(q) => {
-            aoMudar([...entradas, { ...q, chave: `n${Date.now()}` }]);
-            setPainel(null);
+      {(painel === "nova" || (typeof painel === "number" && editada?.questao_id === undefined)) && (
+        <EscreverQuestao
+          // A chave garante um formulário novo a cada abertura, e o da questão certa ao editar.
+          key={typeof painel === "number" ? `e${painel}` : "nova"}
+          inicial={editada && editada.questao_id === undefined ? editada : undefined}
+          posicao={typeof painel === "number" ? painel + 1 : entradas.length + 1}
+          aoGravar={(q) => {
+            aoMudar(typeof painel === "number" ? entradas.map((e, j) => (j === painel ? q : e)) : [...entradas, q]);
           }}
+          aoFechar={() => setPainel(null)}
         />
       )}
     </div>
@@ -138,54 +179,60 @@ function EscolherDoBanco({ entradas, aoEscolher, aoFechar }: { entradas: Entrada
   );
 }
 
-function QuestaoNova({ aoCriar }: { aoCriar: (q: { enunciado: string; alternativas: Record<string, string>; gabarito: string; dificuldade: string }) => void }) {
-  const [enunciado, setEnunciado] = useState("");
-  const [alternativas, setAlternativas] = useState<Record<string, string>>({ A: "", B: "", C: "", D: "", E: "" });
-  const [gabarito, setGabarito] = useState("");
-  const [dificuldade, setDificuldade] = useState("MEDIA");
+/**
+ * A questão escrita na hora, num modal de tela cheia: o mesmo formulário do editor do banco, com a
+ * prévia de como o aluno vê ao lado. Nada é gravado aqui — a questão nasce junto com o rascunho do
+ * simulado e é aprovada com ele.
+ */
+function EscreverQuestao({ inicial, posicao, aoGravar, aoFechar }: { inicial?: QuestaoNovaNaProva; posicao: number; aoGravar: (q: QuestaoNovaNaProva) => void; aoFechar: () => void }) {
+  const saida = useSaida(aoFechar);
+  const assuntos = useDados(() => api.assuntos());
+  const [form, setForm] = useState<Formulario>(inicial?.form ?? VAZIO);
+  const [video, setVideo] = useState<VideoNoCampo | null>(inicial?.video ?? null);
   const [erro, setErro] = useState("");
 
-  function adicionar() {
-    if (!enunciado.trim()) return setErro("Escreva o enunciado.");
-    if (LETRAS.some((l) => l !== "E" && !alternativas[l].trim())) return setErro("Preencha de A a D; a E é opcional.");
-    if (!gabarito) return setErro("Marque o gabarito.");
-    if (gabarito === "E" && !alternativas.E.trim()) return setErro("O gabarito é a E, mas a alternativa E está em branco.");
-    // Sem a E, a questão vai de A a D.
-    aoCriar({ enunciado, alternativas: Object.fromEntries(Object.entries(alternativas).filter(([l, t]) => l !== "E" || t.trim())), gabarito, dificuldade });
+  function gravar() {
+    const falta = faltaNaQuestao(form);
+    if (falta) return setErro(falta);
+    const assunto = assuntos.dados?.find((a) => String(a.id) === form.assunto);
+    aoGravar({
+      chave: inicial?.chave ?? `n${Date.now()}`,
+      enunciado: form.enunciado,
+      alternativas: alternativasPreenchidas(form.alternativas),
+      gabarito: form.gabarito,
+      dificuldade: form.dificuldade,
+      assunto: assunto?.nome,
+      subassunto: assunto?.subassuntos.find((s) => String(s.id) === form.subassunto)?.nome,
+      form,
+      video,
+    });
+    saida.fechar();
   }
 
   return (
-    <div className="flex flex-col gap-3 rounded-cartao border border-borda bg-canvas p-4">
-      <p className="text-[13px] text-suave">A questão nova nasce em rascunho junto com o simulado e é aprovada com ele. Figura e vídeo de resolução entram depois, no editor da questão.</p>
-      <Campo rotulo="Enunciado" dica="Markdown; fórmula entre $…$.">
-        {(id) => <textarea id={id} rows={4} value={enunciado} onChange={(e) => setEnunciado(e.target.value)} className="campo" />}
-      </Campo>
-      <fieldset className="flex flex-col gap-2">
-        <legend className="mb-1 text-sm font-semibold text-tinta-2">Alternativas (clique na letra do gabarito)</legend>
-        {LETRAS.map((letra) => (
-          <div key={letra} className="flex items-center gap-2">
-            <label className={`flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-full border text-sm font-semibold ${gabarito === letra ? "border-sucesso bg-sucesso text-white" : "border-borda-campo bg-papel text-tinta-2"}`}>
-              <input type="radio" name="gabarito-nova" checked={gabarito === letra} onChange={() => setGabarito(letra)} className="sr-only" />
-              <span aria-hidden="true">{letra}</span>
-              <span className="sr-only">Gabarito {letra}</span>
-            </label>
-            <input aria-label={letra === "E" ? "Alternativa E (opcional)" : `Alternativa ${letra}`} placeholder={letra === "E" ? "Opcional" : undefined} value={alternativas[letra]} onChange={(e) => setAlternativas((a) => ({ ...a, [letra]: e.target.value }))} className="campo" />
-          </div>
-        ))}
-      </fieldset>
-      <Campo rotulo="Dificuldade" className="max-w-48">
-        {(id) => (
-          <select id={id} value={dificuldade} onChange={(e) => setDificuldade(e.target.value)} className="campo">
-            {Object.entries(DIFICULDADE).map(([valor, rotulo]) => (
-              <option key={valor} value={valor}>{rotulo}</option>
-            ))}
-          </select>
-        )}
-      </Campo>
-      {erro && <Aviso tom="erro">{erro}</Aviso>}
-      <div>
-        <Botao variante="secundario" onClick={adicionar}>Pôr na prova</Botao>
+    <Modal
+      {...saida}
+      aoFechar={saida.fechar}
+      tamanho="tela"
+      fechaClicandoFora={false}
+      titulo={inicial ? `Questão ${posicao} da prova` : "Escrever questão nova"}
+      legenda="Nasce em rascunho junto com o simulado e é aprovada com ele. A figura entra depois, no editor da questão: marque o lugar dela com ![](figura:pendente)."
+      rodape={
+        <div className="mx-auto flex w-full max-w-6xl flex-wrap items-center justify-end gap-2">
+          {erro && <p role="alert" className="mr-auto text-sm font-medium text-erro">{erro}</p>}
+          <Botao onClick={saida.fechar}>Cancelar</Botao>
+          <Botao variante="primario" onClick={gravar}>{inicial ? "Guardar a questão" : "Adicionar à prova"}</Botao>
+        </div>
+      }
+    >
+      <div className="mx-auto grid w-full max-w-6xl gap-5 lg:grid-cols-2">
+        <div className="flex flex-col gap-4" data-foco-inicial>
+          <CamposDaQuestao form={form} setForm={setForm} assuntos={assuntos.dados ?? []} video={video} setVideo={setVideo} />
+        </div>
+        <div className="lg:sticky lg:top-0 lg:self-start">
+          <Previa form={form} />
+        </div>
       </div>
-    </div>
+    </Modal>
   );
 }
