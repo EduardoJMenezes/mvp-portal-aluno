@@ -8,10 +8,11 @@
 import { Check, Image as Figura, Play, Plus, Search } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { OffCanvas, useSaida } from "@/components/Camadas";
+import { AlternativasDaQuestao, EsperandoAResolucao, ResolucaoDaQuestao } from "@/components/PreviaDaQuestao";
 import { Aviso, Botao, BotaoLink, Carregamento, Esqueleto, Revelar } from "@/components/ui";
 import { api, type Assunto, type ItemCurso, type Modulo, type Questao, type QuestaoDetalhada, type SubModulo } from "@/lib/api";
 import { plural } from "@/lib/formato";
-import { DIFICULDADE, LETRAS } from "@/lib/rotulos";
+import { DIFICULDADE } from "@/lib/rotulos";
 import { TextoFormatado } from "@/lib/texto";
 import { Azulejo, type Executar } from "./comum";
 
@@ -53,43 +54,9 @@ function EsqueletoDeQuestoes() {
 function QuestaoAberta({ questao, detalhe, erro }: { questao: Questao; detalhe?: QuestaoDetalhada; erro?: string }) {
   return (
     <div className="surge flex flex-col gap-3 px-5 pb-4">
-      <ul className="flex flex-col gap-1.5">
-        {LETRAS.filter((letra) => questao.alternativas[letra]?.trim()).map((letra) => {
-          const certa = questao.gabarito === letra;
-          return (
-            <li key={letra} className={`flex items-start gap-3 rounded-cartao border px-3 py-2 ${certa ? "border-sucesso-borda bg-sucesso-fundo" : "border-borda bg-papel"}`}>
-              <span className={`mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-full border text-xs font-semibold ${certa ? "border-sucesso bg-sucesso text-white" : "border-borda-campo text-tinta-2"}`}>{letra}</span>
-              <div className="min-w-0 flex-1">
-                <TextoFormatado texto={questao.alternativas[letra]} compacto />
-                {detalhe?.comentarios?.[letra] && <p className="mt-1 border-t border-borda pt-1 text-[13px] text-suave">{detalhe.comentarios[letra]}</p>}
-              </div>
-            </li>
-          );
-        })}
-      </ul>
-      {erro ? (
-        <Aviso tom="erro">{erro}</Aviso>
-      ) : !detalhe ? (
-        <Carregamento rotulo="Lendo a resolução" className="flex flex-col gap-2">
-          <Esqueleto className="h-3 w-28" />
-          <Esqueleto className="h-4 w-4/5" />
-        </Carregamento>
-      ) : (
-        <>
-          {detalhe.resolucao_comentada?.trim() ? (
-            <div className="rounded-md bg-lilas p-3">
-              <p className="mb-1 text-[13px] font-semibold text-acento-forte">Resolução comentada</p>
-              <TextoFormatado texto={detalhe.resolucao_comentada} compacto />
-            </div>
-          ) : (
-            <p className="text-[13px] text-suave">Sem resolução comentada.</p>
-          )}
-          <p className="text-[13px] text-suave">
-            {detalhe.resolucao ? `Vídeo de resolução: ${detalhe.resolucao.titulo}.` : "Sem vídeo de resolução."}
-            {!!questao.aulas?.length && ` Já está em: ${questao.aulas.join("; ")}.`}
-          </p>
-        </>
-      )}
+      <AlternativasDaQuestao alternativas={questao.alternativas} gabarito={questao.gabarito} comentarios={detalhe?.comentarios} />
+      {erro ? <Aviso tom="erro">{erro}</Aviso> : !detalhe ? <EsperandoAResolucao /> : <ResolucaoDaQuestao detalhe={detalhe} />}
+      {!!questao.aulas?.length && <p className="text-[13px] text-suave">Já está em: {questao.aulas.join("; ")}.</p>}
       <div>
         <BotaoLink tamanho="pequeno" outraAba href={`/admin/questoes/editar/?id=${questao.questao_id}`}>Abrir no editor</BotaoLink>
       </div>

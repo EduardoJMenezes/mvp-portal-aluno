@@ -148,6 +148,14 @@ seção "Em aberto", no fim.
 > `CatalogoServico.listarModulos` devolve a árvore `semPrevia()` a quem não é
 > operador, e a tela do aluno continua passando pelo `AcessoServico`.
 >
+> **Mudou em 10/10/2026: a questão também abre ao lado.** O ícone de
+> interrogação da linha faz o mesmo que o play: abre o off-canvas com a questão
+> como o professor a confere (`PreviaDaQuestao.tsx`) — enunciado, alternativas
+> com o gabarito marcado, resolução comentada e o vídeo de resolução, que só
+> carrega se ele pedir. As setas passaram a andar por todas as linhas que têm o
+> que ver, vídeo ou questão, na ordem do sub-módulo. O painel "Adicionar
+> questão" usa as mesmas peças.
+>
 > **Mudou em 10/10/2026: o que o professor cria abre por cima da página.** Nas
 > telas dele, o formulário deixou de expandir no meio da lista (ou de ficar
 > fixo no alto dela) e passou a abrir num `Modal` ou `OffCanvas`: em "Montar o

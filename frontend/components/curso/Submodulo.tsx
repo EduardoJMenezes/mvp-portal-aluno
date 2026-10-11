@@ -3,12 +3,13 @@
 // Um sub-módulo na tela de montar o curso: a fila das linhas (vídeo, PDF ou questão), o botão
 // único de "Adicionar" e o que cada linha deixa fazer.
 
-import { ArrowDown, ArrowUp, CornerDownRight, ExternalLink, Paperclip, Pencil, Play, Plus, SquarePen, Tags, Trash2, Users } from "lucide-react";
+import { ArrowDown, ArrowUp, CornerDownRight, ExternalLink, Eye, Paperclip, Pencil, Play, Plus, SquarePen, Tags, Trash2, Users } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
 import { OffCanvas } from "@/components/Camadas";
 import { EscolherTurmas } from "@/components/EscolherTurmas";
 import { Menu, type ItemDoMenu } from "@/components/Menu";
+import { QuestaoParaVer } from "@/components/PreviaDaQuestao";
 import { PassarVideos, TelaDoVideo } from "@/components/PreviaDoVideo";
 import { Botao, BotaoLink, Etiqueta, Formulario, LinkDeTitulo, botao } from "@/components/ui";
 import { api, type Assunto, type Aula, type ItemCurso, type Modulo, type SubModulo } from "@/lib/api";
@@ -62,13 +63,16 @@ export function SecaoDoSubmodulo({
   const arrastar = useArrastar(sub.itens.map((i) => i.id), Object.fromEntries(sub.itens.map((i) => [i.id, i.nome])), aoReordenar);
   const fechar = () => setAdicionando(null);
   const semAssunto = sub.itens.filter((i) => !i.assuntos?.length).length;
-  // A prévia do vídeo cru: qual linha está aberta, e se o painel está na tela (ao fechar, a linha
-  // continua guardada enquanto ele sai).
+  // A prévia: o vídeo cru ou a questão, abertos ao lado. Qual linha está aberta, e se o painel está
+  // na tela (ao fechar, a linha continua guardada enquanto ele sai). As setas andam por todas as
+  // linhas que têm o que ver, na ordem do sub-módulo: é como se confere um capítulo.
   const [previa, setPrevia] = useState<number | null>(null);
   const [vendoPrevia, setVendoPrevia] = useState(false);
-  const videos = sub.itens.filter((i) => tipoDaLinha(i) === "video");
-  const naPrevia = videos.findIndex((i) => i.id === previa);
-  const videoDaPrevia = naPrevia >= 0 ? videos[naPrevia] : null;
+  const comPrevia = sub.itens.filter((i) => tipoDaLinha(i) !== "pdf");
+  const naPrevia = comPrevia.findIndex((i) => i.id === previa);
+  const linhaDaPrevia = naPrevia >= 0 ? comPrevia[naPrevia] : null;
+  const videoDaPrevia = linhaDaPrevia && tipoDaLinha(linhaDaPrevia) === "video" ? linhaDaPrevia : null;
+  const questaoDaPrevia = linhaDaPrevia?.questao ?? null;
   const ver = (item: ItemCurso) => {
     setPrevia(item.id);
     setVendoPrevia(true);
@@ -176,19 +180,24 @@ export function SecaoDoSubmodulo({
       )}
 
       <OffCanvas
-        aberto={vendoPrevia && !!videoDaPrevia}
+        aberto={vendoPrevia && !!linhaDaPrevia}
         aoFechar={() => setVendoPrevia(false)}
         lado="direita"
         tamanho="grande"
-        titulo={videoDaPrevia?.nome ?? ""}
+        titulo={linhaDaPrevia?.nome ?? ""}
         legenda={`${sub.nome}, em ${modulo.nome}`}
         rodape={
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <PassarVideos posicao={naPrevia} total={videos.length} aoPassar={(passo) => setPrevia(videos[naPrevia + passo]?.id ?? previa)} />
-            <Botao onClick={() => setVendoPrevia(false)}>Fechar</Botao>
+            <PassarVideos posicao={naPrevia} total={comPrevia.length} rotulos={["Linha anterior", "Próxima linha"]} aoPassar={(passo) => setPrevia(comPrevia[naPrevia + passo]?.id ?? previa)} />
+            <div className="flex flex-wrap gap-2">
+              {questaoDaPrevia && <BotaoLink href={`/admin/questoes/editar/?id=${questaoDaPrevia.questao_id}&modulo=${modulo.id}`}>Editar a questão</BotaoLink>}
+              <Botao onClick={() => setVendoPrevia(false)}>Fechar</Botao>
+            </div>
           </div>
         }
       >
+        {/* A chave troca com a questão: a seguinte começa do zero, sem mostrar a anterior enquanto carrega. */}
+        {questaoDaPrevia && <QuestaoParaVer key={questaoDaPrevia.questao_id} questaoId={questaoDaPrevia.questao_id} />}
         {videoDaPrevia && (
           <div className="flex flex-col gap-3">
             <TelaDoVideo video={{ vimeo_id: videoDaPrevia.vimeo_id, titulo: videoDaPrevia.nome, embed_url: videoDaPrevia.embed_url }} />
@@ -274,6 +283,7 @@ function Linha({
 
   const acoes: (ItemDoMenu | false)[] = [
     tipo === "video" && { rotulo: "Ver o vídeo", icone: Play, aoEscolher: aoVer },
+    tipo === "questao" && { rotulo: "Ver a questão", icone: Eye, aoEscolher: aoVer },
     { rotulo: "Renomear", icone: Pencil, aoEscolher: () => { setNome(item.nome); setModo("nome"); } },
     tipo === "questao" && { rotulo: "Editar a questão", icone: SquarePen, aoEscolher: () => router.push(`/admin/questoes/editar/?id=${item.questao!.questao_id}&modulo=${modulo.id}`) },
     tipo === "pdf" && !!item.material && { rotulo: "Abrir o PDF", icone: ExternalLink, aoEscolher: () => router.push(`/materiais/ler/?id=${item.material!.material_id}`) },
@@ -301,6 +311,10 @@ function Linha({
         {tipo === "video" ? (
           <button type="button" onClick={aoVer} aria-label={`Ver o vídeo ${item.nome}`} title="Ver o vídeo" className="group/ver shrink-0 rounded-[10px]">
             <Azulejo tipo="video" className="transition-colors group-hover/ver:bg-acento group-hover/ver:text-white" />
+          </button>
+        ) : tipo === "questao" ? (
+          <button type="button" onClick={aoVer} aria-label={`Ver a questão ${item.nome}`} title="Ver a questão" className="group/ver shrink-0 rounded-[10px]">
+            <Azulejo tipo="questao" className="transition-colors group-hover/ver:bg-violeta group-hover/ver:text-white" />
           </button>
         ) : (
           <Azulejo tipo={tipo} />
