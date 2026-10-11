@@ -266,3 +266,22 @@ questão e o resultado já certos.
 
 A estrutura do simulado aberto continua travada (`SimuladosServico.exigirEditavel`).
 
+## Escolher questões do banco ao montar a prova
+
+Mudou em 11/10/2026. Em "Novo simulado" (e na edição de um rascunho), "Escolher
+do banco" abre um painel ao lado, com a prova à vista atrás. É a mesma peça do
+painel de questões de "Montar o curso" (`BancoDeQuestoes.tsx`):
+
+* A lista já chega aberta, **agrupada por assunto** e, dentro dele, por
+  sub-assunto, em ordem alfabética, com as sem assunto no fim. Quem pede a
+  ordem é `?ordem=assunto` em `/api/admin/questoes`; sem ele a rota continua
+  devolvendo por número, que é o que o Banco de questões usa.
+* Filtros: trecho do enunciado ou o número (`#46`), assunto, sub-assunto
+  (`?subassunto=`, só junto do assunto), dificuldade e "esconder as que já
+  estão na prova".
+* Cada questão mostra o começo do enunciado; "Ver a questão" abre ali mesmo as
+  alternativas, o gabarito e a resolução. "Também em aula" avisa que o gabarito
+  dela já sai para quem responde na aula.
+* O painel não fecha ao adicionar: a questão entra no fim da prova e a linha
+  passa a dizer "Na prova, questão N".
+

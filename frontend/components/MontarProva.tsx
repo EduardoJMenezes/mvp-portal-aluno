@@ -1,8 +1,12 @@
 "use client";
 
+import { Search } from "lucide-react";
 import { useState } from "react";
+import { BancoDeQuestoes } from "@/components/BancoDeQuestoes";
+import { OffCanvas, useSaida } from "@/components/Camadas";
 import { Aviso, Botao, Campo, Etiqueta } from "@/components/ui";
-import { api, type Questao } from "@/lib/api";
+import type { Questao } from "@/lib/api";
+import { plural } from "@/lib/formato";
 import { DIFICULDADE, LETRAS } from "@/lib/rotulos";
 import { TextoFormatado } from "@/lib/texto";
 
@@ -45,7 +49,7 @@ export function MontarProva({
   return (
     <div className="flex flex-col gap-3">
       {entradas.length === 0 ? (
-        <p className="rounded-cartao border border-dashed border-borda px-4 py-6 text-center text-[15px] text-suave">Nenhuma questão ainda. Busque no banco ou escreva uma nova.</p>
+        <p className="rounded-cartao border border-dashed border-borda px-4 py-6 text-center text-[15px] text-suave">Nenhuma questão ainda. Escolha do banco ou escreva uma nova.</p>
       ) : (
         <ol className="flex flex-col gap-2">
           {entradas.map((e, i) => (
@@ -71,12 +75,15 @@ export function MontarProva({
       )}
 
       <div className="flex flex-wrap gap-2">
-        <Botao tamanho="pequeno" variante={painel === "banco" ? "secundario" : "neutro"} onClick={() => setPainel(painel === "banco" ? null : "banco")}>Buscar no banco</Botao>
+        <Botao tamanho="pequeno" variante="secundario" onClick={() => setPainel("banco")}>
+          <Search aria-hidden="true" className="size-4" />
+          Escolher do banco
+        </Botao>
         {permiteNova && (
           <Botao tamanho="pequeno" variante={painel === "nova" ? "secundario" : "neutro"} onClick={() => setPainel(painel === "nova" ? null : "nova")}>Escrever questão nova</Botao>
         )}
       </div>
-      {painel === "banco" && <BuscaNoBanco jaNaProva={new Set(entradas.map((e) => e.questao_id))} aoEscolher={(q) => aoMudar([...entradas, doBanco(q)])} />}
+      {painel === "banco" && <EscolherDoBanco entradas={entradas} aoEscolher={(q) => aoMudar([...entradas, doBanco(q)])} aoFechar={() => setPainel(null)} />}
       {painel === "nova" && (
         <QuestaoNova
           aoCriar={(q) => {
@@ -97,82 +104,37 @@ function BotaoIcone({ rotulo, children, ...resto }: { rotulo: string; children: 
   );
 }
 
-/** A busca no acervo. Serve à prova e à aula: muda só o que o botão diz. */
-export function BuscaNoBanco({
-  jaNaProva,
-  aoEscolher,
-  rotuloJaEsta = "Na prova",
-  avisarReuso = true,
-}: {
-  jaNaProva: Set<number | undefined>;
-  aoEscolher: (q: Questao) => void;
-  rotuloJaEsta?: string;
-  /** Na prova, a questão que está em aula merece o aviso: lá o gabarito sai na hora. */
-  avisarReuso?: boolean;
-}) {
-  const [busca, setBusca] = useState("");
-  const [resultados, setResultados] = useState<Questao[] | null>(null);
-  const [erro, setErro] = useState("");
-  const [buscando, setBuscando] = useState(false);
-
-  async function buscar() {
-    setBuscando(true);
-    setErro("");
-    try {
-      setResultados(await api.questoes({ busca: busca.trim(), status: "PUBLICADO", limite: 20 }));
-    } catch (ex) {
-      setErro((ex as Error).message);
-    } finally {
-      setBuscando(false);
-    }
-  }
-
+/**
+ * O banco de questões aberto ao lado: a prova continua à vista atrás, e cada "Adicionar" põe a
+ * questão no fim dela sem fechar o painel.
+ */
+function EscolherDoBanco({ entradas, aoEscolher, aoFechar }: { entradas: EntradaDaProva[]; aoEscolher: (q: Questao) => void; aoFechar: () => void }) {
+  const saida = useSaida(aoFechar);
+  const doBancoNaProva = new Map(entradas.flatMap((e, i) => (e.questao_id !== undefined ? [[e.questao_id, i + 1] as const] : [])));
   return (
-    <div className="flex flex-col gap-3 rounded-cartao border border-borda bg-canvas p-4">
-      <p className="text-[13px] text-suave">Só questões publicadas entram por aqui.</p>
-      <div className="flex flex-wrap gap-2">
-        <label htmlFor="busca-banco" className="sr-only">Trecho do enunciado</label>
-        <input
-          id="busca-banco"
-          value={busca}
-          onChange={(e) => setBusca(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") {
-              e.preventDefault();
-              void buscar();
-            }
-          }}
-          placeholder="Trecho do enunciado (vazio lista as primeiras)"
-          className="campo min-w-48 flex-1"
-        />
-        <Botao tamanho="pequeno" variante="secundario" ocupado={buscando} onClick={() => buscar()}>{buscando ? "Buscando…" : "Buscar"}</Botao>
-      </div>
-      {erro && <Aviso tom="erro">{erro}</Aviso>}
-      {resultados && (
-        <ul className="flex max-h-80 flex-col divide-y divide-borda overflow-y-auto rounded-cartao border border-borda bg-papel">
-          {resultados.length === 0 && <li className="px-3 py-3 text-[15px] text-suave">Nenhuma questão publicada com esse trecho.</li>}
-          {resultados.map((q) => {
-            const esta = jaNaProva.has(q.questao_id);
-            return (
-              <li key={q.questao_id} className="flex items-start gap-3 px-3 py-2.5">
-                <div className="min-w-0 flex-1">
-                  <div className="mb-1 flex flex-wrap gap-1.5">
-                    <Etiqueta>#{q.questao_id}</Etiqueta>
-                    <Etiqueta>{DIFICULDADE[q.dificuldade] ?? q.dificuldade}</Etiqueta>
-                    {q.classificacao[0] && <Etiqueta tom="info">{q.classificacao[0].assunto}</Etiqueta>}
-                    {avisarReuso && !!q.aulas?.length && <span title={`Lá o aluno vê o gabarito ao responder: ${q.aulas.join("; ")}`}><Etiqueta tom="atencao">Também em aula</Etiqueta></span>}
-                  </div>
-                  <div className="line-clamp-2 text-[15px]">
-                    <TextoFormatado texto={q.enunciado} compacto />
-                  </div>
-                </div>
-                <Botao tamanho="pequeno" disabled={esta} onClick={() => aoEscolher(q)}>{esta ? rotuloJaEsta : "Adicionar"}</Botao>
-              </li>
-            );
-          })}
-        </ul>
-      )}
-    </div>
+    <OffCanvas
+      {...saida}
+      aoFechar={saida.fechar}
+      lado="direita"
+      tamanho="grande"
+      semMargem
+      titulo="Questões do banco"
+      legenda="Só as publicadas. Cada uma entra no fim da prova; a ordem você acerta depois, na lista."
+      rodape={
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <p className="text-sm text-tinta-2">{entradas.length ? `${plural(entradas.length, "questão", "questões")} na prova` : "A prova ainda está vazia"}</p>
+          <Botao variante="primario" onClick={saida.fechar}>Pronto</Botao>
+        </div>
+      }
+    >
+      <BancoDeQuestoes
+        jaEsta={new Set(doBancoNaProva.keys())}
+        marcaDeJaEsta={(q) => `Na prova, questão ${doBancoNaProva.get(q.questao_id)}`}
+        aoEscolher={aoEscolher}
+        esconder="Esconder as que já estão na prova"
+        avisarAula
+      />
+    </OffCanvas>
   );
 }
 

@@ -169,6 +169,17 @@ public class QuestoesServico {
     @Transactional(readOnly = true)
     public List<QuestaoDescrita> buscar(Identidade ident, String assunto, String statusTexto,
             String dificuldadeTexto, String busca, int limite, int deslocamento) {
+        return buscar(ident, assunto, null, statusTexto, dificuldadeTexto, busca, false, limite, deslocamento);
+    }
+
+    /**
+     * A busca de quem escolhe questões para uma prova ou uma aula: além do assunto, o sub-assunto,
+     * e a lista pode vir {@code porAssunto} — agrupada por assunto e sub-assunto, em ordem
+     * alfabética, com as sem assunto no fim —, que é como se monta uma prova.
+     */
+    @Transactional(readOnly = true)
+    public List<QuestaoDescrita> buscar(Identidade ident, String assunto, String subassunto, String statusTexto,
+            String dificuldadeTexto, String busca, boolean porAssunto, int limite, int deslocamento) {
         ident.exigirOperador();
         var status = vazio(statusTexto) ? null : status(statusTexto);
         var dificuldade = vazio(dificuldadeTexto) ? null : dificuldade(dificuldadeTexto);
@@ -177,9 +188,18 @@ public class QuestoesServico {
         var parametros = new LinkedHashMap<String, Object>();
 
         if (assunto != null && !assunto.isBlank()) {
-            jpql.append(" and exists (select 1 from QuestaoAssunto qa"
-                    + " where qa.questao = q and qa.assunto = :assunto)");
-            parametros.put("assunto", taxonomia.resolverAssunto(assunto));
+            var doAssunto = taxonomia.resolverAssunto(assunto);
+            parametros.put("assunto", doAssunto);
+            if (subassunto != null && !subassunto.isBlank()) {
+                jpql.append(" and exists (select 1 from QuestaoAssunto qa"
+                        + " where qa.questao = q and qa.assunto = :assunto and qa.subassunto = :subassunto)");
+                parametros.put("subassunto", taxonomia.resolverSubassunto(doAssunto, subassunto));
+            } else {
+                jpql.append(" and exists (select 1 from QuestaoAssunto qa"
+                        + " where qa.questao = q and qa.assunto = :assunto)");
+            }
+        } else if (subassunto != null && !subassunto.isBlank()) {
+            throw new RegraDeNegocio("Informe o assunto junto do sub-assunto.");
         }
         if (status != null) {
             jpql.append(" and q.status = :status");
@@ -203,8 +223,16 @@ public class QuestoesServico {
             }
             parametros.put("busca", "%" + literal + "%");
         }
-        jpql.append(parametros.containsKey("numero") ? " order by case when q.id = :numero then 0 else 1 end, q.id"
-                : " order by q.id");
+        var ordem = new ArrayList<String>();
+        if (parametros.containsKey("numero")) {
+            ordem.add("case when q.id = :numero then 0 else 1 end");
+        }
+        if (porAssunto) {
+            ordem.add("(select min(a.nome) from QuestaoAssunto oa join oa.assunto a where oa.questao = q) nulls last");
+            ordem.add("(select min(s.nome) from QuestaoAssunto os join os.subassunto s where os.questao = q) nulls first");
+        }
+        ordem.add("q.id");
+        jpql.append(" order by ").append(String.join(", ", ordem));
 
         var consulta = em.createQuery(jpql.toString(), Questao.class);
         parametros.forEach(consulta::setParameter);

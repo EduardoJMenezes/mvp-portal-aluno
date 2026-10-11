@@ -819,7 +819,8 @@ export const api = {
     pedir<MenuDaTurma>(`/admin/turmas/${turma}/menu/copiar`, { method: "POST", json: { de: String(de) } }),
   modulos: (turma: string | number) => pedir<Modulo[]>(`/admin/modulos${q({ turma })}`),
   assuntos: () => pedir<Assunto[]>("/admin/assuntos"),
-  questoes: (filtro: { assunto?: string; status?: string; dificuldade?: string; busca?: string; limite?: number; offset?: number }) =>
+  /** `ordem: "assunto"`: agrupada por assunto e sub-assunto, para quem está escolhendo questões. */
+  questoes: (filtro: { assunto?: string; subassunto?: string; status?: string; dificuldade?: string; busca?: string; ordem?: "assunto"; limite?: number; offset?: number }) =>
     pedir<Questao[]>(`/admin/questoes${q(filtro)}`),
   desempenho: (aluno: string | number, simulado?: string | number) =>
     pedir<Desempenho>(`/admin/alunos/${seg(String(aluno))}/desempenho${q({ simulado })}`),

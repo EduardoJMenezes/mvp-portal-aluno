@@ -94,6 +94,37 @@ class QuestaoNaAulaTest extends BaseDoPortal {
                 .andExpect(jsonPath("$[0].questao_id").value(massa));
     }
 
+    /** Quem monta uma prova vê o banco por assunto e sub-assunto, e filtra pelos dois. */
+    @Test
+    void aBuscaDoBancoAgrupaPorAssuntoEFiltraPeloSubassunto() throws Exception {
+        comando("cadastrar_assunto", "{\"nome\": \"Tabela periódica\", \"subassuntos\": [\"Raio atômico\", \"Energia de ionização\"]}")
+                .andExpect(status().isOk());
+        comando("cadastrar_assunto", "{\"nome\": \"Atomística\"}").andExpect(status().isOk());
+        var semAssunto = criarQuestao("Sem assunto nenhum", "A", "MEDIA", "PUBLICADO");
+        var raio = criarQuestao("Sobre o raio", "A", "MEDIA", "PUBLICADO");
+        var atomo = criarQuestao("Sobre o átomo", "A", "MEDIA", "PUBLICADO");
+        var energia = criarQuestao("Sobre a energia", "A", "MEDIA", "PUBLICADO");
+        var tabela = criarQuestao("Sobre a tabela, sem sub-assunto", "A", "MEDIA", "PUBLICADO");
+        patch("/api/admin/questoes/" + raio, "{\"assunto\": \"Tabela periódica\", \"subassunto\": \"Raio atômico\"}", ADMIN).andExpect(status().isOk());
+        patch("/api/admin/questoes/" + energia, "{\"assunto\": \"Tabela periódica\", \"subassunto\": \"Energia de ionização\"}", ADMIN).andExpect(status().isOk());
+        patch("/api/admin/questoes/" + tabela, "{\"assunto\": \"Tabela periódica\"}", ADMIN).andExpect(status().isOk());
+        patch("/api/admin/questoes/" + atomo, "{\"assunto\": \"Atomística\"}", ADMIN).andExpect(status().isOk());
+
+        // Atomística; depois Tabela periódica (sem sub-assunto, Energia, Raio); por último a sem assunto.
+        get("/api/admin/questoes?ordem=assunto", ADMIN)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[*].questao_id").value(org.hamcrest.Matchers.contains(atomo, tabela, energia, raio, semAssunto)));
+        // Sem pedir a ordem, continua pelo número.
+        get("/api/admin/questoes", ADMIN)
+                .andExpect(jsonPath("$[*].questao_id").value(org.hamcrest.Matchers.contains(semAssunto, raio, atomo, energia, tabela)));
+
+        get("/api/admin/questoes?assunto=Tabela periódica&subassunto=Raio atômico", ADMIN)
+                .andExpect(jsonPath("$[*].questao_id").value(org.hamcrest.Matchers.contains(raio)));
+        get("/api/admin/questoes?assunto=Tabela periódica&ordem=assunto", ADMIN)
+                .andExpect(jsonPath("$.length()").value(3));
+        get("/api/admin/questoes?subassunto=Raio atômico", ADMIN).andExpect(status().isBadRequest());
+    }
+
     @Test
     void questaoDoAcervoComNomeEntraComONomeDado() throws Exception {
         var questao = criarQuestao("Calcule a massa molar", "C", "MEDIA", "PUBLICADO");

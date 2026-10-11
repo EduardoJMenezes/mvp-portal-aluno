@@ -218,12 +218,16 @@ public class AdminPortal {
     /** Acervo de questões de simulado. Página seguinte: {@code offset} += {@code limite}. */
     @GetMapping("/questoes")
     public List<QuestoesServico.QuestaoDescrita> listaQuestoes(@AuthenticationPrincipal Identidade ident,
-            @RequestParam(required = false) String assunto, @RequestParam(required = false) String status,
+            @RequestParam(required = false) String assunto, @RequestParam(required = false) String subassunto,
+            @RequestParam(required = false) String status,
             @RequestParam(required = false) String dificuldade,
             @RequestParam(required = false) @Size(max = 200) String busca,
+            // "assunto": agrupada por assunto e sub-assunto, para quem monta uma prova.
+            @RequestParam(required = false) String ordem,
             @RequestParam(defaultValue = "50") @Min(1) @Max(200) int limite,
             @RequestParam(defaultValue = "0") @Min(0) int offset) {
-        return questoes.buscar(ident, assunto, status, dificuldade, busca, limite, offset);
+        return questoes.buscar(ident, assunto, subassunto, status, dificuldade, busca, "assunto".equals(ordem), limite,
+                offset);
     }
 
     @GetMapping("/alunos/{aluno}/desempenho")
