@@ -180,7 +180,21 @@ public class QuestoesServico {
     @Transactional(readOnly = true)
     public List<QuestaoDescrita> buscar(Identidade ident, String assunto, String subassunto, String statusTexto,
             String dificuldadeTexto, String busca, boolean porAssunto, int limite, int deslocamento) {
+        return buscar(ident, assunto, subassunto, statusTexto, dificuldadeTexto, busca,
+                porAssunto ? Ordem.ASSUNTO : Ordem.CADASTRO, limite, deslocamento);
+    }
+
+    /**
+     * Em que ordem a lista vem. {@code RECENTES} é a do Banco de questões: a última que entrou em
+     * cima, que é onde o professor procura o que o Claude acabou de escrever para ele conferir.
+     */
+    public enum Ordem { CADASTRO, ASSUNTO, RECENTES }
+
+    @Transactional(readOnly = true)
+    public List<QuestaoDescrita> buscar(Identidade ident, String assunto, String subassunto, String statusTexto,
+            String dificuldadeTexto, String busca, Ordem comoOrdenar, int limite, int deslocamento) {
         ident.exigirOperador();
+        var porAssunto = comoOrdenar == Ordem.ASSUNTO;
         var status = vazio(statusTexto) ? null : status(statusTexto);
         var dificuldade = vazio(dificuldadeTexto) ? null : dificuldade(dificuldadeTexto);
 
@@ -231,7 +245,7 @@ public class QuestoesServico {
             ordem.add("(select min(a.nome) from QuestaoAssunto oa join oa.assunto a where oa.questao = q) nulls last");
             ordem.add("(select min(s.nome) from QuestaoAssunto os join os.subassunto s where os.questao = q) nulls first");
         }
-        ordem.add("q.id");
+        ordem.add(comoOrdenar == Ordem.RECENTES ? "q.id desc" : "q.id");
         jpql.append(" order by ").append(String.join(", ", ordem));
 
         var consulta = em.createQuery(jpql.toString(), Questao.class);

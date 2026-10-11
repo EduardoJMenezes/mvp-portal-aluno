@@ -87,6 +87,68 @@ public class PublicacaoServico {
         marcarAprovado(ident, rascunhos.exigir(rascunhoId), ViaAprovacao.ELICITATION_MCP);
     }
 
+    /**
+     * Publica <b>uma</b> questão em rascunho, a pedido do professor que a conferiu no Banco de
+     * questões.
+     *
+     * <p>É o caminho da questão avulsa que o Claude escreve (de um print, por exemplo): ela nasce
+     * num rascunho só dela, e publicar a questão aprova e fecha esse rascunho, com a aprovação
+     * gravada como em qualquer outro. Num rascunho com mais de uma coisa pendente, só esta questão
+     * sai: o rascunho continua aberto <b>e sem aprovação</b>, para o "sim" dado a uma questão não
+     * virar autorização de publicar as outras pelo chat.
+     *
+     * <p>Questão de simulado em rascunho ou de linha de aula em rascunho não sai sozinha: publicada
+     * sem a prova ou sem a linha, ela ficaria no acervo dizendo estar num lugar que o aluno não vê.
+     */
+    @Transactional
+    public void publicarQuestao(Identidade ident, String referencia, Instant agora) {
+        ident.exigirOperador();
+        ident.exigirHumanoNoPortal("Publicar uma questão");
+
+        var q = questoes.resolver(referencia);
+        if (q.getStatus() == Status.PUBLICADO) {
+            throw new RegraDeNegocio("A questão %d já está publicada.".formatted(q.getId()));
+        }
+        if (!q.completa()) {
+            throw new RegraDeNegocio(
+                    "A questão %d ainda não pode ser publicada: faltam alternativas de A a D ou o gabarito."
+                            .formatted(q.getId()));
+        }
+        if (q.isImagemPendente()) {
+            throw new RegraDeNegocio(
+                    ("A questão %d ainda está com imagem pendente. Insira a figura no texto, ou "
+                            + "desmarque \"imagem pendente\" se ela não tem figura.").formatted(q.getId()));
+        }
+
+        var r = q.getRascunhoId() == null ? null : rascunhos.exigir(q.getRascunhoId());
+        if (r == null) {
+            questoes.publicar(q);
+            return;
+        }
+        var simulado = rascunhos.simuladoDoRascunho(r.getId());
+        if (simulado != null && simulado.getStatus() != Status.PUBLICADO) {
+            throw new RegraDeNegocio(
+                    "A questão %d é do simulado '%s', que está em rascunho: ela é publicada junto com ele."
+                            .formatted(q.getId(), simulado.getTitulo()));
+        }
+        var pendentes = estrutura.itensDoRascunho(r.getId(), true);
+        var linha = pendentes.stream()
+                .filter(i -> i.getQuestao() != null && i.getQuestao().getId().equals(q.getId())).findFirst();
+        if (linha.isPresent()) {
+            throw new RegraDeNegocio(
+                    "A questão %d é a linha '%s' de uma aula que está em rascunho: ela é publicada junto com a linha."
+                            .formatted(q.getId(), linha.get().getNome()));
+        }
+
+        questoes.publicar(q);
+        var sobrou = !pendentes.isEmpty() || rascunhos.questoesDoRascunho(r.getId()).stream()
+                .anyMatch(outra -> outra.getStatus() != Status.PUBLICADO);
+        if (!sobrou && r.getStatus() != Status.PUBLICADO) {
+            marcarAprovado(ident, r, ViaAprovacao.PORTAL);
+            r.publicar(agora);
+        }
+    }
+
     private void marcarAprovado(Identidade ident, Rascunho r, ViaAprovacao via) {
         var quem = contas.buscar(ident.usuarioId())
                 .orElseThrow(() -> new NaoEncontrado("Esta conta não existe mais."));

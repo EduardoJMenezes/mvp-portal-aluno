@@ -5,7 +5,7 @@ import { Suspense, useEffect, useRef, useState, type FormEvent } from "react";
 import type { VideoNoCampo } from "@/components/CampoDeVideo";
 import { CamposDaQuestao, Previa, VAZIO, alternativasPreenchidas, comentariosPreenchidos, type Formulario } from "@/components/FormularioDaQuestao";
 import { proximoNome } from "@/components/curso/AdicionarQuestao";
-import { Aviso, Botao, Campo, Cartao, Carregando, Pagina, Revelar, TituloDeSecao, useConfirmar } from "@/components/ui";
+import { Aviso, Botao, BotaoLink, Campo, Cartao, Carregando, LinkNoTexto, Pagina, Revelar, TituloDeSecao, useConfirmar } from "@/components/ui";
 import { api, useDados, type Assunto, type QuestaoDetalhada } from "@/lib/api";
 import { plural } from "@/lib/formato";
 import { LETRAS } from "@/lib/rotulos";
@@ -59,7 +59,12 @@ function Editor() {
   const [erro, setErro] = useState("");
   const [aviso, setAviso] = useState("");
   const [salvando, setSalvando] = useState(false);
+  // Depois de publicar: a próxima questão em rascunho, para conferir uma atrás da outra.
+  const [publicou, setPublicou] = useState<{ proxima: number | null } | null>(null);
   const [dialogo, confirmar] = useConfirmar();
+
+  // O aviso de "publicada" é da questão em que se clicou, não da próxima que se abre.
+  useEffect(() => setPublicou(null), [id]);
 
   useEffect(() => {
     if (questao.dados && assuntos.dados) {
@@ -75,6 +80,9 @@ function Editor() {
   // Questão publicada se corrige mesmo com simulado aberto: o aluno recebe a versão nova, e o acerto
   // de quem já respondeu é refeito. Nela, alternativa em branco é alternativa removida.
   const publicada = questao.dados?.status === "PUBLICADO";
+  const emRascunho = !!id && questao.dados?.status === "RASCUNHO";
+  // Questão de prova que ainda é rascunho sai junto com a prova, não sozinha.
+  const provaEmRascunho = emRascunho ? questao.dados?.simulados.find((s) => s.situacao === "RASCUNHO") : undefined;
   const emProva = questao.dados?.simulados.filter((s) => s.situacao === "ABERTO" || s.situacao === "ENCERRADO") ?? [];
   const assuntoEscolhido = assuntos.dados?.find((a) => String(a.id) === form.assunto);
   // O backend aceita id ou nome; o nome deixa legível o resumo do rascunho.
@@ -171,6 +179,26 @@ function Editor() {
     }
   }
 
+  async function publicar() {
+    if (!id) return;
+    setErro("");
+    setAviso("");
+    if (JSON.stringify(form) !== JSON.stringify(original)) {
+      setErro("Você mudou a questão e ainda não salvou. Salve antes de publicar.");
+      return;
+    }
+    try {
+      await api.publicarQuestao(id);
+      const outras = await api.questoes({ status: "RASCUNHO", ordem: "recentes", limite: 5 }).catch(() => []);
+      setPublicou({ proxima: outras.find((q) => q.questao_id !== id)?.questao_id ?? null });
+      await questao.recarregar();
+      window.scrollTo({ top: 0 });
+    } catch (ex) {
+      setErro((ex as Error).message);
+      window.scrollTo({ top: 0 });
+    }
+  }
+
   async function remover() {
     if (!id) return;
     const sim = await confirmar({
@@ -201,11 +229,40 @@ function Editor() {
       titulo={id ? `Questão #${id}` : submodulo ? "Nova questão na aula" : "Nova questão"}
       legenda={id ? undefined : submodulo ? `Entra no banco e vira uma linha de ${destino || "o sub-módulo"}, já publicada: o aluno responde ali e vê o gabarito na hora.` : "Entra no banco já publicada: fica disponível para simulados e para as aulas."}
       voltar={submodulo || moduloDeVolta ? { href: curso, rotulo: "Montar o curso" } : { href: "/admin/questoes/", rotulo: "Banco de questões" }}
-      acoes={id && <Botao variante="perigo" onClick={() => remover()}>Remover</Botao>}
+      acoes={
+        id && (
+          <>
+            <Botao variante="perigo" onClick={() => remover()}>Remover</Botao>
+            {emRascunho && !provaEmRascunho && <Botao variante="primario" onClick={() => publicar()}>Publicar</Botao>}
+          </>
+        )
+      }
     >
       {dialogo}
       {questao.erro && <Aviso tom="erro">{questao.erro}</Aviso>}
       {criada && <Aviso tom="sucesso">{criada}</Aviso>}
+      {publicou && publicada && (
+        <Aviso tom="sucesso" titulo="Questão publicada">
+          <span className="flex flex-wrap items-center gap-2">
+            Ela já pode entrar em simulado e em aula.
+            {publicou.proxima ? (
+              <BotaoLink tamanho="pequeno" variante="secundario" href={`/admin/questoes/editar/?id=${publicou.proxima}`}>Conferir a próxima em rascunho (#{publicou.proxima})</BotaoLink>
+            ) : (
+              <BotaoLink tamanho="pequeno" href="/admin/questoes/">Voltar ao Banco de questões</BotaoLink>
+            )}
+          </span>
+        </Aviso>
+      )}
+      {emRascunho &&
+        (provaEmRascunho ? (
+          <Aviso tom="atencao" titulo="Em rascunho, dentro de um simulado">
+            Ela é do simulado <LinkNoTexto herdaCor href={`/admin/simulados/ver/?id=${provaEmRascunho.simulado_id}`}>{provaEmRascunho.titulo}</LinkNoTexto>, que ainda é rascunho, e é publicada junto com ele.
+          </Aviso>
+        ) : (
+          <Aviso tom="atencao" titulo="Em rascunho">
+            Ainda não aparece para ninguém nem pode entrar em simulado. Confira o enunciado, as alternativas, o gabarito e a figura, e clique em “Publicar”.
+          </Aviso>
+        ))}
       {emProva.length > 0 && (
         <Aviso tom="info" titulo="Esta questão está em simulado que já abriu">
           {emProva.map((s) => s.titulo).join(", ")}. Dá para corrigir: a mudança vale na hora, também para quem está fazendo a prova, e se o gabarito mudar o acerto de quem já respondeu é refeito. O aluno não é avisado.
@@ -232,7 +289,7 @@ function Editor() {
           {erro && <Aviso tom="erro">{erro}</Aviso>}
           {aviso && <Aviso tom="sucesso">{aviso}</Aviso>}
           <div className="flex flex-wrap gap-2">
-            <Botao type="submit" variante="primario" ocupado={salvando} onClick={() => (depois.current = "voltar")}>{salvando ? "Salvando…" : id ? "Salvar questão" : submodulo ? "Criar e pôr na aula" : "Criar questão"}</Botao>
+            <Botao type="submit" variante={emRascunho ? "secundario" : "primario"} ocupado={salvando} onClick={() => (depois.current = "voltar")}>{salvando ? "Salvando…" : id ? "Salvar questão" : submodulo ? "Criar e pôr na aula" : "Criar questão"}</Botao>
             {submodulo && <Botao type="submit" variante="secundario" disabled={salvando} onClick={() => (depois.current = "outra")}>Criar e escrever a próxima</Botao>}
           </div>
         </div>

@@ -379,6 +379,18 @@ número da importação foi apagada do portal; as rotas dela
 (`/api/admin/importacoes/prints`, `.../prints/{n}`, `.../recortes`) e o
 `Prints.recortar` continuam na API, sem uso pelo portal.
 
+**A questão do Claude é conferida e publicada no Banco de questões**, não na
+tela de Rascunhos (11/10/2026). A lista do banco vem da mais recente para a
+mais antiga (`ordem=recentes`); a que está em rascunho traz "Conferir e
+publicar", e o editor dela tem o botão "Publicar"
+(`POST /api/admin/questoes/{id}/publicacao` → `PublicacaoServico.publicarQuestao`).
+Só sessão do portal publica. A questão avulsa nasce num rascunho só dela, e
+publicá-la aprova e fecha esse rascunho, com a aprovação gravada em `drafts`
+como sempre. Num rascunho com mais coisa pendente, só a questão sai e o
+rascunho continua aberto e **sem** aprovação, para o "sim" a uma questão não
+liberar o resto pelo chat. Questão de simulado em rascunho ou de linha de aula
+em rascunho não sai sozinha; com imagem pendente ou incompleta, também não.
+
 A tela antiga do .docx no portal (pedir o link de envio e revisar por blocos)
 foi apagada junto. Pelo chat nada muda: o Claude passa o link da página de
 envio (`/enviar/{token}`) e revisa pelos comandos, e as rotas

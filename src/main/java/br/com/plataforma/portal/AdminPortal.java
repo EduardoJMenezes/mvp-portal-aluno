@@ -226,11 +226,13 @@ public class AdminPortal {
             @RequestParam(required = false) String dificuldade,
             @RequestParam(required = false) @Size(max = 200) String busca,
             // "assunto": agrupada por assunto e sub-assunto, para quem monta uma prova.
+            // "recentes": a última que entrou em cima, como no Banco de questões.
             @RequestParam(required = false) String ordem,
             @RequestParam(defaultValue = "50") @Min(1) @Max(200) int limite,
             @RequestParam(defaultValue = "0") @Min(0) int offset) {
-        return questoes.buscar(ident, assunto, subassunto, status, dificuldade, busca, "assunto".equals(ordem), limite,
-                offset);
+        var comoOrdenar = "assunto".equals(ordem) ? QuestoesServico.Ordem.ASSUNTO
+                : "recentes".equals(ordem) ? QuestoesServico.Ordem.RECENTES : QuestoesServico.Ordem.CADASTRO;
+        return questoes.buscar(ident, assunto, subassunto, status, dificuldade, busca, comoOrdenar, limite, offset);
     }
 
     @GetMapping("/alunos/{aluno}/desempenho")
@@ -470,6 +472,17 @@ public class AdminPortal {
                 dados.alternativas(), dados.gabarito(), dados.dificuldade(), dados.imagemPendente(), dados.assunto(),
                 dados.subassunto(), vimeoImportacao.resolucao(dados.vimeoId()), dados.resolucaoComentada(),
                 dados.comentarios()));
+    }
+
+    /**
+     * O professor conferiu a questão em rascunho no Banco de questões e a publica dali mesmo, sem
+     * passar pela tela de Rascunhos. A aprovação é a mesma, e fica gravada do mesmo jeito.
+     */
+    @PostMapping("/questoes/{questaoId}/publicacao")
+    public QuestoesServico.QuestaoDetalhada publicarQuestao(@AuthenticationPrincipal Identidade ident,
+            @PathVariable String questaoId) {
+        publicacao.publicarQuestao(ident, questaoId, Instant.now());
+        return questoes.detalhar(ident, questaoId, Instant.now());
     }
 
     @DeleteMapping("/questoes/{questaoId}")

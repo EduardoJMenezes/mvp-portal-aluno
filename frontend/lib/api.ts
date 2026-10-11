@@ -809,7 +809,7 @@ export const api = {
   modulos: (turma: string | number) => pedir<Modulo[]>(`/admin/modulos${q({ turma })}`),
   assuntos: () => pedir<Assunto[]>("/admin/assuntos"),
   /** `ordem: "assunto"`: agrupada por assunto e sub-assunto, para quem está escolhendo questões. */
-  questoes: (filtro: { assunto?: string; subassunto?: string; status?: string; dificuldade?: string; busca?: string; ordem?: "assunto"; limite?: number; offset?: number }) =>
+  questoes: (filtro: { assunto?: string; subassunto?: string; status?: string; dificuldade?: string; busca?: string; ordem?: "assunto" | "recentes"; limite?: number; offset?: number }) =>
     pedir<Questao[]>(`/admin/questoes${q(filtro)}`),
   desempenho: (aluno: string | number, simulado?: string | number) =>
     pedir<Desempenho>(`/admin/alunos/${seg(String(aluno))}/desempenho${q({ simulado })}`),
@@ -889,6 +889,8 @@ export const api = {
   criarQuestao: (dados: Record<string, unknown>) => pedir<Rascunho>("/admin/questoes", { method: "POST", json: dados }),
   editarQuestao: (id: number, dados: Record<string, unknown>) =>
     pedir<QuestaoDetalhada>(`/admin/questoes/${id}`, { method: "PATCH", json: dados }),
+  /** Tira do rascunho a questão que o professor conferiu no Banco de questões. */
+  publicarQuestao: (id: number) => pedir<QuestaoDetalhada>(`/admin/questoes/${id}/publicacao`, { method: "POST" }),
   removerQuestao: (id: number) => pedir(`/admin/questoes/${id}`, { method: "DELETE" }),
   /** As questões de um .docx, lidas para a tela de montar a prova. Nada é criado no servidor além das figuras. */
   lerDocxDoSimulado: (arquivo: File) => {

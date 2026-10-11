@@ -36,10 +36,8 @@ function QuestoesPorPrints() {
         </li>
         <li>Ele responde com um link de envio, que vale 30 minutos e serve uma vez.</li>
         <li>Abra o link, cole os prints com Ctrl+V ou escolha as imagens, e envie.</li>
-        <li>Volte ao chat e avise que enviou. Ele lê os prints, escreve as questões e recorta as figuras. Vai perguntar o gabarito, que quase nunca vem no print.</li>
-        <li>
-          Confira o resultado em <LinkNoTexto href="/admin/rascunhos/">Rascunhos</LinkNoTexto>. Nada aparece para os alunos antes da sua aprovação.
-        </li>
+        <li>Volte ao chat e avise que enviou. Ele lê os prints, escreve as questões e recorta as figuras. Se faltar alguma informação no print, ele pergunta.</li>
+        <li>As questões aparecem aqui, no Banco de questões, em cima da lista e em rascunho. Abra uma por uma, confira e publique. O Claude também manda o link de cada uma.</li>
       </Passos>
       <p className="text-suave">Uma figura saiu cortada ou com texto junto? Diga a ele qual, e ele recorta de novo.</p>
       <p className="text-suave">Se a figura já é um arquivo de imagem, não precisa disso: escreva a questão em “Nova questão” e insira a imagem direto no texto.</p>
@@ -69,7 +67,8 @@ export default function BancoDeQuestoes() {
     setCarregando(true);
     setErro("");
     try {
-      const pagina = await api.questoes({ busca: buscaAplicada, assunto, dificuldade, status, limite: POR_PAGINA, offset });
+      // A última que entrou vem em cima: é onde está o que o Claude acabou de escrever para conferir.
+      const pagina = await api.questoes({ busca: buscaAplicada, assunto, dificuldade, status, ordem: "recentes", limite: POR_PAGINA, offset });
       setQuestoes((atuais) => (offset ? [...atuais, ...pagina] : pagina));
       setTemMais(pagina.length === POR_PAGINA);
     } catch (e) {
@@ -87,7 +86,7 @@ export default function BancoDeQuestoes() {
   return (
     <Pagina
       titulo="Banco de questões"
-      legenda="O acervo de questões: as de simulado e as que viram linha de aula, onde o aluno responde e vê o gabarito na hora."
+      legenda="O acervo de questões, da mais recente para a mais antiga. A que está em rascunho ainda não aparece para ninguém: abra, confira e publique."
       acoes={
         <>
           <QuestoesPorPrints />
@@ -149,7 +148,7 @@ export default function BancoDeQuestoes() {
                   {q.video_resolucao_id && <Etiqueta>Com vídeo</Etiqueta>}
                   {!!q.aulas?.length && <span title={q.aulas.join("; ")}><Etiqueta tom="info">Em aula</Etiqueta></span>}
                 </div>
-                <BotaoLink tamanho="mini" href={`/admin/questoes/editar/?id=${q.questao_id}`}>Abrir</BotaoLink>
+                <BotaoLink tamanho="mini" variante={q.status === "PUBLICADO" ? "neutro" : "secundario"} href={`/admin/questoes/editar/?id=${q.questao_id}`}>{q.status === "PUBLICADO" ? "Abrir" : "Conferir e publicar"}</BotaoLink>
               </div>
               <div className="relative max-h-40 overflow-hidden">
                 <TextoFormatado texto={q.enunciado} compacto />
