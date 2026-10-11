@@ -56,7 +56,6 @@ const DO_OPERADOR: (Destino | Grupo)[] = [
       { href: "/admin/simulados/", rotulo: "Simulados" },
       { href: "/admin/questoes/", rotulo: "Banco de questões" },
       { href: "/admin/assuntos/", rotulo: "Assuntos" },
-      { href: "/admin/importar/", rotulo: "Importar" },
     ],
   },
   {

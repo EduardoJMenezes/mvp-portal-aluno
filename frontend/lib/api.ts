@@ -639,19 +639,6 @@ export type SimulacaoVimeo = {
   observacao: string;
 };
 
-export type RevisaoDocx = {
-  importacao_id: number;
-  rascunho_id: number;
-  simulado_id: number;
-  titulo: string;
-  arquivo: string | null;
-  total_questoes: number;
-  avisos_gerais: string[];
-  questoes: { ordem: number; numero_no_documento: number | null; questao_id: number; enunciado: string; alternativas: Record<string, string>; gabarito: string; resolucao_comentada: string | null; imagem_pendente: boolean; avisos: string[] }[];
-  incompletas: { numero: number; avisos: string[]; blocos: { indice: number; texto: string }[] }[];
-  pendencias_para_publicar: string[];
-};
-
 export type LinkDeEnvio = { importacao_id: number; link: string; expira_em: string; instrucao: string };
 
 export const tokenDoLink = (link: string) => link.replace(/\/+$/, "").split("/").pop() ?? "";
@@ -945,11 +932,6 @@ export const api = {
     pedir<{ rascunhos: Rascunho[]; aviso: string }>("/admin/vimeo/importacoes", { method: "POST", json: { pasta, turma, destinos } }),
 
   // importações
-  linkDocx: (dados: { turmas: string[]; titulo?: string; abre_em?: string; fecha_em?: string; duracao_minutos?: number; pasta_resolucao?: string }) =>
-    pedir<LinkDeEnvio>("/admin/importacoes", { method: "POST", json: dados }),
-  revisarImportacao: (id: number) => pedir<RevisaoDocx>(`/admin/importacoes/${id}`),
-  completarQuestao: (id: number, dados: { numero: number; enunciado: string; alternativas: string; gabarito: string; resolucao?: string }) =>
-    pedir<{ questao_id: number; ordem: number }>(`/admin/importacoes/${id}/questoes`, { method: "POST", json: dados }),
   linkPrints: () => pedir<LinkDeEnvio>("/admin/importacoes/prints", { method: "POST" }),
   totalDePrints: (id: number) => pedir<{ importacao_id: number; total_prints: number }>(`/admin/importacoes/${id}/prints`),
   recortar: (id: number, dados: { print: number; questao: number; retangulo: number[]; parte: string; alternativa?: string; estender?: boolean }) =>

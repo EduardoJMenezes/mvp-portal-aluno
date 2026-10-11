@@ -45,7 +45,7 @@ function Envio() {
     setOcupado(true);
     try {
       await api.enviarPrints(tokenDoLink(link.link), prints);
-      router.replace(`/admin/importar/prints/?importacao=${link.importacao_id}`);
+      router.replace(`/admin/questoes/prints/?importacao=${link.importacao_id}`);
     } catch (ex) {
       setErro((ex as Error).message);
       setOcupado(false);
@@ -56,7 +56,7 @@ function Envio() {
     <Pagina
       titulo="Prints de questões"
       legenda="Os prints ficam no servidor. Crie as questões em rascunho (à mão ou pelo Claude) e recorte cada figura de dentro do print original."
-      voltar={{ href: "/admin/importar/", rotulo: "Importar" }}
+      voltar={{ href: "/admin/questoes/", rotulo: "Banco de questões" }}
       estreita
     >
       {erro && <Aviso tom="erro">{erro}</Aviso>}
@@ -78,7 +78,7 @@ function Envio() {
             className="flex flex-wrap items-end gap-2 border-t border-borda pt-4"
             onSubmit={(e) => {
               e.preventDefault();
-              if (Number(abrir) > 0) router.push(`/admin/importar/prints/?importacao=${Number(abrir)}`);
+              if (Number(abrir) > 0) router.push(`/admin/questoes/prints/?importacao=${Number(abrir)}`);
             }}
           >
             <Campo rotulo="Já enviou? Abra pelo número da importação" className="min-w-56 flex-1">
@@ -97,7 +97,7 @@ function Prints({ id }: { id: number }) {
   const [atual, setAtual] = useState(1);
 
   return (
-    <Pagina titulo={`Prints · importação #${id}`} legenda="Arraste sobre a figura para marcar o retângulo. O recorte sai do print original e as bordas se estendem até o desenho acabar." voltar={{ href: "/admin/importar/prints/", rotulo: "Prints" }}>
+    <Pagina titulo={`Prints · importação #${id}`} legenda="Arraste sobre a figura para marcar o retângulo. O recorte sai do print original e as bordas se estendem até o desenho acabar." voltar={{ href: "/admin/questoes/prints/", rotulo: "Prints" }}>
       <Estado {...total} linhas={2}>
         {(t) =>
           t.total_prints === 0 ? (

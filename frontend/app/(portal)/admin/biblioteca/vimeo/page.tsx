@@ -58,7 +58,7 @@ export default function ImportarDoVimeo() {
 
   if (criados) {
     return (
-      <Pagina titulo="Rascunhos criados" voltar={{ href: "/admin/importar/", rotulo: "Importar" }} estreita>
+      <Pagina titulo="Rascunhos criados" voltar={{ href: "/admin/biblioteca/", rotulo: "Montar o curso" }} estreita>
         <Aviso tom="sucesso" titulo={plural(criados.rascunhos.length, "rascunho criado", "rascunhos criados")}>{criados.aviso}</Aviso>
         <Cartao>
           <ul className="divide-y divide-borda">
@@ -82,7 +82,7 @@ export default function ImportarDoVimeo() {
   const modulosDaTurma = modulos.dados ?? [];
 
   return (
-    <Pagina titulo="Pasta do Vimeo para o curso" legenda="Escolha a pasta, diga para onde vai cada faixa de números e simule antes de criar os rascunhos." voltar={{ href: "/admin/importar/", rotulo: "Importar" }}>
+    <Pagina titulo="Pasta do Vimeo para o curso" legenda="Escolha a pasta, diga para onde vai cada faixa de números e simule antes de criar os rascunhos." voltar={{ href: "/admin/biblioteca/", rotulo: "Montar o curso" }}>
       <Cartao className="flex flex-col gap-4 p-5">
         <TituloDeSecao>1. Turma e pasta</TituloDeSecao>
         <Campo rotulo="Turma" className="max-w-sm">

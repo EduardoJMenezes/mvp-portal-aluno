@@ -18,12 +18,7 @@ export default function Painel() {
     <Pagina
       titulo={`Olá, ${usuario.nome.split(" ")[0]}`}
       legenda="O que espera por você, os simulados da semana e as turmas."
-      acoes={
-        <>
-          <BotaoLink href="/admin/importar/">Importar</BotaoLink>
-          <BotaoLink variante="primario" href="/admin/simulados/novo/">Montar simulado</BotaoLink>
-        </>
-      }
+      acoes={<BotaoLink variante="primario" href="/admin/simulados/novo/">Montar simulado</BotaoLink>}
     >
       <Estado {...dados} linhas={4}>
         {({ rascunhos, simulados, turmas }) => (

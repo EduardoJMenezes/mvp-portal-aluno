@@ -49,7 +49,12 @@ export default function BancoDeQuestoes() {
     <Pagina
       titulo="Banco de questões"
       legenda="O acervo de questões: as de simulado e as que viram linha de aula, onde o aluno responde e vê o gabarito na hora."
-      acoes={<BotaoLink variante="primario" href="/admin/questoes/editar/">Nova questão</BotaoLink>}
+      acoes={
+        <>
+          <BotaoLink href="/admin/questoes/prints/">Figuras a partir de prints</BotaoLink>
+          <BotaoLink variante="primario" href="/admin/questoes/editar/">Nova questão</BotaoLink>
+        </>
+      }
     >
       <Cartao className="grid gap-3 p-4 sm:grid-cols-2 lg:grid-cols-[2fr_1fr_1fr_1fr]">
         <Campo rotulo="Buscar no enunciado">

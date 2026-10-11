@@ -366,7 +366,13 @@ não tem mais botão de importar: a entrada é só "Novo simulado".
 * Tópicos, sub-tópicos e o diagnóstico por alternativa **não** vêm do
   documento do simulado: entram à mão, em cada questão, por enquanto.
 
-O caminho antigo (`/admin/importar/docx`, com link de envio e revisão por
-blocos) continua existindo: é o que o Claude usa quando o professor importa
-pelo chat.
+O menu "Importar" acabou em 11/10/2026: cada importação mora onde se usa. A
+pasta do Vimeo por faixa de números está em Montar o curso
+(`/admin/biblioteca/vimeo/`), e as figuras recortadas de prints, no Banco de
+questões (`/admin/questoes/prints/`).
+
+A tela antiga do .docx no portal (pedir o link de envio e revisar por blocos)
+foi apagada junto. Pelo chat nada muda: o Claude passa o link da página de
+envio (`/enviar/{token}`) e revisa pelos comandos, e as rotas
+`/api/admin/importacoes/**` continuam na API.
 
