@@ -1,12 +1,51 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Aviso, Botao, BotaoLink, Campo, Cartao, Carregando, Etiqueta, Pagina, Vazio } from "@/components/ui";
+import { ComoFunciona, Passos } from "@/components/ComoFunciona";
+import { Aviso, Botao, BotaoLink, Campo, Cartao, Carregando, Etiqueta, LinkNoTexto, Pagina, Vazio } from "@/components/ui";
 import { api, useDados, type Questao } from "@/lib/api";
 import { DIFICULDADE } from "@/lib/rotulos";
 import { TextoFormatado } from "@/lib/texto";
 
 const POR_PAGINA = 20;
+
+const PEDIDO = "Quero importar prints de questões.";
+
+/**
+ * Print virar questão é trabalho do Claude: ele lê a imagem, escreve a questão e recorta a figura.
+ * O portal só ensina o caminho.
+ */
+function QuestoesPorPrints() {
+  const [copiado, setCopiado] = useState(false);
+  return (
+    <ComoFunciona
+      rotulo="Questões a partir de prints"
+      titulo="Questões a partir de prints"
+      legenda="Para questão que só existe em imagem: print de prova, de PDF ou de site. Quem faz é o Claude, conversando com você."
+    >
+      <Passos>
+        <li>
+          Se ainda não conectou o Claude ao portal, faça isso em <LinkNoTexto href="/admin/claude/">Conectar ao Claude</LinkNoTexto>.
+        </li>
+        <li>
+          No chat do Claude, peça:
+          <span className="mt-1 flex flex-wrap items-center gap-2">
+            <span className="select-all rounded-campo border border-borda bg-canvas px-2 py-1">{PEDIDO}</span>
+            <Botao tamanho="pequeno" onClick={async () => { await navigator.clipboard?.writeText(PEDIDO); setCopiado(true); }}>{copiado ? "Copiado" : "Copiar"}</Botao>
+          </span>
+        </li>
+        <li>Ele responde com um link de envio, que vale 30 minutos e serve uma vez.</li>
+        <li>Abra o link, cole os prints com Ctrl+V ou escolha as imagens, e envie.</li>
+        <li>Volte ao chat e avise que enviou. Ele lê os prints, escreve as questões e recorta as figuras. Vai perguntar o gabarito, que quase nunca vem no print.</li>
+        <li>
+          Confira o resultado em <LinkNoTexto href="/admin/rascunhos/">Rascunhos</LinkNoTexto>. Nada aparece para os alunos antes da sua aprovação.
+        </li>
+      </Passos>
+      <p className="text-suave">Uma figura saiu cortada ou com texto junto? Diga a ele qual, e ele recorta de novo.</p>
+      <p className="text-suave">Se a figura já é um arquivo de imagem, não precisa disso: escreva a questão em “Nova questão” e insira a imagem direto no texto.</p>
+    </ComoFunciona>
+  );
+}
 
 export default function BancoDeQuestoes() {
   const assuntos = useDados(() => api.assuntos());
@@ -51,7 +90,7 @@ export default function BancoDeQuestoes() {
       legenda="O acervo de questões: as de simulado e as que viram linha de aula, onde o aluno responde e vê o gabarito na hora."
       acoes={
         <>
-          <BotaoLink href="/admin/questoes/prints/">Questões a partir de prints</BotaoLink>
+          <QuestoesPorPrints />
           <BotaoLink variante="primario" href="/admin/questoes/editar/">Nova questão</BotaoLink>
         </>
       }

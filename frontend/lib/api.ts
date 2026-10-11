@@ -639,9 +639,7 @@ export type SimulacaoVimeo = {
   observacao: string;
 };
 
-export type LinkDeEnvio = { importacao_id: number; link: string; expira_em: string; instrucao: string };
 
-export const tokenDoLink = (link: string) => link.replace(/\/+$/, "").split("/").pop() ?? "";
 
 const q = (parametros: Record<string, string | number | undefined | null>) => {
   const p = new URLSearchParams();
@@ -932,10 +930,6 @@ export const api = {
     pedir<{ rascunhos: Rascunho[]; aviso: string }>("/admin/vimeo/importacoes", { method: "POST", json: { pasta, turma, destinos } }),
 
   // importações
-  linkPrints: () => pedir<LinkDeEnvio>("/admin/importacoes/prints", { method: "POST" }),
-  totalDePrints: (id: number) => pedir<{ importacao_id: number; total_prints: number }>(`/admin/importacoes/${id}/prints`),
-  recortar: (id: number, dados: { print: number; questao: number; retangulo: number[]; parte: string; alternativa?: string; estender?: boolean }) =>
-    pedir<{ figura_id: number }>(`/admin/importacoes/${id}/recortes`, { method: "POST", json: dados }),
 
   // materiais do professor
   aulasDoProfessor: () => pedir<Aula[]>("/admin/aulas"),

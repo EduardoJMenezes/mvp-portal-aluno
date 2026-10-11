@@ -368,16 +368,16 @@ não tem mais botão de importar: a entrada é só "Novo simulado".
 
 O menu "Importar" acabou em 11/10/2026: cada importação mora onde se usa. A
 pasta do Vimeo por faixa de números está em Montar o curso
-(`/admin/biblioteca/vimeo/`), e os prints, no Banco de questões, em
-"Questões a partir de prints" (`/admin/questoes/prints/`).
+(`/admin/biblioteca/vimeo/`).
 
-O nome é o do objetivo, print virar questão, e quem faz isso é o Claude (gera
-o link de envio, transcreve e recorta): a tela diz isso de cara. Sozinha, ela
-não lê texto; só recorta a figura de um print para uma questão já escrita em
-rascunho, e é apresentada assim, como caminho secundário. O botão "Como funciona"
-(`components/ComoFunciona.tsx`, o "i" de informação) abre o passo a passo dos
-dois caminhos. Eles se encontram pelo número da importação: o que o Claude
-gerou abre no portal, e o que foi enviado pelo portal o Claude vê.
+**Prints: só pelo Claude.** Print virar questão é trabalho dele (gera o link
+de envio, lê a imagem, escreve a questão em rascunho e recorta a figura). No
+Banco de questões, "Questões a partir de prints" não leva a tela nenhuma: abre
+o passo a passo (`components/ComoFunciona.tsx`, o "i" de informação) com a
+frase para pedir no chat. A tela manual de enviar prints e recortar pelo
+número da importação foi apagada do portal; as rotas dela
+(`/api/admin/importacoes/prints`, `.../prints/{n}`, `.../recortes`) e o
+`Prints.recortar` continuam na API, sem uso pelo portal.
 
 A tela antiga do .docx no portal (pedir o link de envio e revisar por blocos)
 foi apagada junto. Pelo chat nada muda: o Claude passa o link da página de

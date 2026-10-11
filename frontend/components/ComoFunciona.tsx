@@ -39,21 +39,8 @@ function Explicacao({ titulo, legenda, aoFechar, children }: { titulo: string; l
         </div>
       }
     >
-      <div className="flex flex-col gap-6 text-[15px]">{children}</div>
+      <div className="flex flex-col gap-4 text-[15px]">{children}</div>
     </Modal>
-  );
-}
-
-/** Um caminho dentro da explicação: o nome dele e os passos, na ordem. */
-export function Caminho({ titulo, marca, children }: { titulo: string; marca?: ReactNode; children: ReactNode }) {
-  return (
-    <section className="flex flex-col gap-2">
-      <h3 className="flex flex-wrap items-center gap-2 font-semibold text-tinta">
-        {titulo}
-        {marca}
-      </h3>
-      {children}
-    </section>
   );
 }
 
