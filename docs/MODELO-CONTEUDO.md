@@ -156,6 +156,13 @@ seção "Em aberto", no fim.
 > que ver, vídeo ou questão, na ordem do sub-módulo. O painel "Adicionar
 > questão" usa as mesmas peças.
 >
+> **Mudou em 11/10/2026: o PDF abre num modal.** O ícone da linha de PDF abre o
+> arquivo por cima da página (`PreviaDoPdf.tsx`), e o menu da linha ganhou "Ver
+> o PDF", também para o vídeo que tem PDF anexado. É só para conferir qual é o
+> arquivo: as folhas desenhadas pelo pdf.js, em faixas como no leitor, sem
+> caneta nem marcação, e nada é gravado. Página longe da tela é apagada da
+> memória. "Abrir no leitor" leva ao leitor de verdade, em outra aba.
+>
 > **Mudou em 10/10/2026: o que o professor cria abre por cima da página.** Nas
 > telas dele, o formulário deixou de expandir no meio da lista (ou de ficar
 > fixo no alto dela) e passou a abrir num `Modal` ou `OffCanvas`: em "Montar o

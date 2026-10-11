@@ -3,13 +3,14 @@
 // Um sub-módulo na tela de montar o curso: a fila das linhas (vídeo, PDF ou questão), o botão
 // único de "Adicionar" e o que cada linha deixa fazer.
 
-import { ArrowDown, ArrowUp, CornerDownRight, ExternalLink, Eye, Paperclip, Pencil, Play, Plus, SquarePen, Tags, Trash2, Users } from "lucide-react";
+import { ArrowDown, ArrowUp, CornerDownRight, Eye, Paperclip, Pencil, Play, Plus, SquarePen, Tags, Trash2, Users } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
 import { OffCanvas } from "@/components/Camadas";
 import { EscolherTurmas } from "@/components/EscolherTurmas";
 import { Menu, type ItemDoMenu } from "@/components/Menu";
 import { QuestaoParaVer } from "@/components/PreviaDaQuestao";
+import { VerPdf } from "@/components/PreviaDoPdf";
 import { PassarVideos, TelaDoVideo } from "@/components/PreviaDoVideo";
 import { Botao, BotaoLink, Etiqueta, Formulario, LinkDeTitulo, botao } from "@/components/ui";
 import { api, type Assunto, type Aula, type ItemCurso, type Modulo, type SubModulo } from "@/lib/api";
@@ -259,7 +260,7 @@ function Linha({
   aoVer: () => void;
 }) {
   const router = useRouter();
-  const [modo, setModo] = useState<"nome" | "pdf" | "turmas" | "assunto" | null>(null);
+  const [modo, setModo] = useState<"nome" | "pdf" | "turmas" | "assunto" | "ver-pdf" | null>(null);
   const [nome, setNome] = useState(item.nome);
   const tipo = tipoDaLinha(item);
   const restrita = !!item.turmas?.length;
@@ -286,7 +287,7 @@ function Linha({
     tipo === "questao" && { rotulo: "Ver a questão", icone: Eye, aoEscolher: aoVer },
     { rotulo: "Renomear", icone: Pencil, aoEscolher: () => { setNome(item.nome); setModo("nome"); } },
     tipo === "questao" && { rotulo: "Editar a questão", icone: SquarePen, aoEscolher: () => router.push(`/admin/questoes/editar/?id=${item.questao!.questao_id}&modulo=${modulo.id}`) },
-    tipo === "pdf" && !!item.material && { rotulo: "Abrir o PDF", icone: ExternalLink, aoEscolher: () => router.push(`/materiais/ler/?id=${item.material!.material_id}`) },
+    !!item.material && { rotulo: "Ver o PDF", icone: Eye, aoEscolher: () => setModo("ver-pdf") },
     tipo !== "questao" && { rotulo: item.material ? "Trocar o PDF" : "Anexar PDF", icone: Paperclip, aoEscolher: () => setModo("pdf") },
     tipo === "video" && !!item.material && { rotulo: "Tirar o PDF", icone: Paperclip, aoEscolher: () => void executar(() => api.materialDoItem(item.id, null), `"${item.nome}" ficou sem PDF.`) },
     { rotulo: item.assuntos?.length ? "Trocar o assunto" : "Pôr assunto", icone: Tags, aoEscolher: () => setModo("assunto") },
@@ -315,6 +316,10 @@ function Linha({
         ) : tipo === "questao" ? (
           <button type="button" onClick={aoVer} aria-label={`Ver a questão ${item.nome}`} title="Ver a questão" className="group/ver shrink-0 rounded-[10px]">
             <Azulejo tipo="questao" className="transition-colors group-hover/ver:bg-violeta group-hover/ver:text-white" />
+          </button>
+        ) : item.material ? (
+          <button type="button" onClick={() => setModo("ver-pdf")} aria-label={`Ver o PDF ${item.material.titulo}`} title="Ver o PDF" className="group/ver shrink-0 rounded-[10px]">
+            <Azulejo tipo="pdf" className="transition-colors group-hover/ver:bg-atencao group-hover/ver:text-white" />
           </button>
         ) : (
           <Azulejo tipo={tipo} />
@@ -349,6 +354,7 @@ function Linha({
           aoFechar={voltar}
         />
       )}
+      {modo === "ver-pdf" && item.material && <VerPdf material={item.material} aoFechar={voltar} />}
       {modo === "assunto" && <AssuntoDaLinha item={item} tipo={tipo} assuntos={assuntos} executar={executar} aoFechar={voltar} />}
       {modo === "turmas" && (
         <EscolherTurmas
