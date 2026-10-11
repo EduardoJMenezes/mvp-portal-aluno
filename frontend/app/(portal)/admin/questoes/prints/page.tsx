@@ -2,8 +2,9 @@
 
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useRef, useState, type PointerEvent } from "react";
+import { Caminho, ComoFunciona, Passos } from "@/components/ComoFunciona";
 import { EscolherPrints } from "@/components/Envio";
-import { Aviso, Botao, BotaoLink, Campo, Cartao, Estado, LinkNoTexto, Pagina, TituloDeSecao, Vazio } from "@/components/ui";
+import { Aviso, Botao, BotaoLink, Campo, Cartao, Estado, Etiqueta, LinkNoTexto, Pagina, TituloDeSecao, Vazio } from "@/components/ui";
 import { api, tokenDoLink, useDados, type LinkDeEnvio } from "@/lib/api";
 import { LETRAS } from "@/lib/rotulos";
 
@@ -12,6 +13,41 @@ export default function PaginaDosPrints() {
     <Suspense>
       <ImportarPrints />
     </Suspense>
+  );
+}
+
+const PEDIDO = "Quero importar prints de questões.";
+
+/** O passo a passo dos dois caminhos: pelo Claude, que faz quase tudo, e à mão, por esta tela. */
+function Ajuda() {
+  return (
+    <ComoFunciona titulo="Figuras a partir de prints" legenda="Para questão que está em imagem: print de prova, de PDF ou de site.">
+      <Caminho titulo="Pelo Claude" marca={<Etiqueta tom="info">O mais fácil</Etiqueta>}>
+        <p className="text-suave">Ele lê os prints, escreve as questões em rascunho e recorta as figuras.</p>
+        <Passos>
+          <li>Se ainda não conectou o Claude ao portal, faça isso em <LinkNoTexto href="/admin/claude/">Conectar ao Claude</LinkNoTexto>.</li>
+          <li>No chat, peça: “{PEDIDO}”</li>
+          <li>Ele responde com um link de envio, que vale 30 minutos e serve uma vez.</li>
+          <li>Abra o link, cole os prints com Ctrl+V ou escolha as imagens, e envie.</li>
+          <li>Volte ao chat e avise que enviou. Ele vai perguntar o gabarito, que quase nunca vem no print.</li>
+          <li>Confira o resultado em <LinkNoTexto href="/admin/rascunhos/">Rascunhos</LinkNoTexto>. Nada aparece para os alunos antes da sua aprovação.</li>
+        </Passos>
+      </Caminho>
+      <Caminho titulo="À mão, por esta tela">
+        <p className="text-suave">Você escreve a questão e marca no print onde está a figura.</p>
+        <Passos>
+          <li>Crie a questão em <LinkNoTexto href="/admin/questoes/editar/">Nova questão</LinkNoTexto> e deixe em rascunho. Onde a figura entra, escreva <code className="rounded-campo bg-canvas px-1.5 py-0.5 text-[13px]">![](figura:pendente)</code>.</li>
+          <li>Aqui, clique em “Enviar prints agora” e mande as imagens.</li>
+          <li>Em cada print, arraste sobre a figura, escolha a questão e clique em “Recortar para a questão”.</li>
+        </Passos>
+      </Caminho>
+      <Caminho titulo="Os dois caminhos se encontram">
+        <p className="text-suave">
+          Todo envio ganha um número de importação. Com o número que o Claude informar, você abre os prints aqui em “Já enviou?”. E o contrário também vale: envie por aqui e diga ao Claude o número.
+        </p>
+        <p className="text-suave">Se a figura já é um arquivo de imagem, não precisa de nada disso: insira direto no editor da questão.</p>
+      </Caminho>
+    </ComoFunciona>
   );
 }
 
@@ -55,8 +91,9 @@ function Envio() {
   return (
     <Pagina
       titulo="Prints de questões"
-      legenda="Os prints ficam no servidor. Crie as questões em rascunho (à mão ou pelo Claude) e recorte cada figura de dentro do print original."
+      legenda="Para questão que está em imagem: print de prova, de PDF ou de site. A figura sai recortada de dentro do print, direto para a questão em rascunho."
       voltar={{ href: "/admin/questoes/", rotulo: "Banco de questões" }}
+      acoes={<Ajuda />}
       estreita
     >
       {erro && <Aviso tom="erro">{erro}</Aviso>}
@@ -69,24 +106,36 @@ function Envio() {
           </p>
         </Cartao>
       ) : (
-        <Cartao className="flex flex-col gap-4 p-5">
-          <p className="text-[15px]">Cada envio ganha um número de importação; é por ele que os prints são achados depois.</p>
-          <div>
-            <Botao variante="primario" ocupado={ocupado} onClick={() => gerar()}>{ocupado ? "Preparando…" : "Enviar prints agora"}</Botao>
-          </div>
-          <form
-            className="flex flex-wrap items-end gap-2 border-t border-borda pt-4"
-            onSubmit={(e) => {
-              e.preventDefault();
-              if (Number(abrir) > 0) router.push(`/admin/questoes/prints/?importacao=${Number(abrir)}`);
-            }}
-          >
-            <Campo rotulo="Já enviou? Abra pelo número da importação" className="min-w-56 flex-1">
-              {(id) => <input id={id} type="number" min={1} value={abrir} onChange={(e) => setAbrir(e.target.value)} className="campo" />}
-            </Campo>
-            <Botao type="submit">Abrir</Botao>
-          </form>
-        </Cartao>
+        <>
+          <Cartao className="flex flex-col gap-3 p-5">
+            <TituloDeSecao acao={<Etiqueta tom="info">O mais fácil</Etiqueta>}>Pelo Claude</TituloDeSecao>
+            <p className="text-[15px]">
+              No chat, peça: “{PEDIDO}” Ele manda o link de envio, lê os prints, escreve as questões em rascunho e recorta as figuras. Você só confere e aprova.
+            </p>
+            <p className="text-[13px] text-suave">
+              Ainda não usa o Claude com o portal? Veja <LinkNoTexto href="/admin/claude/">Conectar ao Claude</LinkNoTexto>. O passo a passo completo está em “Como funciona”, no alto da tela.
+            </p>
+          </Cartao>
+          <Cartao className="flex flex-col gap-4 p-5">
+            <TituloDeSecao>À mão, por aqui</TituloDeSecao>
+            <p className="text-[15px]">Você envia os prints e marca, em cada um, onde está a figura e de qual questão em rascunho ela é. Cada envio ganha um número de importação; é por ele que os prints são achados depois.</p>
+            <div>
+              <Botao variante="primario" ocupado={ocupado} onClick={() => gerar()}>{ocupado ? "Preparando…" : "Enviar prints agora"}</Botao>
+            </div>
+            <form
+              className="flex flex-wrap items-end gap-2 border-t border-borda pt-4"
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (Number(abrir) > 0) router.push(`/admin/questoes/prints/?importacao=${Number(abrir)}`);
+              }}
+            >
+              <Campo rotulo="Já enviou? Abra pelo número da importação" className="min-w-56 flex-1">
+                {(id) => <input id={id} type="number" min={1} value={abrir} onChange={(e) => setAbrir(e.target.value)} className="campo" />}
+              </Campo>
+              <Botao type="submit">Abrir</Botao>
+            </form>
+          </Cartao>
+        </>
       )}
     </Pagina>
   );
@@ -97,7 +146,7 @@ function Prints({ id }: { id: number }) {
   const [atual, setAtual] = useState(1);
 
   return (
-    <Pagina titulo={`Prints · importação #${id}`} legenda="Arraste sobre a figura para marcar o retângulo. O recorte sai do print original e as bordas se estendem até o desenho acabar." voltar={{ href: "/admin/questoes/prints/", rotulo: "Prints" }}>
+    <Pagina titulo={`Prints · importação #${id}`} legenda="Arraste sobre a figura para marcar o retângulo. O recorte sai do print original e as bordas se estendem até o desenho acabar." voltar={{ href: "/admin/questoes/prints/", rotulo: "Prints" }} acoes={<Ajuda />}>
       <Estado {...total} linhas={2}>
         {(t) =>
           t.total_prints === 0 ? (

@@ -371,6 +371,12 @@ pasta do Vimeo por faixa de números está em Montar o curso
 (`/admin/biblioteca/vimeo/`), e as figuras recortadas de prints, no Banco de
 questões (`/admin/questoes/prints/`).
 
+A tela de prints diz logo de cara que o caminho mais fácil é pelo Claude (ele
+gera o link de envio, transcreve e recorta), e o botão "Como funciona"
+(`components/ComoFunciona.tsx`, o "i" de informação) abre o passo a passo dos
+dois caminhos. Eles se encontram pelo número da importação: o que o Claude
+gerou abre no portal, e o que foi enviado pelo portal o Claude vê.
+
 A tela antiga do .docx no portal (pedir o link de envio e revisar por blocos)
 foi apagada junto. Pelo chat nada muda: o Claude passa o link da página de
 envio (`/enviar/{token}`) e revisa pelos comandos, e as rotas
