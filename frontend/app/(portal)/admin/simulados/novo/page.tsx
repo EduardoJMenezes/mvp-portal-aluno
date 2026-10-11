@@ -1,10 +1,15 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { MontarProva, paraApi, type EntradaDaProva } from "@/components/MontarProva";
 import { Aviso, Botao, Campo, Cartao, Pagina, TituloDeSecao } from "@/components/ui";
 import { api, useDados } from "@/lib/api";
+
+// O simulado que está sendo montado fica guardado no navegador até virar rascunho: recarregar a
+// página ou fechar a aba sem querer não joga fora o título, as turmas nem as questões já postas.
+const GUARDADO = "simulado-novo-em-andamento";
+type EmAndamento = { titulo: string; escolhidas: string[]; abre: string; fecha: string; duracao: string; pasta: string; questoes: EntradaDaProva[] };
 
 export default function NovoSimulado() {
   const router = useRouter();
@@ -18,6 +23,54 @@ export default function NovoSimulado() {
   const [questoes, setQuestoes] = useState<EntradaDaProva[]>([]);
   const [erro, setErro] = useState("");
   const [salvando, setSalvando] = useState(false);
+  // Só depois de ler o que estava guardado é que se começa a guardar: senão o vazio do primeiro
+  // desenho apagaria o que havia.
+  const [lido, setLido] = useState(false);
+  const [retomado, setRetomado] = useState(false);
+  const criado = useRef(false);
+
+  useEffect(() => {
+    try {
+      const cru = localStorage.getItem(GUARDADO);
+      const g = cru ? (JSON.parse(cru) as Partial<EmAndamento>) : null;
+      if (g) {
+        setTitulo(g.titulo ?? "");
+        setEscolhidas(g.escolhidas ?? []);
+        setAbre(g.abre ?? "");
+        setFecha(g.fecha ?? "");
+        setDuracao(g.duracao ?? "");
+        setPasta(g.pasta ?? "");
+        setQuestoes(g.questoes ?? []);
+        setRetomado(true);
+      }
+    } catch {
+      // Sem armazenamento, ou guardado ilegível: começa em branco.
+    }
+    setLido(true);
+  }, []);
+
+  useEffect(() => {
+    if (!lido || criado.current) return;
+    const vazio = !titulo && !escolhidas.length && !abre && !fecha && !duracao && !pasta && !questoes.length;
+    try {
+      if (vazio) localStorage.removeItem(GUARDADO);
+      else localStorage.setItem(GUARDADO, JSON.stringify({ titulo, escolhidas, abre, fecha, duracao, pasta, questoes } satisfies EmAndamento));
+    } catch {
+      // Navegador sem armazenamento: o simulado só não fica guardado.
+    }
+  }, [lido, titulo, escolhidas, abre, fecha, duracao, pasta, questoes]);
+
+  function comecarDoZero() {
+    setTitulo("");
+    setEscolhidas([]);
+    setAbre("");
+    setFecha("");
+    setDuracao("");
+    setPasta("");
+    setQuestoes([]);
+    setRetomado(false);
+    setErro("");
+  }
 
   async function criar(e: FormEvent) {
     e.preventDefault();
@@ -36,6 +89,13 @@ export default function NovoSimulado() {
         duracao_minutos: duracao ? Number(duracao) : undefined,
         pasta_resolucao: pasta.trim() || undefined,
       });
+      // Virou rascunho no servidor: o que estava guardado no navegador já cumpriu o papel.
+      criado.current = true;
+      try {
+        localStorage.removeItem(GUARDADO);
+      } catch {
+        // Sem armazenamento, não havia o que apagar.
+      }
       router.replace(`/admin/rascunhos/revisar/?id=${rascunho.rascunho_id}`);
     } catch (ex) {
       setErro((ex as Error).message);
@@ -45,6 +105,12 @@ export default function NovoSimulado() {
 
   return (
     <Pagina titulo="Novo simulado" legenda="Nasce em rascunho. Os alunos só veem depois que você aprovar, na revisão do rascunho." voltar={{ href: "/admin/simulados/", rotulo: "Simulados" }} estreita>
+      {retomado && (
+        <Aviso tom="info" titulo="Você tinha um simulado começado">
+          Ele voltou como estava, com {questoes.length === 1 ? "1 questão" : `${questoes.length} questões`}. Fica guardado neste navegador até você criar o rascunho.{" "}
+          <Botao tamanho="mini" className="ml-1 align-middle" onClick={comecarDoZero}>Começar do zero</Botao>
+        </Aviso>
+      )}
       <form onSubmit={criar} className="flex flex-col gap-4">
         <Cartao className="flex flex-col gap-4 p-5">
           <Campo rotulo="Título">

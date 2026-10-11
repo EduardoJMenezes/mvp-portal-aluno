@@ -299,6 +299,20 @@ Nada é gravado no modal: a questão continua nascendo com o rascunho do
 simulado (`EntradasDaProva` já aceitava todos os campos). Por isso ela pode ser
 reaberta em "Editar", na lista da prova, até o rascunho ser criado.
 
+**Fechar o modal não perde o que foi escrito.** A questão nova em andamento
+fica guardada no navegador (`localStorage`, chave `questao-nova-em-andamento`)
+a cada mudança, e volta ao reabrir "Escrever questão nova", mesmo depois de
+recarregar a página; some quando entra na prova ou em "Começar do zero". Na
+questão que já está na prova, sair com mudança por guardar pede confirmação.
+
+O formulário inteiro de "Novo simulado" (título, turmas, agenda, pasta de
+resoluções e a lista de questões, com as escritas na hora) é guardado do mesmo
+jeito, na chave `simulado-novo-em-andamento`: recarregar a página ou fechar a
+aba antes de "Criar rascunho" não perde a prova montada. Some quando o rascunho
+é criado ou em "Começar do zero". É por navegador: não acompanha a pessoa para
+outro aparelho. A edição de um rascunho já criado não entra nisso — ali quem
+guarda é o servidor, ao salvar.
+
 Como o modal mora, no DOM, dentro do formulário do simulado, a `Camada` passou
 a impedir que Enter num campo dela envie um formulário que está atrás.
 

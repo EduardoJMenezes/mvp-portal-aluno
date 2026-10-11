@@ -1,12 +1,12 @@
 "use client";
 
 import { Plus, Search } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { BancoDeQuestoes } from "@/components/BancoDeQuestoes";
 import { Modal, OffCanvas, useSaida } from "@/components/Camadas";
 import type { VideoNoCampo } from "@/components/CampoDeVideo";
 import { CamposDaQuestao, Previa, VAZIO, alternativasPreenchidas, comentariosPreenchidos, faltaNaQuestao, type Formulario } from "@/components/FormularioDaQuestao";
-import { Botao, Etiqueta } from "@/components/ui";
+import { Aviso, Botao, Etiqueta } from "@/components/ui";
 import { api, useDados, type Questao } from "@/lib/api";
 import { plural } from "@/lib/formato";
 import { TextoFormatado } from "@/lib/texto";
@@ -179,17 +179,54 @@ function EscolherDoBanco({ entradas, aoEscolher, aoFechar }: { entradas: Entrada
   );
 }
 
+// A questão que está sendo escrita fica guardada no navegador até entrar na prova: fechar o modal
+// sem querer (Esc, o X, "Fechar"), ou até a aba, não joga fora o que já foi escrito.
+const GUARDADA = "questao-nova-em-andamento";
+type EmAndamento = { form: Formulario; video: VideoNoCampo | null };
+
+function lerEmAndamento(): EmAndamento | null {
+  try {
+    const cru = localStorage.getItem(GUARDADA);
+    const lido = cru ? (JSON.parse(cru) as EmAndamento) : null;
+    // Formulário de uma versão antiga, sem algum campo: completa com o vazio.
+    return lido?.form ? { form: { ...VAZIO, ...lido.form }, video: lido.video ?? null } : null;
+  } catch {
+    return null;
+  }
+}
+function guardarEmAndamento(atual: EmAndamento | null) {
+  try {
+    if (atual) localStorage.setItem(GUARDADA, JSON.stringify(atual));
+    else localStorage.removeItem(GUARDADA);
+  } catch {
+    // Navegador sem armazenamento (janela anônima restrita): a questão só não fica guardada.
+  }
+}
+const igual = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
+
 /**
  * A questão escrita na hora, num modal de tela cheia: o mesmo formulário do editor do banco, com a
- * prévia de como o aluno vê ao lado. Nada é gravado aqui — a questão nasce junto com o rascunho do
- * simulado e é aprovada com ele.
+ * prévia de como o aluno vê ao lado. Nada vai para o servidor aqui — a questão nasce junto com o
+ * rascunho do simulado e é aprovada com ele.
+ *
+ * Fechar não perde o trabalho. A questão nova fica guardada e volta ao reabrir; na que já está na
+ * prova (`inicial`), sair com mudança por guardar pede confirmação.
  */
 function EscreverQuestao({ inicial, posicao, aoGravar, aoFechar }: { inicial?: QuestaoNovaNaProva; posicao: number; aoGravar: (q: QuestaoNovaNaProva) => void; aoFechar: () => void }) {
   const saida = useSaida(aoFechar);
   const assuntos = useDados(() => api.assuntos());
-  const [form, setForm] = useState<Formulario>(inicial?.form ?? VAZIO);
-  const [video, setVideo] = useState<VideoNoCampo | null>(inicial?.video ?? null);
+  const [retomada] = useState(() => (inicial ? null : lerEmAndamento()));
+  const [form, setForm] = useState<Formulario>(inicial?.form ?? retomada?.form ?? VAZIO);
+  const [video, setVideo] = useState<VideoNoCampo | null>(inicial?.video ?? retomada?.video ?? null);
+  const [avisoDeRetomada, setAvisoDeRetomada] = useState(!!retomada);
+  const [saindo, setSaindo] = useState(false);
   const [erro, setErro] = useState("");
+
+  // Cada mudança na questão nova vai para o navegador; em branco, não há o que guardar.
+  useEffect(() => {
+    if (inicial) return;
+    guardarEmAndamento(igual(form, VAZIO) ? null : { form, video });
+  }, [inicial, form, video]);
 
   function gravar() {
     const falta = faltaNaQuestao(form);
@@ -206,31 +243,63 @@ function EscreverQuestao({ inicial, posicao, aoGravar, aoFechar }: { inicial?: Q
       form,
       video,
     });
+    // Entrou na prova: o que estava guardado já cumpriu o papel.
+    if (!inicial) guardarEmAndamento(null);
     saida.fechar();
   }
+
+  const mudouAQueJaEstava = !!inicial && !igual(form, inicial.form ?? VAZIO);
+  const pedirParaSair = () => {
+    if (mudouAQueJaEstava && !saindo) setSaindo(true);
+    else saida.fechar();
+  };
+  const comecarDoZero = () => {
+    setForm(VAZIO);
+    setVideo(null);
+    setAvisoDeRetomada(false);
+    setErro("");
+  };
 
   return (
     <Modal
       {...saida}
-      aoFechar={saida.fechar}
+      aoFechar={pedirParaSair}
       tamanho="tela"
       fechaClicandoFora={false}
       titulo={inicial ? `Questão ${posicao} da prova` : "Escrever questão nova"}
-      legenda="Nasce em rascunho junto com o simulado e é aprovada com ele."
+      legenda={inicial ? "Nasce em rascunho junto com o simulado e é aprovada com ele." : "Nasce em rascunho junto com o simulado e é aprovada com ele. O que você escreve aqui fica guardado neste navegador até entrar na prova."}
       rodape={
-        <div className="mx-auto flex w-full max-w-6xl flex-wrap items-center justify-end gap-2">
-          {erro && <p role="alert" className="mr-auto text-sm font-medium text-erro">{erro}</p>}
-          <Botao onClick={saida.fechar}>Cancelar</Botao>
-          <Botao variante="primario" onClick={gravar}>{inicial ? "Guardar a questão" : "Adicionar à prova"}</Botao>
-        </div>
+        saindo ? (
+          <div className="mx-auto flex w-full max-w-6xl flex-wrap items-center justify-between gap-3">
+            <p className="text-[15px] font-medium text-tinta">Sair sem guardar o que você mudou nesta questão?</p>
+            <div className="flex gap-2">
+              <Botao onClick={() => setSaindo(false)}>Continuar editando</Botao>
+              <Botao variante="perigo" onClick={saida.fechar}>Sair sem guardar</Botao>
+            </div>
+          </div>
+        ) : (
+          <div className="mx-auto flex w-full max-w-6xl flex-wrap items-center justify-end gap-2">
+            {erro && <p role="alert" className="mr-auto text-sm font-medium text-erro">{erro}</p>}
+            <Botao onClick={pedirParaSair}>{inicial ? "Cancelar" : "Fechar e continuar depois"}</Botao>
+            <Botao variante="primario" onClick={gravar}>{inicial ? "Guardar a questão" : "Adicionar à prova"}</Botao>
+          </div>
+        )
       }
     >
-      <div className="mx-auto grid w-full max-w-6xl gap-5 lg:grid-cols-2">
-        <div className="flex flex-col gap-4" data-foco-inicial>
-          <CamposDaQuestao form={form} setForm={setForm} assuntos={assuntos.dados ?? []} video={video} setVideo={setVideo} />
-        </div>
-        <div className="lg:sticky lg:top-0 lg:self-start">
-          <Previa form={form} />
+      <div className="mx-auto flex w-full max-w-6xl flex-col gap-4">
+        {avisoDeRetomada && (
+          <Aviso tom="info" titulo="Você tinha uma questão começada">
+            Ela voltou como estava.{" "}
+            <Botao tamanho="mini" className="ml-1 align-middle" onClick={comecarDoZero}>Começar do zero</Botao>
+          </Aviso>
+        )}
+        <div className="grid gap-5 lg:grid-cols-2">
+          <div className="flex flex-col gap-4" data-foco-inicial>
+            <CamposDaQuestao form={form} setForm={setForm} assuntos={assuntos.dados ?? []} video={video} setVideo={setVideo} />
+          </div>
+          <div className="lg:sticky lg:top-0 lg:self-start">
+            <Previa form={form} />
+          </div>
         </div>
       </div>
     </Modal>
