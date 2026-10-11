@@ -346,8 +346,8 @@ pelo portal: em "Novo simulado", **"Importar de um .docx"** (ou soltar o
 arquivo na lista vazia) lê o documento e põe as questões na lista da prova,
 como questões novas. Dali em diante é a tela de sempre: cada uma abre em
 "Editar" no formulário completo, pode ser reordenada, tirada ou trocada por uma
-do banco, e tudo nasce junto quando o rascunho é criado. O botão "Importar
-.docx" da lista de simulados leva para lá.
+do banco, e tudo nasce junto quando o rascunho é criado. A lista de simulados
+não tem mais botão de importar: a entrada é só "Novo simulado".
 
 * **Quem lê é o adaptador MCP**, onde moram o leitor, o LibreOffice e o Pillow.
   A API repassa o arquivo (`LeitorDeDocx` → `POST /api/leitura/docx` no

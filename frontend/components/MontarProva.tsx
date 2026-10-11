@@ -134,7 +134,6 @@ export function MontarProva({
         permiteNova ? (
           // Vazia, a lista é também o lugar de soltar o .docx do simulado.
           <div
-            id="importar"
             onDragOver={(e) => {
               e.preventDefault();
               setSobre(true);

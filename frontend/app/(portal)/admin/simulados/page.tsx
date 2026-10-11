@@ -29,12 +29,7 @@ export default function SimuladosDoProfessor() {
     <Pagina
       titulo="Simulados"
       legenda="A prova trava quando abre: dali em diante só o título muda e o fechamento só pode ser estendido."
-      acoes={
-        <>
-          <BotaoLink href="/admin/simulados/novo/#importar">Importar .docx</BotaoLink>
-          <BotaoLink variante="primario" href="/admin/simulados/novo/">Novo simulado</BotaoLink>
-        </>
-      }
+      acoes={<BotaoLink variante="primario" href="/admin/simulados/novo/">Novo simulado</BotaoLink>}
     >
       <div className="flex flex-wrap items-center gap-2">
         <label htmlFor="filtro-turma" className="text-sm font-semibold text-tinta-2">Turma</label>
@@ -49,7 +44,7 @@ export default function SimuladosDoProfessor() {
       <Estado {...lista} linhas={4} forma="lista">
         {(simulados) =>
           simulados.length === 0 ? (
-            <Vazio titulo="Nenhum simulado">Monte um aqui, importe o .docx da equipe ou peça ao Claude.</Vazio>
+            <Vazio titulo="Nenhum simulado">Em “Novo simulado” você monta a prova ou importa o .docx da equipe. Também dá para pedir ao Claude.</Vazio>
           ) : (
             <Cartao className="overflow-x-auto">
               <table className="tabela min-w-[48rem]">
