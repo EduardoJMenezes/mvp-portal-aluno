@@ -256,6 +256,54 @@ public class ImportacoesServico {
             Integer importacaoId, String titulo, int questoesLidas, int questoesCompletas,
             Integer rascunhoId, String mensagem) {}
 
+    // --- o .docx lido para a tela de "Novo simulado" -------------------------
+
+    /** O que o adaptador devolve quando só lê. A questão que não fechou vem com o que deu para ler. */
+    public record LeituraDoDocx(
+            String arquivoNome, String titulo, List<QuestaoLida> questoes, List<QuestaoLida> incompletas,
+            List<String> avisos, List<FiguraDoDocx> figuras) {}
+
+    /** {@code incompleta}: falta enunciado, alternativa ou gabarito — o professor completa na tela. */
+    public record QuestaoParaATela(
+            Integer numero, String enunciado, Map<String, String> alternativas, String gabarito,
+            String resolucaoComentada, List<String> avisos, boolean incompleta) {}
+
+    public record DocxParaATela(String arquivo, String titulo, List<String> avisos, List<QuestaoParaATela> questoes) {}
+
+    /**
+     * As questões de um .docx, prontas para a tela de montar a prova. Nada de simulado nem de
+     * questão é gravado: o professor confere e edita cada uma, e elas nascem quando ele cria o
+     * rascunho. Só as figuras são guardadas agora — soltas, citadas no texto pelo id —, porque a
+     * tela precisa mostrá-las; passam a ser da questão quando ela é criada.
+     */
+    @Transactional
+    public DocxParaATela paraATela(Identidade ident, LeituraDoDocx lido) {
+        ident.exigirOperador();
+        var comIds = trocarChavesPorIds(lido.figuras());
+        var saida = new ArrayList<QuestaoParaATela>();
+        if (lido.questoes() != null) {
+            lido.questoes().forEach(q -> saida.add(paraATela(q, comIds, false)));
+        }
+        if (lido.incompletas() != null) {
+            lido.incompletas().forEach(q -> saida.add(paraATela(q, comIds, true)));
+        }
+        saida.sort(java.util.Comparator.comparing(q -> q.numero() == null ? Integer.MAX_VALUE : q.numero()));
+        return new DocxParaATela(lido.arquivoNome(), lido.titulo(), lido.avisos() == null ? List.of() : lido.avisos(),
+                saida);
+    }
+
+    private static QuestaoParaATela paraATela(QuestaoLida q, java.util.function.UnaryOperator<String> comIds,
+            boolean incompleta) {
+        var d = q.dados();
+        var alternativas = new LinkedHashMap<String, String>();
+        if (d != null && d.alternativas() != null) {
+            d.alternativas().forEach((letra, texto) -> alternativas.put(letra, comIds.apply(texto)));
+        }
+        return new QuestaoParaATela(q.numero(), d == null ? "" : comIds.apply(d.enunciado()), alternativas,
+                d == null ? null : d.gabarito(), d == null ? null : comIds.apply(d.resolucaoComentada()),
+                q.avisos() == null ? List.of() : q.avisos(), incompleta);
+    }
+
     /**
      * Grava o que o adaptador leu do .docx: o rascunho do simulado e o relatório.
      *

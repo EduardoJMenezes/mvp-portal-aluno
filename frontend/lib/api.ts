@@ -463,6 +463,10 @@ export type Questao = {
   aulas?: string[];
 };
 
+/** Uma questão lida de um .docx. `incompleta`: o leitor não achou enunciado, alternativa ou gabarito. */
+export type QuestaoDoDocx = { numero: number | null; enunciado: string; alternativas: Record<string, string>; gabarito: string | null; resolucao_comentada: string | null; avisos: string[]; incompleta: boolean };
+export type DocxLido = { arquivo: string | null; titulo: string | null; avisos: string[]; questoes: QuestaoDoDocx[] };
+
 export type QuestaoDetalhada = Questao & {
   resolucao_comentada: string | null;
   /** Por letra: o que o aluno lê se marcar aquela alternativa. */
@@ -901,6 +905,12 @@ export const api = {
   editarQuestao: (id: number, dados: Record<string, unknown>) =>
     pedir<QuestaoDetalhada>(`/admin/questoes/${id}`, { method: "PATCH", json: dados }),
   removerQuestao: (id: number) => pedir(`/admin/questoes/${id}`, { method: "DELETE" }),
+  /** As questões de um .docx, lidas para a tela de montar a prova. Nada é criado no servidor além das figuras. */
+  lerDocxDoSimulado: (arquivo: File) => {
+    const corpo = new FormData();
+    corpo.append("arquivo", arquivo);
+    return pedir<DocxLido>("/admin/simulados/docx", { method: "POST", body: corpo });
+  },
   /** A imagem inserida num texto de questão: sobe solta e devolve o id que o texto cita. */
   guardarFigura: (arquivo: File) => {
     const corpo = new FormData();

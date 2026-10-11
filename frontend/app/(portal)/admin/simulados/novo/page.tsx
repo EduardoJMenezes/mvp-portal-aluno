@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { MontarProva, paraApi, type EntradaDaProva } from "@/components/MontarProva";
+import { MontarProva, faltaNaProva, paraApi, type EntradaDaProva } from "@/components/MontarProva";
 import { Aviso, Botao, Campo, Cartao, Pagina, TituloDeSecao } from "@/components/ui";
 import { api, useDados } from "@/lib/api";
 
@@ -77,6 +77,8 @@ export default function NovoSimulado() {
     setErro("");
     if (!escolhidas.length) return setErro("Escolha ao menos uma turma.");
     if (!questoes.length) return setErro("A prova precisa de ao menos uma questão.");
+    const falta = faltaNaProva(questoes);
+    if (falta) return setErro(falta);
     if (abre && fecha && fecha <= abre) return setErro("O fechamento precisa vir depois da abertura.");
     setSalvando(true);
     try {
@@ -150,7 +152,7 @@ export default function NovoSimulado() {
 
         <Cartao className="flex flex-col gap-4 p-5">
           <TituloDeSecao>Questões</TituloDeSecao>
-          <MontarProva entradas={questoes} aoMudar={setQuestoes} permiteNova />
+          <MontarProva entradas={questoes} aoMudar={setQuestoes} permiteNova aoImportar={(lido) => lido.titulo && setTitulo((atual) => atual.trim() || lido.titulo || "")} />
         </Cartao>
 
         {erro && <Aviso tom="erro">{erro}</Aviso>}

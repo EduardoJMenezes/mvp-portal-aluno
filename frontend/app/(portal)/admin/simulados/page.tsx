@@ -31,7 +31,7 @@ export default function SimuladosDoProfessor() {
       legenda="A prova trava quando abre: dali em diante só o título muda e o fechamento só pode ser estendido."
       acoes={
         <>
-          <BotaoLink href="/admin/importar/docx/">Importar .docx</BotaoLink>
+          <BotaoLink href="/admin/simulados/novo/#importar">Importar .docx</BotaoLink>
           <BotaoLink variante="primario" href="/admin/simulados/novo/">Novo simulado</BotaoLink>
         </>
       }

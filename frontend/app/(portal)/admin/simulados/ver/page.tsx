@@ -2,7 +2,7 @@
 
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState, type FormEvent } from "react";
-import { MontarProva, doBanco, paraApi, type EntradaDaProva } from "@/components/MontarProva";
+import { MontarProva, doBanco, faltaNaProva, paraApi, type EntradaDaProva } from "@/components/MontarProva";
 import { Abas, Aviso, Botao, BotaoLink, Campo, Cartao, Estado, Etiqueta, Pagina, TituloDeSecao, Vazio, useConfirmar } from "@/components/ui";
 import { api, useDados, type SimuladoDoProfessor } from "@/lib/api";
 import { paraCampoDataHora, plural, porcento } from "@/lib/formato";
@@ -172,6 +172,8 @@ function Edicao({ simulado: s, aoSalvar }: { simulado: SimuladoDoProfessor; aoSa
       if (questoes.some((q) => q.questao_id === undefined) || questoes.map((q) => q.questao_id).join(",") !== ordemAtual) mudancas.questoes = paraApi(questoes);
     }
     if (!Object.keys(mudancas).length) return setAviso("Nada mudou.");
+    const falta = mudancas.questoes ? faltaNaProva(questoes) : "";
+    if (falta) return setErro(falta);
     if (mudancas.fecha_em === "" || mudancas.abre_em === "") return setErro("Agenda não pode ficar em branco depois de definida.");
     setSalvando(true);
     try {

@@ -15,6 +15,7 @@ import br.com.plataforma.comum.RegraDeNegocio;
 import br.com.plataforma.contas.ContasServico;
 import br.com.plataforma.estrutura.EstruturaServico;
 import br.com.plataforma.importacoes.ImportacoesServico;
+import br.com.plataforma.importacoes.LeitorDeDocx;
 import br.com.plataforma.importacoes.Prints;
 import br.com.plataforma.materiais.MateriaisServico;
 import br.com.plataforma.questoes.ParteDaQuestao;
@@ -91,6 +92,7 @@ public class AdminPortal {
     private final QuestoesComandos questoesComandos;
     private final SimuladosComandos simuladosComandos;
     private final ImportacoesComandos importacoesComandos;
+    private final LeitorDeDocx leitorDeDocx;
 
     public AdminPortal(CatalogoServico catalogo, ContasServico contas, TaxonomiaServico taxonomia,
             QuestoesServico questoes, AnalyticsServico analytics, RascunhosServico rascunhos,
@@ -99,7 +101,7 @@ public class AdminPortal {
             ConfigDoPortal config, EstruturaComandos estruturaComandos, TaxonomiaComandos taxonomiaComandos,
             AcervoComandos acervoComandos, RascunhosComandos rascunhosComandos,
             QuestoesComandos questoesComandos, SimuladosComandos simuladosComandos,
-            ImportacoesComandos importacoesComandos) {
+            ImportacoesComandos importacoesComandos, LeitorDeDocx leitorDeDocx) {
         this.catalogo = catalogo;
         this.contas = contas;
         this.taxonomia = taxonomia;
@@ -121,6 +123,7 @@ public class AdminPortal {
         this.questoesComandos = questoesComandos;
         this.simuladosComandos = simuladosComandos;
         this.importacoesComandos = importacoesComandos;
+        this.leitorDeDocx = leitorDeDocx;
     }
 
     // --- turmas --------------------------------------------------------------
@@ -605,6 +608,21 @@ public class AdminPortal {
         // O serviço também lista para o aluno (ProvaDoAluno): quem fecha esta rota ao operador é ela.
         ident.exigirOperador();
         return simulados.listar(ident, turma == null ? null : catalogo.resolverTurma(turma), Instant.now());
+    }
+
+    /**
+     * As questões de um .docx, lidas para a tela de "Novo simulado". Nada é criado: elas voltam
+     * para o professor conferir e editar, e nascem quando ele cria o rascunho.
+     */
+    @PostMapping(value = "/simulados/docx", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ImportacoesServico.DocxParaATela lerDocx(@AuthenticationPrincipal Identidade ident,
+            @RequestPart("arquivo") MultipartFile arquivo) throws IOException {
+        ident.exigirOperador();
+        var nome = arquivo.getOriginalFilename() == null ? "" : arquivo.getOriginalFilename().strip();
+        if (!nome.toLowerCase(Locale.ROOT).endsWith(".docx")) {
+            throw new RegraDeNegocio("Envie o arquivo .docx do simulado.");
+        }
+        return importacoes.paraATela(ident, leitorDeDocx.ler(nome, arquivo.getBytes()));
     }
 
     /** O simulado e as questões novas dele, num rascunho só. */

@@ -23,6 +23,7 @@ class QuestaoNaAulaTest extends BaseDoPortal {
               "gabarito": "A", "resolucao_comentada": "2 x 18 = 36.", "vimeo_id": "920000202"}}""";
 
     private int apostila;
+    @org.springframework.beans.factory.annotation.Autowired private br.com.plataforma.importacoes.ImportacoesServico importacoes;
     private int alunoDoIntensivo;
 
     @BeforeEach
@@ -168,6 +169,41 @@ class QuestaoNaAulaTest extends BaseDoPortal {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.figuras[0].figura_id").value(terceira))
                 .andExpect(jsonPath("$.figuras[0].parte").value("RESOLUCAO"));
+    }
+
+    /** O .docx lido para a tela de "Novo simulado": as figuras ganham id, e nada de questão é gravado. */
+    @Test
+    void oDocxLidoParaATelaGuardaSoAsFigurasEDevolveAsQuestoesEmOrdem() throws Exception {
+        var png = java.util.Base64.getEncoder().encodeToString(new byte[] {(byte) 0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A, 0, 0});
+        var completa = new br.com.plataforma.importacoes.ImportacoesServico.QuestaoLida(2,
+                new br.com.plataforma.questoes.QuestoesServico.DadosDaQuestaoNova("Observe: ![](figura:f1)",
+                        java.util.Map.of("A", "um", "B", "![](figura:f2)", "C", "três", "D", "quatro"), "B", null, null, null,
+                        null, null, "Porque sim.", 2),
+                java.util.List.of(), java.util.List.of(5, 6));
+        var incompleta = new br.com.plataforma.importacoes.ImportacoesServico.QuestaoLida(1,
+                new br.com.plataforma.questoes.QuestoesServico.DadosDaQuestaoNova("Só o enunciado veio",
+                        java.util.Map.of("A", "um"), null, null, null, null, null, null, null, 1),
+                java.util.List.of("falta: gabarito"), java.util.List.of(1));
+        var lido = new br.com.plataforma.importacoes.ImportacoesServico.LeituraDoDocx("prova.docx", "Simulado 09",
+                java.util.List.of(completa), java.util.List.of(incompleta), java.util.List.of(),
+                java.util.List.of(new br.com.plataforma.importacoes.ImportacoesServico.FiguraDoDocx("f1", "a.png", "image/png", png)));
+
+        var ana = new br.com.plataforma.comum.Identidade(ADMIN, "Professora Ana", "ana@teste.invalid",
+                br.com.plataforma.comum.Papel.ADMIN, br.com.plataforma.comum.Canal.PORTAL);
+        var tela = importacoes.paraATela(ana, lido);
+
+        assertThat(tela.titulo()).isEqualTo("Simulado 09");
+        // Em ordem de número, com a que não fechou marcada.
+        assertThat(tela.questoes()).extracting("numero").containsExactly(1, 2);
+        assertThat(tela.questoes().get(0).incompleta()).isTrue();
+        assertThat(tela.questoes().get(0).avisos()).containsExactly("falta: gabarito");
+        var figura = jdbc.queryForObject("SELECT id FROM images WHERE nome = 'a.png'", Integer.class);
+        assertThat(tela.questoes().get(1).enunciado()).isEqualTo("Observe: ![](figura:%d)".formatted(figura));
+        // A figura que o documento citou mas não trouxe vira pendente, em vez de derrubar a leitura.
+        assertThat(tela.questoes().get(1).alternativas().get("B")).isEqualTo("![](figura:pendente)");
+        // Nada de questão nasceu, e a figura está solta.
+        assertThat(contar("questions")).isZero();
+        assertThat(jdbc.queryForObject("SELECT questao_id FROM images WHERE id = ?", Integer.class, figura)).isNull();
     }
 
     @Test

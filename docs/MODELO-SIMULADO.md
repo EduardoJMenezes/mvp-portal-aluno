@@ -339,3 +339,34 @@ no modal do simulado, em questão nova, rascunho ou já publicada.
   `![](figura:pendente)` de uma questão em rascunho (as que vêm do importador).
   Em questão publicada ele só mostra as figuras que ela tem.
 
+## Importar o .docx dentro de "Novo simulado"
+
+Mudou em 11/10/2026. Importar deixou de ser um caminho à parte para quem monta
+pelo portal: em "Novo simulado", **"Importar de um .docx"** (ou soltar o
+arquivo na lista vazia) lê o documento e põe as questões na lista da prova,
+como questões novas. Dali em diante é a tela de sempre: cada uma abre em
+"Editar" no formulário completo, pode ser reordenada, tirada ou trocada por uma
+do banco, e tudo nasce junto quando o rascunho é criado. O botão "Importar
+.docx" da lista de simulados leva para lá.
+
+* **Quem lê é o adaptador MCP**, onde moram o leitor, o LibreOffice e o Pillow.
+  A API repassa o arquivo (`LeitorDeDocx` → `POST /api/leitura/docx` no
+  adaptador, com o segredo de serviço) e recebe o que foi lido, sem nada
+  gravado lá. Sem `MCP_BASE_URL`, a importação responde que o serviço não está
+  configurado.
+* **Só as figuras são gravadas na leitura** (`ImportacoesServico.paraATela`):
+  soltas, citadas no texto pelo id, porque a tela precisa mostrá-las. Passam a
+  ser da questão quando ela é criada. Quem importa e desiste deixa figuras
+  órfãs.
+* **A questão que o leitor não fechou entra na lista marcada "Incompleta"**,
+  com o que deu para ler e o que falta. O professor completa em "Editar"; a
+  prova não vira rascunho enquanto houver uma (`faltaNaProva`). A tela de
+  completar por blocos não é usada neste caminho.
+* O título do documento preenche o do simulado, se ele estiver em branco.
+* Tópicos, sub-tópicos e o diagnóstico por alternativa **não** vêm do
+  documento do simulado: entram à mão, em cada questão, por enquanto.
+
+O caminho antigo (`/admin/importar/docx`, com link de envio e revisão por
+blocos) continua existindo: é o que o Claude usa quando o professor importa
+pelo chat.
+

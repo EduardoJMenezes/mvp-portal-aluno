@@ -1,13 +1,13 @@
 "use client";
 
-import { Plus, Search } from "lucide-react";
-import { useEffect, useState } from "react";
+import { FileUp, Plus, Search } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import { BancoDeQuestoes } from "@/components/BancoDeQuestoes";
 import { Modal, OffCanvas, useSaida } from "@/components/Camadas";
 import type { VideoNoCampo } from "@/components/CampoDeVideo";
 import { CamposDaQuestao, Previa, VAZIO, alternativasPreenchidas, comentariosPreenchidos, faltaNaQuestao, type Formulario } from "@/components/FormularioDaQuestao";
 import { Aviso, Botao, Etiqueta } from "@/components/ui";
-import { api, useDados, type Questao } from "@/lib/api";
+import { api, useDados, type Questao, type QuestaoDoDocx } from "@/lib/api";
 import { plural } from "@/lib/formato";
 import { TextoFormatado } from "@/lib/texto";
 
@@ -27,6 +27,30 @@ export type QuestaoNovaNaProva = {
   subassunto?: string;
   form?: Formulario;
   video?: VideoNoCampo | null;
+  /** O que o leitor do .docx estranhou nesta questão, para o professor conferir. */
+  avisos?: string[];
+};
+
+/** O formulário de uma questão nova da prova: o que foi preenchido, ou o mínimo que a entrada traz. */
+const formDe = (e: QuestaoNovaNaProva): Formulario => e.form ?? { ...VAZIO, enunciado: e.enunciado, alternativas: { ...VAZIO.alternativas, ...e.alternativas }, gabarito: e.gabarito, dificuldade: e.dificuldade };
+
+/**
+ * O que impede a prova de virar rascunho: a primeira questão nova que ainda não fecha (a que veio
+ * incompleta de um .docx, por exemplo). Vazio quando está tudo certo.
+ */
+export function faltaNaProva(entradas: EntradaDaProva[]): string {
+  for (let i = 0; i < entradas.length; i++) {
+    const e = entradas[i];
+    const falta = e.questao_id === undefined ? faltaNaQuestao(formDe(e)) : "";
+    if (falta) return `A questão ${i + 1} está incompleta: ${falta.replace(/\.$/, "").toLowerCase()}. Abra em “Editar” e complete.`;
+  }
+  return "";
+}
+
+/** A questão lida do .docx, como entrada nova da prova: editável como qualquer outra escrita na hora. */
+const doDocx = (q: QuestaoDoDocx, vez: number): QuestaoNovaNaProva => {
+  const form: Formulario = { ...VAZIO, enunciado: q.enunciado ?? "", alternativas: { ...VAZIO.alternativas, ...q.alternativas }, gabarito: q.gabarito ?? "", resolucao_comentada: q.resolucao_comentada ?? "" };
+  return { chave: `d${vez}-${q.numero ?? Math.random()}`, enunciado: form.enunciado, alternativas: alternativasPreenchidas(form.alternativas), gabarito: form.gabarito, dificuldade: form.dificuldade, form, avisos: q.avisos };
 };
 
 // Uma questão da prova: do banco (pelo id) ou nova.
@@ -61,14 +85,42 @@ export function MontarProva({
   entradas,
   aoMudar,
   permiteNova,
+  aoImportar,
 }: {
   entradas: EntradaDaProva[];
   aoMudar: (entradas: EntradaDaProva[]) => void;
   permiteNova: boolean;
+  /** Chamado depois de um .docx ser lido: o título do documento serve ao simulado que ainda não tem um. */
+  aoImportar?: (lido: { titulo: string | null }) => void;
 }) {
   // "nova" abre o formulário em branco; um número reabre a questão nova daquela posição.
   const [painel, setPainel] = useState<"banco" | "nova" | number | null>(null);
   const editada = typeof painel === "number" ? entradas[painel] : undefined;
+
+  // --- importar de um .docx ---
+  const arquivo = useRef<HTMLInputElement>(null);
+  const [lendo, setLendo] = useState(false);
+  const [sobre, setSobre] = useState(false);
+  const [erroDaLeitura, setErroDaLeitura] = useState("");
+  const [lido, setLido] = useState<{ arquivo: string; questoes: number; incompletas: number; avisos: string[] } | null>(null);
+
+  async function importar(docx: File) {
+    setErroDaLeitura("");
+    setLido(null);
+    if (!docx.name.toLowerCase().endsWith(".docx")) return setErroDaLeitura("O arquivo precisa ser um .docx (Word).");
+    setLendo(true);
+    try {
+      const r = await api.lerDocxDoSimulado(docx);
+      const vez = Date.now();
+      aoMudar([...entradas, ...r.questoes.map((q) => doDocx(q, vez))]);
+      setLido({ arquivo: r.arquivo || docx.name, questoes: r.questoes.length, incompletas: r.questoes.filter((q) => q.incompleta).length, avisos: r.avisos });
+      aoImportar?.({ titulo: r.titulo });
+    } catch (ex) {
+      setErroDaLeitura((ex as Error).message);
+    } finally {
+      setLendo(false);
+    }
+  }
 
   const mover = (i: number, passo: -1 | 1) => {
     const nova = [...entradas];
@@ -79,21 +131,50 @@ export function MontarProva({
   return (
     <div className="flex flex-col gap-3">
       {entradas.length === 0 ? (
-        <p className="rounded-cartao border border-dashed border-borda px-4 py-6 text-center text-[15px] text-suave">Nenhuma questão ainda. Escolha do banco ou escreva uma nova.</p>
+        permiteNova ? (
+          // Vazia, a lista é também o lugar de soltar o .docx do simulado.
+          <div
+            id="importar"
+            onDragOver={(e) => {
+              e.preventDefault();
+              setSobre(true);
+            }}
+            onDragLeave={() => setSobre(false)}
+            onDrop={(e) => {
+              e.preventDefault();
+              setSobre(false);
+              const solto = e.dataTransfer.files[0];
+              if (solto) void importar(solto);
+            }}
+            className={`flex scroll-mt-24 flex-col items-center gap-2 rounded-cartao border border-dashed px-4 py-7 text-center transition-colors ${sobre ? "border-acento bg-lilas" : "border-borda"}`}
+          >
+            <FileUp aria-hidden="true" className="size-6 text-suave" strokeWidth={1.6} />
+            <p className="text-[15px] font-medium text-tinta">{lendo ? "Lendo o documento…" : "Nenhuma questão ainda"}</p>
+            <p className="max-w-md text-[15px] text-suave">Tem o simulado num .docx? Solte o arquivo aqui, ou use “Importar de um .docx”. As questões entram na lista para você conferir e editar. Ou escolha do banco, ou escreva uma nova.</p>
+          </div>
+        ) : (
+          <p className="rounded-cartao border border-dashed border-borda px-4 py-6 text-center text-[15px] text-suave">Nenhuma questão ainda. Escolha do banco.</p>
+        )
       ) : (
         <ol className="flex flex-col gap-2">
-          {entradas.map((e, i) => (
-            <li key={e.chave} className="flex items-start gap-3 rounded-cartao border border-borda bg-papel px-3 py-2.5">
+          {entradas.map((e, i) => {
+            const falta = e.questao_id === undefined ? faltaNaQuestao(formDe(e)) : "";
+            return (
+            <li key={e.chave} className={`flex items-start gap-3 rounded-cartao border bg-papel px-3 py-2.5 ${falta ? "border-erro-borda" : "border-borda"}`}>
               <span className="mt-0.5 w-7 shrink-0 text-right font-semibold tabular-nums text-suave">{i + 1}.</span>
               <div className="min-w-0 flex-1">
                 <div className="mb-1 flex flex-wrap gap-1.5">
                   {e.questao_id !== undefined ? <Etiqueta>#{e.questao_id}</Etiqueta> : <Etiqueta tom="atencao">Nova</Etiqueta>}
+                  {falta && <Etiqueta tom="erro">Incompleta</Etiqueta>}
                   {e.gabarito && <Etiqueta tom="sucesso">Gabarito {e.gabarito}</Etiqueta>}
                   {e.questao_id === undefined && e.assunto && <Etiqueta tom="info">{e.subassunto ? `${e.assunto} › ${e.subassunto}` : e.assunto}</Etiqueta>}
                 </div>
-                <div className="line-clamp-2 text-[15px]">
-                  <TextoFormatado texto={e.enunciado} compacto />
+                {/* Só o começo do enunciado, sem a figura: a questão inteira se vê em "Editar". */}
+                <div className="line-clamp-2 max-h-[3.5em] overflow-hidden text-[15px] [&_.figura-pendente]:hidden [&_img]:hidden [&_table]:hidden">
+                  <TextoFormatado texto={e.enunciado || "(sem enunciado)"} compacto />
                 </div>
+                {falta && <p className="mt-1 text-[13px] font-medium text-erro">{falta}</p>}
+                {e.questao_id === undefined && !!e.avisos?.length && <p className="mt-1 text-[13px] text-atencao">Do documento: {e.avisos.join("; ")}</p>}
               </div>
               <div className="flex shrink-0 items-center gap-0.5">
                 {e.questao_id === undefined && permiteNova && (
@@ -104,7 +185,8 @@ export function MontarProva({
                 <BotaoIcone rotulo={`Tirar questão ${i + 1}`} onClick={() => aoMudar(entradas.filter((_, j) => j !== i))}>×</BotaoIcone>
               </div>
             </li>
-          ))}
+            );
+          })}
         </ol>
       )}
 
@@ -119,7 +201,24 @@ export function MontarProva({
             Escrever questão nova
           </Botao>
         )}
+        {permiteNova && (
+          <>
+            <Botao tamanho="pequeno" ocupado={lendo} onClick={() => arquivo.current?.click()}>
+              <FileUp aria-hidden="true" className="size-4" />
+              {lendo ? "Lendo o documento…" : "Importar de um .docx"}
+            </Botao>
+            <input ref={arquivo} type="file" accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" hidden onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) void importar(f); }} />
+          </>
+        )}
       </div>
+      {erroDaLeitura && <Aviso tom="erro">{erroDaLeitura}</Aviso>}
+      {lido && (
+        <Aviso tom={lido.incompletas || lido.avisos.length ? "atencao" : "sucesso"} titulo={`${plural(lido.questoes, "questão lida", "questões lidas")} de ${lido.arquivo}`}>
+          Entraram no fim da lista, como questões novas. Confira cada uma em “Editar” antes de criar o rascunho: é lá que se acerta o texto, as figuras, o assunto e os comentários.
+          {lido.incompletas > 0 && ` ${plural(lido.incompletas, "ficou incompleta", "ficaram incompletas")} e ${lido.incompletas === 1 ? "está marcada" : "estão marcadas"} na lista.`}
+          {lido.avisos.length > 0 && ` Avisos da leitura: ${lido.avisos.join(" ")}`}
+        </Aviso>
+      )}
       {painel === "banco" && <EscolherDoBanco entradas={entradas} aoEscolher={(q) => aoMudar([...entradas, doBanco(q)])} aoFechar={() => setPainel(null)} />}
       {(painel === "nova" || (typeof painel === "number" && editada?.questao_id === undefined)) && (
         <EscreverQuestao
