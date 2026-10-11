@@ -122,8 +122,8 @@ Ensaio geral dos quatro fluxos do §21, contra o servidor no ar:
   Code, scripts) e login OAuth no GitHub (claude.ai), via `MultiAuth`. As duas
   terminam nos mesmos claims, e `identidade_da_sessao()` não sabe por qual
   porta a pessoa entrou — mantenha assim. Quem entra pelo GitHub só abre sessão
-  se `MCP_OAUTH_OPERADORES` (ou o e-mail público) casar com um ADMIN ou
-  GERENCIADOR.
+  se o id numérico da conta estiver em `MCP_OAUTH_OPERADORES`, apontando para o
+  e-mail de um ADMIN ou GERENCIADOR que exista no banco.
 * **Nada é apagado; tudo é filtrado.** Remoção é `removido_em` preenchido
   (`models.Rastreavel`). A consequência morde em silêncio: consulta sem o
   filtro faz conteúdo removido reaparecer para o aluno. Use `selecionar()` e

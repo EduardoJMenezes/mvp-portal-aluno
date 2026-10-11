@@ -25,7 +25,7 @@ export default function ConectarAoClaude() {
   const [origem, setOrigem] = useState("");
   const [novo, setNovo] = useState<(TokenMcp & { token: string }) | null>(null);
   const [erro, setErro] = useState("");
-  const [noSite, setNoSite] = useState(false);
+  const [noTerminal, setNoTerminal] = useState(false);
   const [dialogo, confirmar] = useConfirmar();
 
   useEffect(() => setOrigem(window.location.origin), []);
@@ -59,48 +59,60 @@ export default function ConectarAoClaude() {
           return (
             <>
               <Cartao className="flex flex-col gap-5 p-5">
-                <TituloDeSecao>No Claude Code</TituloDeSecao>
+                <TituloDeSecao>No claude.ai</TituloDeSecao>
 
-                <Passo numero={1} titulo="Emita um token">
-                  <EmitirToken aoEmitir={(t) => { setNovo(t); void tokens.recarregar(); }} />
-                  {novo && (
-                    <Aviso tom="sucesso" titulo={`Token "${novo.nome}" emitido`}>
-                      Ele aparece só agora: o servidor guarda apenas um resumo dele. O comando abaixo já vem com ele.
-                    </Aviso>
-                  )}
-                </Passo>
-
-                <Passo numero={2} titulo="Rode este comando no terminal">
-                  <Bloco texto={comando} rotulo="Copiar comando" />
-                  {!novo && <p className="text-[13px] text-suave">Emita o token no passo 1: o comando passa a vir com ele no lugar de SEU_TOKEN.</p>}
-                </Passo>
-
-                <Passo numero={3} titulo="Confira">
+                <Passo numero={1} titulo="Abra os conectores">
                   <p className="text-[15px]">
-                    Abra o Claude Code e digite <Codigo>/mcp</Codigo>. O <Codigo>{NOME_NO_CLAUDE}</Codigo> deve aparecer como conectado.
+                    No claude.ai, pelo site ou pelo aplicativo, vá em Configurações › Conectores e adicione um conector personalizado.
+                  </p>
+                </Passo>
+
+                <Passo numero={2} titulo="Cole este endereço">
+                  <Bloco texto={url} rotulo="Copiar endereço" />
+                </Passo>
+
+                <Passo numero={3} titulo="Entre com o GitHub">
+                  <p className="text-[15px]">
+                    O Claude abre a tela do GitHub. Entre com a conta que foi liberada para este portal: não precisa de token nem de comando.
                   </p>
                   <p className="text-[13px] text-suave">
-                    Depois de uma atualização do portal, ferramenta nova só aparece em conversa nova. Se não aparecer, remova com <Codigo>claude mcp remove {NOME_NO_CLAUDE}</Codigo> e rode o comando de novo.
+                    Se aparecer que a autorização falhou, a sua conta do GitHub ainda não está liberada no servidor: quem cuida dele é quem libera. Depois de uma
+                    atualização do portal, ferramenta nova só aparece se você remover o conector e adicionar de novo.
                   </p>
                 </Passo>
               </Cartao>
 
-              <Cartao className="flex flex-col gap-3 p-5">
+              <Cartao className="flex flex-col gap-5 p-5">
                 <div>
-                  <Revelar aberto={noSite} aoAlternar={() => setNoSite((a) => !a)} aria-controls="no-site">
-                    Prefere usar pelo site claude.ai?
+                  <Revelar aberto={noTerminal} aoAlternar={() => setNoTerminal((a) => !a)} aria-controls="no-terminal">
+                    Prefere usar pelo Claude Code, no terminal?
                   </Revelar>
                 </div>
-                {noSite && (
-                  <ol id="no-site" className="list-decimal space-y-2 pl-5 text-[15px]">
-                    <li>Em Configurações › Conectores, adicione um conector personalizado.</li>
-                    <li>
-                      Cole este endereço:
-                      <Bloco texto={url} rotulo="Copiar endereço" />
-                    </li>
-                    <li>Entre com o GitHub. O e-mail precisa ser o de um professor ou gerenciador cadastrado aqui. Não precisa de token.</li>
-                    <li className="text-suave">Depois de uma atualização do portal, ferramenta nova só aparece se você remover o conector e adicionar de novo.</li>
-                  </ol>
+                {noTerminal && (
+                  <div id="no-terminal" className="flex flex-col gap-5">
+                    <Passo numero={1} titulo="Emita um token">
+                      <EmitirToken aoEmitir={(t) => { setNovo(t); void tokens.recarregar(); }} />
+                      {novo && (
+                        <Aviso tom="sucesso" titulo={`Token "${novo.nome}" emitido`}>
+                          Ele aparece só agora: o servidor guarda apenas um resumo dele. O comando abaixo já vem com ele.
+                        </Aviso>
+                      )}
+                    </Passo>
+
+                    <Passo numero={2} titulo="Rode este comando no terminal">
+                      <Bloco texto={comando} rotulo="Copiar comando" />
+                      {!novo && <p className="text-[13px] text-suave">Emita o token no passo 1: o comando passa a vir com ele no lugar de SEU_TOKEN.</p>}
+                    </Passo>
+
+                    <Passo numero={3} titulo="Confira">
+                      <p className="text-[15px]">
+                        Abra o Claude Code e digite <Codigo>/mcp</Codigo>. O <Codigo>{NOME_NO_CLAUDE}</Codigo> deve aparecer como conectado.
+                      </p>
+                      <p className="text-[13px] text-suave">
+                        Depois de uma atualização do portal, ferramenta nova só aparece em conversa nova. Se não aparecer, remova com <Codigo>claude mcp remove {NOME_NO_CLAUDE}</Codigo> e rode o comando de novo.
+                      </p>
+                    </Passo>
+                  </div>
                 )}
               </Cartao>
             </>
