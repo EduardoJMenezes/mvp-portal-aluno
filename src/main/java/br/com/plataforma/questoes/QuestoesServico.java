@@ -341,6 +341,8 @@ public class QuestoesServico {
 
         q.tocar(ident);
         var salva = questoes.save(q);
+        // Figura inserida num texto durante a edição: citada, passa a ser desta questão.
+        figuras.ligarAs(salva);
         if (publicada) {
             registrarCorrecao(ident, salva, antes, gabaritoAntes, agora);
         }
@@ -497,7 +499,24 @@ public class QuestoesServico {
         if (dados.assunto() != null && !dados.assunto().isBlank()) {
             classificar(ident, salva, taxonomia.resolverAssunto(dados.assunto()), dados.subassunto());
         }
+        // A figura inserida ao escrever chega solta, citada no texto: passa a ser desta questão.
+        figuras.ligarAs(salva);
         return salva;
+    }
+
+    public record FiguraGuardada(Integer figuraId, String tipo, int bytes) {}
+
+    /**
+     * Guarda uma imagem que o professor está inserindo num texto de questão. Ela nasce solta — sem
+     * questão — e é citada no texto como {@code ![](figura:ID)}; quando a questão é gravada, a
+     * figura passa a ser dela ({@link FigurasServico#ligarAs}). Enquanto está solta, só o operador
+     * a vê.
+     */
+    @Transactional
+    public FiguraGuardada guardarFigura(Identidade ident, byte[] conteudo, String nome) {
+        ident.exigirOperador();
+        var tipo = FigurasServico.tipoDaImagem(conteudo);
+        return new FiguraGuardada(figuras.guardar(conteudo, tipo, nome), tipo, conteudo.length);
     }
 
     /** Resolve uma questão do acervo pelo id, exigindo que esteja pronta para entrar numa prova. */

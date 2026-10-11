@@ -5,10 +5,11 @@
 // vê. É o mesmo no editor do banco e no modal de "Escrever questão nova" de um simulado: questão
 // criada por um caminho não pode nascer com menos campos que pelo outro.
 
-import { useId, useMemo, type Dispatch, type Ref, type SetStateAction } from "react";
+import { ImagePlus } from "lucide-react";
+import { useId, useMemo, useRef, useState, type ClipboardEvent, type Dispatch, type Ref, type SetStateAction, type TextareaHTMLAttributes } from "react";
 import { CampoDeVideo, type VideoNoCampo } from "@/components/CampoDeVideo";
-import { Campo, Cartao, Etiqueta } from "@/components/ui";
-import type { Assunto } from "@/lib/api";
+import { Botao, BotaoIcone, Campo, Cartao, Etiqueta } from "@/components/ui";
+import { api, type Assunto } from "@/lib/api";
 import { DIFICULDADE, LETRAS } from "@/lib/rotulos";
 import { TextoFormatado } from "@/lib/texto";
 
@@ -56,6 +57,103 @@ export function faltaNaQuestao(form: Formulario, publicada = false): string {
   return "";
 }
 
+const IMAGENS = "image/png,image/jpeg,image/webp,image/gif";
+
+/**
+ * Um texto de questão que aceita figura: pelo botão, ou colando a imagem (Ctrl+V) direto no
+ * campo. A imagem sobe na hora e entra no texto como `![](figura:ID)`, no lugar do cursor; a
+ * prévia ao lado já a mostra. Ela passa a ser da questão quando a questão é gravada.
+ *
+ * `emLinha`: a figura fica no meio do texto (alternativa), e o botão é só o ícone, ao lado. Sem
+ * isso, ela ganha um parágrafo só dela (enunciado, resolução), e o botão fica embaixo.
+ */
+function TextoComFigura({
+  valor,
+  aoMudar,
+  onde,
+  emLinha = false,
+  ref,
+  ...resto
+}: Omit<TextareaHTMLAttributes<HTMLTextAreaElement>, "value" | "onChange"> & { valor: string; aoMudar: (valor: string) => void; onde: string; emLinha?: boolean; ref?: Ref<HTMLTextAreaElement> }) {
+  const campo = useRef<HTMLTextAreaElement | null>(null);
+  const arquivo = useRef<HTMLInputElement>(null);
+  const [enviando, setEnviando] = useState(false);
+  const [erro, setErro] = useState("");
+
+  async function inserir(imagem: File) {
+    setErro("");
+    setEnviando(true);
+    try {
+      const { figura_id } = await api.guardarFigura(imagem);
+      const el = campo.current;
+      const inicio = el ? el.selectionStart : valor.length;
+      const fim = el ? el.selectionEnd : inicio;
+      const antes = valor.slice(0, inicio);
+      const depois = valor.slice(fim);
+      const marca = `![](figura:${figura_id})`;
+      aoMudar(
+        emLinha
+          ? antes + marca + depois
+          : (antes.trim() ? antes.replace(/\s*$/, "\n\n") : "") + marca + (depois.trim() ? "\n\n" + depois.replace(/^\s*/, "") : ""),
+      );
+    } catch (ex) {
+      setErro((ex as Error).message);
+    } finally {
+      setEnviando(false);
+    }
+  }
+
+  function colar(e: ClipboardEvent<HTMLTextAreaElement>) {
+    const imagem = [...e.clipboardData.files].find((f) => f.type.startsWith("image/"));
+    if (!imagem) return;
+    // Colou um print: ele vira figura, em vez de o navegador ignorar.
+    e.preventDefault();
+    void inserir(imagem);
+  }
+
+  const texto = (
+    <textarea
+      {...resto}
+      ref={(el) => {
+        campo.current = el;
+        if (typeof ref === "function") ref(el);
+        else if (ref) ref.current = el;
+      }}
+      value={valor}
+      onChange={(e) => aoMudar(e.target.value)}
+      onPaste={colar}
+    />
+  );
+  const escolher = <input ref={arquivo} type="file" accept={IMAGENS} hidden onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) void inserir(f); }} />;
+
+  if (emLinha) {
+    return (
+      <div className="flex flex-col gap-1">
+        <div className="flex items-start gap-1">
+          <div className="min-w-0 flex-1">{texto}</div>
+          <BotaoIcone rotulo={`Inserir imagem ${onde}`} icone={ImagePlus} ocupado={enviando} onClick={() => arquivo.current?.click()} className="mt-1" />
+        </div>
+        {escolher}
+        {erro && <p role="alert" className="text-[13px] text-erro">{erro}</p>}
+      </div>
+    );
+  }
+  return (
+    <div className="flex flex-col gap-1.5">
+      {texto}
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+        <Botao tamanho="mini" ocupado={enviando} onClick={() => arquivo.current?.click()}>
+          <ImagePlus aria-hidden="true" className="size-3.5" />
+          Inserir imagem {onde}
+        </Botao>
+        <span className="text-[13px] text-suave">ou cole a imagem direto no texto (Ctrl+V)</span>
+        {erro && <p role="alert" className="basis-full text-[13px] text-erro">{erro}</p>}
+      </div>
+      {escolher}
+    </div>
+  );
+}
+
 /**
  * Os campos. `publicada`: a questão já está no ar — nela, alternativa em branco é alternativa
  * removida, e nenhuma letra é obrigatória.
@@ -84,8 +182,8 @@ export function CamposDaQuestao({
   return (
     <>
     <Cartao className="flex flex-col gap-4 p-5">
-      <Campo rotulo="Enunciado" dica={<>Markdown. Fórmula entre $…$ (química em \ce&#123;…&#125;). Figura que ainda vai entrar: ![](figura:pendente).</>}>
-        {(cid) => <textarea id={cid} ref={enunciadoRef} required rows={8} value={form.enunciado} onChange={(e) => muda("enunciado", e.target.value)} className="campo" />}
+      <Campo rotulo="Enunciado" dica={<>Markdown. Fórmula entre $…$ (química em \ce&#123;…&#125;). Imagem que você ainda não tem: ![](figura:pendente).</>}>
+        {(cid) => <TextoComFigura id={cid} ref={enunciadoRef} required rows={8} valor={form.enunciado} aoMudar={(v) => muda("enunciado", v)} onde="no enunciado" className="campo" />}
       </Campo>
       <fieldset className="flex flex-col gap-4">
         <legend className="mb-1 text-sm font-semibold text-tinta-2">Alternativas, gabarito e comentários</legend>
@@ -100,13 +198,15 @@ export function CamposDaQuestao({
               <span className="sr-only">Gabarito {letra}</span>
             </label>
             <div className="flex min-w-0 flex-1 flex-col gap-1.5">
-              <textarea
+              <TextoComFigura
+                emLinha
+                onde={`na alternativa ${letra}`}
                 aria-label={letra === "E" ? "Alternativa E (opcional)" : `Alternativa ${letra}`}
                 placeholder={publicada ? "Em branco, a alternativa sai da questão" : letra === "E" ? "Opcional: em branco, a questão vai de A a D" : undefined}
                 required={letra !== "E" && !publicada}
                 rows={2}
-                value={form.alternativas[letra]}
-                onChange={(e) => setForm((f) => ({ ...f, alternativas: { ...f.alternativas, [letra]: e.target.value } }))}
+                valor={form.alternativas[letra]}
+                aoMudar={(v) => setForm((f) => ({ ...f, alternativas: { ...f.alternativas, [letra]: v } }))}
                 className="campo min-h-0"
               />
               {(publicada ? form.alternativas[letra].trim() : letra !== "E" || form.alternativas.E.trim()) && (
@@ -174,7 +274,7 @@ export function CamposDaQuestao({
         }}
       />
       <Campo rotulo="Resolução comentada" dica="O aluno vê depois que o simulado fecha — ou, na aula, assim que responde.">
-        {(cid) => <textarea id={cid} rows={5} value={form.resolucao_comentada} onChange={(e) => muda("resolucao_comentada", e.target.value)} className="campo" />}
+        {(cid) => <TextoComFigura id={cid} rows={5} valor={form.resolucao_comentada} aoMudar={(v) => muda("resolucao_comentada", v)} onde="na resolução" className="campo" />}
       </Campo>
     </Cartao>
     </>

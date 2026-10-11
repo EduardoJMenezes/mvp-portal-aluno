@@ -297,9 +297,31 @@ um caminho não pode nascer com menos campos que pelo outro.
 
 Nada é gravado no modal: a questão continua nascendo com o rascunho do
 simulado (`EntradasDaProva` já aceitava todos os campos). Por isso ela pode ser
-reaberta em "Editar", na lista da prova, até o rascunho ser criado. Figura só
-entra depois, no editor da questão; no texto fica a marca `![](figura:pendente)`.
+reaberta em "Editar", na lista da prova, até o rascunho ser criado.
 
 Como o modal mora, no DOM, dentro do formulário do simulado, a `Camada` passou
 a impedir que Enter num campo dela envie um formulário que está atrás.
+
+## Imagem ao escrever a questão
+
+Mudou em 11/10/2026. Antes, figura só entrava pelo importador ou no cartão
+"Figuras" de uma questão ainda em rascunho; quem escrevia a questão na
+plataforma não tinha como pôr imagem. Agora o enunciado, cada alternativa e a
+resolução comentada têm **"Inserir imagem"**, e também aceitam a imagem
+**colada** (Ctrl+V) direto no texto (`TextoComFigura`, em
+`FormularioDaQuestao.tsx`). Vale no editor do banco, na questão nova da aula e
+no modal do simulado, em questão nova, rascunho ou já publicada.
+
+* A imagem sobe na hora por `POST /api/admin/figuras` e nasce **solta**, sem
+  questão. No texto entra `![](figura:ID)`, no lugar do cursor, e a prévia já a
+  mostra.
+* Quando a questão é gravada (`criarNova` e `editar`), as figuras citadas no
+  texto passam a ser dela, cada uma com a parte em que aparece
+  (`FigurasServico.ligarAs`). É a parte que decide quando o aluno a vê: a da
+  resolução, só depois de responder ou de o simulado fechar.
+* Figura solta só o operador vê. A que foi enviada e não chegou a ser citada
+  numa questão gravada fica órfã no banco; não há limpeza automática.
+* O cartão "Figuras" do editor continua sendo o caminho de trocar a marca
+  `![](figura:pendente)` de uma questão em rascunho (as que vêm do importador).
+  Em questão publicada ele só mostra as figuras que ela tem.
 

@@ -901,6 +901,12 @@ export const api = {
   editarQuestao: (id: number, dados: Record<string, unknown>) =>
     pedir<QuestaoDetalhada>(`/admin/questoes/${id}`, { method: "PATCH", json: dados }),
   removerQuestao: (id: number) => pedir(`/admin/questoes/${id}`, { method: "DELETE" }),
+  /** A imagem inserida num texto de questão: sobe solta e devolve o id que o texto cita. */
+  guardarFigura: (arquivo: File) => {
+    const corpo = new FormData();
+    corpo.append("arquivo", arquivo);
+    return pedir<{ figura_id: number; tipo: string; bytes: number }>("/admin/figuras", { method: "POST", body: corpo });
+  },
   anexarFigura: (id: number, arquivo: File, parte: string, alternativa?: string) => {
     const corpo = new FormData();
     corpo.append("arquivo", arquivo);

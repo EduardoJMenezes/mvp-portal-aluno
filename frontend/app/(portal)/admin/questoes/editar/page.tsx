@@ -239,7 +239,7 @@ function Editor() {
 
         <div className="flex flex-col gap-4 lg:sticky lg:top-20 lg:self-start">
           <Previa form={form} soPreenchidas={publicada} />
-          {id && questao.dados && <Figuras questao={questao.dados} aoAnexar={() => void questao.recarregar()} />}
+          {id && questao.dados && (!publicada || questao.dados.figuras.length > 0) && <Figuras questao={questao.dados} somenteVer={publicada} aoAnexar={() => void questao.recarregar()} />}
           {!!questao.dados?.historico.length && <Correcoes mudancas={questao.dados.historico} />}
         </div>
       </form>
@@ -272,7 +272,7 @@ function Correcoes({ mudancas }: { mudancas: QuestaoDetalhada["historico"] }) {
   );
 }
 
-function Figuras({ questao, aoAnexar }: { questao: QuestaoDetalhada; aoAnexar: () => void }) {
+function Figuras({ questao, aoAnexar, somenteVer = false }: { questao: QuestaoDetalhada; aoAnexar: () => void; somenteVer?: boolean }) {
   const [arquivo, setArquivo] = useState<File | null>(null);
   const [parte, setParte] = useState("ENUNCIADO");
   const [letra, setLetra] = useState("A");
@@ -297,7 +297,9 @@ function Figuras({ questao, aoAnexar }: { questao: QuestaoDetalhada; aoAnexar: (
   return (
     <Cartao className="flex flex-col gap-3 p-5">
       <TituloDeSecao>Figuras</TituloDeSecao>
-      <p className="-mt-1 text-[13px] text-suave">A figura entra na primeira marca figura:pendente da parte escolhida; sem marca, no fim (na alternativa, a marca é obrigatória). PNG, JPEG, WEBP ou GIF até 2 MB.</p>
+      {!somenteVer && (
+        <p className="-mt-1 text-[13px] text-suave">Para trocar uma marca de figura pendente: a figura entra na primeira marca figura:pendente da parte escolhida; sem marca, no fim (na alternativa, a marca é obrigatória). PNG, JPEG, WEBP ou GIF até 2 MB.</p>
+      )}
       {questao.figuras.length > 0 && (
         <ul className="grid grid-cols-3 gap-2">
           {questao.figuras.map((f) => (
@@ -309,6 +311,8 @@ function Figuras({ questao, aoAnexar }: { questao: QuestaoDetalhada; aoAnexar: (
           ))}
         </ul>
       )}
+      {!somenteVer && (
+        <>
       <div className="flex flex-wrap items-center gap-2">
         <input type="file" aria-label="Arquivo da figura" accept="image/png,image/jpeg,image/webp,image/gif" onChange={(e) => setArquivo(e.target.files?.[0] ?? null)} className="min-w-0 flex-1 text-sm" />
         <select aria-label="Parte da questão" value={parte} onChange={(e) => setParte(e.target.value)} className="campo w-auto">
@@ -328,6 +332,8 @@ function Figuras({ questao, aoAnexar }: { questao: QuestaoDetalhada; aoAnexar: (
       <div>
         <Botao variante="secundario" disabled={!arquivo} ocupado={enviando} onClick={() => anexar()}>{enviando ? "Anexando…" : "Anexar figura"}</Botao>
       </div>
+        </>
+      )}
     </Cartao>
   );
 }

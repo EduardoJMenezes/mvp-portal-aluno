@@ -475,6 +475,16 @@ public class AdminPortal {
         return questoes.remover(ident, questaoId, Instant.now());
     }
 
+    /**
+     * A imagem que o professor insere num texto de questão enquanto escreve. Devolve o id para o
+     * texto citar; a figura passa a ser da questão quando ela é gravada.
+     */
+    @PostMapping(value = "/figuras", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public QuestoesServico.FiguraGuardada guardarFigura(@AuthenticationPrincipal Identidade ident,
+            @RequestPart("arquivo") MultipartFile arquivo) throws IOException {
+        return questoes.guardarFigura(ident, arquivo.getBytes(), arquivo.getOriginalFilename());
+    }
+
     /** A figura entra na primeira marca {@code figura:pendente} da parte; sem marca, no fim. */
     @PostMapping(value = "/questoes/{questaoId}/figuras", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public QuestoesServico.FiguraNaQuestaoResposta anexarFigura(@AuthenticationPrincipal Identidade ident,

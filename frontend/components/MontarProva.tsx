@@ -216,7 +216,7 @@ function EscreverQuestao({ inicial, posicao, aoGravar, aoFechar }: { inicial?: Q
       tamanho="tela"
       fechaClicandoFora={false}
       titulo={inicial ? `Questão ${posicao} da prova` : "Escrever questão nova"}
-      legenda="Nasce em rascunho junto com o simulado e é aprovada com ele. A figura entra depois, no editor da questão: marque o lugar dela com ![](figura:pendente)."
+      legenda="Nasce em rascunho junto com o simulado e é aprovada com ele."
       rodape={
         <div className="mx-auto flex w-full max-w-6xl flex-wrap items-center justify-end gap-2">
           {erro && <p role="alert" className="mr-auto text-sm font-medium text-erro">{erro}</p>}

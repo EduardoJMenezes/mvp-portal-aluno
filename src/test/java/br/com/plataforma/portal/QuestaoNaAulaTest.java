@@ -125,6 +125,51 @@ class QuestaoNaAulaTest extends BaseDoPortal {
         get("/api/admin/questoes?subassunto=Raio atômico", ADMIN).andExpect(status().isBadRequest());
     }
 
+    /** A imagem inserida ao escrever a questão: sobe solta, é citada no texto e vira da questão ao gravar. */
+    @Test
+    void aFiguraInseridaAoEscreverPassaASerDaQuestao() throws Exception {
+        var png = new byte[] {(byte) 0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A, 0, 0, 0, 0};
+        var envio = new org.springframework.mock.web.MockMultipartFile("arquivo", "grafico.png", "image/png", png);
+        var corpo = mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                        .multipart("/api/admin/figuras").file(envio).cookie(sessao(ADMIN)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.tipo").value("image/png"))
+                .andReturn().getResponse().getContentAsString();
+        var figura = JsonPath.<Integer>read(corpo, "$.figura_id");
+
+        // Solta, só o operador a vê; e aluno não envia figura.
+        get("/api/aluno/figuras/" + figura, ADMIN).andExpect(status().isOk());
+        get("/api/aluno/figuras/" + figura, ALUNO).andExpect(status().isForbidden());
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                        .multipart("/api/admin/figuras").file(envio).cookie(sessao(ALUNO)))
+                .andExpect(status().isForbidden());
+
+        // A questão nasce citando a figura no enunciado e outra na alternativa B.
+        var outra = JsonPath.<Integer>read(mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                        .multipart("/api/admin/figuras").file(envio).cookie(sessao(ADMIN)))
+                .andReturn().getResponse().getContentAsString(), "$.figura_id");
+        var nova = NOVA.replace("Qual a massa de 2 mol de água?", "Observe o gráfico.\\n\\n![](figura:%d)".formatted(figura))
+                .replace("\"B\": \"18 g\"", "\"B\": \"![](figura:%d)\"".formatted(outra));
+        var linha = JsonPath.<Integer>read(post("/api/admin/submodulos/" + apostila + "/questao", nova, ADMIN)
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString(), "$.id");
+        assertThat(jdbc.queryForObject("SELECT parte FROM images WHERE id = ?", String.class, figura)).isEqualTo("ENUNCIADO");
+        assertThat(jdbc.queryForObject("SELECT parte FROM images WHERE id = ?", String.class, outra)).isEqualTo("ALTERNATIVA");
+        assertThat(linha).isNotNull();
+
+        // Agora ela é de uma questão que está na aula do aluno: ele a vê.
+        get("/api/aluno/figuras/" + figura, ALUNO).andExpect(status().isOk());
+
+        // E numa questão já publicada, a figura inserida na edição também é ligada.
+        var publicada = criarQuestao("Já publicada", "A", "MEDIA", "PUBLICADO");
+        var terceira = JsonPath.<Integer>read(mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                        .multipart("/api/admin/figuras").file(envio).cookie(sessao(ADMIN)))
+                .andReturn().getResponse().getContentAsString(), "$.figura_id");
+        patch("/api/admin/questoes/" + publicada, "{\"resolucao_comentada\": \"Veja: ![](figura:%d)\"}".formatted(terceira), ADMIN)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.figuras[0].figura_id").value(terceira))
+                .andExpect(jsonPath("$.figuras[0].parte").value("RESOLUCAO"));
+    }
+
     @Test
     void questaoDoAcervoComNomeEntraComONomeDado() throws Exception {
         var questao = criarQuestao("Calcule a massa molar", "C", "MEDIA", "PUBLICADO");
