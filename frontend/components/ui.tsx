@@ -338,6 +338,17 @@ export function Cartao({ children, className = "", como: Como = "section" }: { c
   return <Como className={`rounded-cartao border border-borda/70 bg-papel shadow-suave ${className}`}>{children}</Como>;
 }
 
+/** Um número em destaque, com o que ele conta em cima e o detalhe embaixo. */
+export function Numero({ rotulo, valor, detalhe }: { rotulo: string; valor: string; detalhe: string }) {
+  return (
+    <Cartao como="div" className="p-4">
+      <p className="text-[13px] font-semibold uppercase tracking-wide text-suave">{rotulo}</p>
+      <p className="mt-1 text-2xl font-semibold tabular-nums text-tinta">{valor}</p>
+      <p className="truncate text-[13px] text-suave" title={detalhe}>{detalhe}</p>
+    </Cartao>
+  );
+}
+
 export function TituloDeSecao({ children, acao }: { children: ReactNode; acao?: ReactNode }) {
   return (
     <div className="flex flex-wrap items-center justify-between gap-2">

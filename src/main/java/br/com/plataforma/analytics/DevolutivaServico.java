@@ -388,6 +388,22 @@ public class DevolutivaServico {
         return montar(respostas, ident, agora);
     }
 
+    /** Só a leitura por assunto destas respostas, sem percorrer o curso de ninguém. */
+    Devolutiva semMaterial(List<RespostaAvaliada> respostas, Instant agora) {
+        return montar(respostas, null, agora);
+    }
+
+    /**
+     * O professor olhando para um aluno, na tela: os assuntos como ele os vê (a prova entregue já
+     * vale) e, em cada ponto de erro, o que há no curso <i>do aluno</i> para indicar.
+     */
+    @Transactional
+    public Devolutiva doAlunoComMaterial(Identidade ident, String alunoRef, Instant agora) {
+        ident.exigirOperador();
+        var aluno = contas.resolverAluno(alunoRef);
+        return comoOAlunoVe(aluno, respostasDe(List.of(aluno.getId()), false, agora), agora);
+    }
+
     /** O professor olhando para um aluno: vale a prova entregue, mesmo com o simulado aberto. */
     @Transactional
     public Devolutiva doAluno(Identidade ident, String alunoRef, Instant agora) {

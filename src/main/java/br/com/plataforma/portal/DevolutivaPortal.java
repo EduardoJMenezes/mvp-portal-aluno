@@ -27,9 +27,11 @@ public class DevolutivaPortal {
     private final CatalogoServico catalogo;
     private final AnaliseServico analises;
     private final br.com.plataforma.simulados.ProvaDoAluno prova;
+    private final br.com.plataforma.analytics.PanoramaServico panorama;
 
     public DevolutivaPortal(DevolutivaServico devolutiva, CatalogoServico catalogo, AnaliseServico analises,
-            br.com.plataforma.simulados.ProvaDoAluno prova) {
+            br.com.plataforma.simulados.ProvaDoAluno prova, br.com.plataforma.analytics.PanoramaServico panorama) {
+        this.panorama = panorama;
         this.devolutiva = devolutiva;
         this.catalogo = catalogo;
         this.analises = analises;
@@ -43,7 +45,7 @@ public class DevolutivaPortal {
 
     @GetMapping("/admin/alunos/{aluno}/assuntos")
     public DevolutivaServico.Devolutiva doAluno(@AuthenticationPrincipal Identidade ident, @PathVariable String aluno) {
-        return devolutiva.doAluno(ident, aluno, Instant.now());
+        return devolutiva.doAlunoComMaterial(ident, aluno, Instant.now());
     }
 
     @GetMapping("/admin/turmas/{turma}/devolutiva")
@@ -60,6 +62,13 @@ public class DevolutivaPortal {
     public java.util.List<AnaliseServico.AlunoNaBusca> alunos(@AuthenticationPrincipal Identidade ident,
             @RequestParam(required = false) String busca) {
         return analises.alunos(ident, busca);
+    }
+
+    /** Os números por trás da análise geral: o acerto, as provas, o curso e cada assunto ao lado dos colegas. */
+    @GetMapping("/admin/alunos/{aluno}/panorama")
+    public br.com.plataforma.analytics.PanoramaServico.Panorama panorama(@AuthenticationPrincipal Identidade ident,
+            @PathVariable String aluno) {
+        return panorama.panorama(ident, aluno, Instant.now());
     }
 
     /** A análise de um aluno: a geral (só do professor) ou, com {@code simulado}, a que ele lê no resultado. */

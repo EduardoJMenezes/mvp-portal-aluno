@@ -73,12 +73,14 @@ public class AnaliseServico {
     private final DevolutivaServico devolutiva;
     private final ContasServico contas;
     private final SimuladosServico simulados;
+    private final PanoramaServico panorama;
 
     @PersistenceContext
     private EntityManager em;
 
     public AnaliseServico(AnaliseDoAlunoRepositorio analises, DevolutivaServico devolutiva, ContasServico contas,
-            SimuladosServico simulados) {
+            SimuladosServico simulados, PanoramaServico panorama) {
+        this.panorama = panorama;
         this.analises = analises;
         this.devolutiva = devolutiva;
         this.contas = contas;
@@ -114,20 +116,24 @@ public class AnaliseServico {
     /** Como ele foi em outra prova: é o que permite dizer se melhorou. */
     public record OutroSimulado(String titulo, int acertos, int total, Instant fechouEm) {}
 
+    /** O material de um aluno para quem escreve: o de uma prova, ou o geral ({@link PanoramaServico.ResumoGeral}). */
+    public interface Resumo {}
+
     public record ResumoDoAluno(Integer alunoId, String aluno, int respostas, int acertos, Double percentual,
             List<AssuntoNoResumo> porAssunto, int erros, List<ErroDoAluno> errosRecentes, List<ParaRevisar> noCurso,
-            List<OutroSimulado> outrosSimulados, Texto analiseAnterior) {}
+            List<OutroSimulado> outrosSimulados, Texto analiseAnterior) implements Resumo {}
 
     /**
      * {@code recorte}: {@code SIMULADO} ou {@code GERAL}. Os campos do simulado só vêm nele:
      * {@code participantes} fizeram a prova, {@code naFila} ainda não têm análise dela, e
      * {@code questoesSemComentario} são as questões em que o professor não comentou alternativa
-     * nenhuma — nelas a análise só sabe que o aluno errou.
+     * nenhuma — nelas a análise só sabe que o aluno errou. No {@code GERAL}, {@code alunos} traz um
+     * {@link PanoramaServico.ResumoGeral}: o histórico inteiro não se lê como uma prova.
      */
     public record Pendentes(String recorte, String simulado, Boolean resultadoLiberado, Integer participantes,
-            Integer questoes, Integer questoesSemComentario, int naFila, List<ResumoDoAluno> alunos, int restam) {}
+            Integer questoes, Integer questoesSemComentario, int naFila, List<? extends Resumo> alunos, int restam) {}
 
-    private static Texto texto(AnaliseDoAluno a) {
+    static Texto texto(AnaliseDoAluno a) {
         return a == null ? null
                 : new Texto(a.getPontoPrincipal(), a.getPadroes(), a.getMelhorou(), a.getProximosPassos(), a.getEscritaEm());
     }
@@ -141,6 +147,14 @@ public class AnaliseServico {
     private static List<String> nomes(AnalyticsServico.Recomendacao ponto, String tipo) {
         return ponto.noCurso().stream().filter(l -> tipo.equals(l.tipo()))
                 .map(l -> "%s (%s)".formatted(l.nome(), l.modulo())).toList();
+    }
+
+    /** Só os pontos mais fracos: é material para até três próximos passos, não o curso inteiro. */
+    static List<ParaRevisar> paraRevisar(DevolutivaServico.Devolutiva d) {
+        return d.ondeRevisar().stream().limit(PONTOS_NO_RESUMO).map(p -> new ParaRevisar(p.topico(), p.erros(),
+                Stream.concat(nomes(p, "VIDEO").stream(),
+                        p.videos().stream().filter(v -> !v.bloqueado()).map(v -> v.titulo())).toList(),
+                nomes(p, "PDF"), nomes(p, "QUESTAO"), nomes(p, "ERRO"))).toList();
     }
 
     private static final Comparator<RespostaAvaliada> POR_DATA =
@@ -194,11 +208,7 @@ public class AnaliseServico {
                     r.marcada() == null ? null : comentarios.get(r.marcada()), comentarios.get(q.getGabarito())));
         }
 
-        // Só os pontos mais fracos: é material para até três próximos passos, não o curso inteiro.
-        var noCurso = d.ondeRevisar().stream().limit(PONTOS_NO_RESUMO).map(p -> new ParaRevisar(p.topico(), p.erros(),
-                Stream.concat(nomes(p, "VIDEO").stream(),
-                        p.videos().stream().filter(v -> !v.bloqueado()).map(v -> v.titulo())).toList(),
-                nomes(p, "PDF"), nomes(p, "QUESTAO"), nomes(p, "ERRO"))).toList();
+        var noCurso = paraRevisar(d);
 
         // As outras provas, da mais antiga para a mais nova.
         var provas = new LinkedHashMap<Integer, int[]>();
@@ -252,14 +262,13 @@ public class AnaliseServico {
         }
         if (branco(simuladoRef)) {
             var aluno = contas.resolverAluno(alunoRef);
-            var todas = devolutiva.respostasDe(List.of(aluno.getId()), false, agora);
-            if (todas.isEmpty()) {
+            var anterior = analises.findByAlunoIdAndSimuladoIdIsNullOrderByIdDesc(aluno.getId()).stream().findFirst().orElse(null);
+            var geral = panorama.resumoGeral(ident, aluno, anterior, agora);
+            if (geral.respostas() == 0) {
                 throw new RegraDeNegocio("%s ainda não respondeu nenhuma questão, nem em aula nem em simulado: não há o que analisar."
                         .formatted(aluno.getNome()));
             }
-            var anterior = analises.findByAlunoIdAndSimuladoIdIsNullOrderByIdDesc(aluno.getId()).stream().findFirst().orElse(null);
-            return new Pendentes("GERAL", null, null, null, null, null, 1,
-                    List.of(resumir(aluno, todas, todas, null, anterior, agora)), 0);
+            return new Pendentes("GERAL", null, null, null, null, null, 1, List.of(geral), 0);
         }
 
         var s = exigirEncerrado(simuladoRef, agora);

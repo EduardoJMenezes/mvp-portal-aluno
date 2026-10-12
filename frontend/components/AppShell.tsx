@@ -211,7 +211,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       <a href="#conteudo" className="sr-only z-50 rounded-campo bg-acento px-4 py-2 text-white focus:not-sr-only focus:fixed focus:left-4 focus:top-3">
         Pular para o conteúdo
       </a>
-      <header className="sticky top-0 z-30 border-b border-borda/70 bg-papel">
+      <header className="sticky top-0 z-30 border-b border-borda/70 bg-papel print:hidden">
         <div className="mx-auto flex h-16 max-w-6xl items-center gap-2 px-4 sm:px-6">
           <details className="relative md:hidden">
             <summary className="flex size-10 cursor-pointer list-none items-center justify-center rounded-campo border border-borda text-tinta [&::-webkit-details-marker]:hidden" aria-label="Menu">

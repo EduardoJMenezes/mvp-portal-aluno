@@ -3,11 +3,12 @@
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
 import { AnaliseDoSimuladoParaOProfessor, AnaliseGeral } from "@/components/Analise";
+import { AssuntosEmDetalhe } from "@/components/AssuntosEmDetalhe";
 import { CursoDoAluno } from "@/components/CursoDoAluno";
-import { PorAssunto, ResumoDaDevolutiva } from "@/components/Devolutiva";
+import { AssuntosAoLadoDosColegas, EvolucaoNosSimulados, NumerosDoPanorama } from "@/components/PanoramaDoAluno";
 import { OndeRevisar } from "@/components/Resultado";
 import { Anel } from "@/components/Resultado";
-import { Abas, Aviso, BotaoLink, Campo, Cartao, Estado, Etiqueta, LinkDeTitulo, Pagina, TituloDeSecao, Vazio } from "@/components/ui";
+import { Abas, Aviso, Botao, BotaoLink, Campo, Cartao, Estado, Etiqueta, LinkDeTitulo, Pagina, TituloDeSecao, Vazio } from "@/components/ui";
 import { api, useDados, type AlunoNaBusca } from "@/lib/api";
 import { dataCurta, plural } from "@/lib/formato";
 
@@ -79,9 +80,10 @@ function DesempenhoDoAluno() {
 }
 
 // O acompanhamento cabia numa página só e pedia rolagem demais: cada pergunta do professor tem a sua aba.
-type Aba = "geral" | "curso" | "simulados";
+type Aba = "geral" | "assuntos" | "curso" | "simulados";
 const ABAS: { valor: Aba; rotulo: string }[] = [
   { valor: "geral", rotulo: "Visão geral" },
+  { valor: "assuntos", rotulo: "Por assunto" },
   { valor: "curso", rotulo: "No curso" },
   { valor: "simulados", rotulo: "Simulados" },
 ];
@@ -93,40 +95,64 @@ function Acompanhamento({ aluno }: { aluno: string }) {
   const pedida = parametros.get("aba") as Aba | null;
   // Quem chega com um simulado escolhido quer ver o simulado.
   const aba: Aba = pedida && ABAS.some((a) => a.valor === pedida) ? pedida : simulado ? "simulados" : "geral";
-  const endereco = (nova: Aba, prova?: string) =>
-    `/admin/alunos/?aluno=${encodeURIComponent(aluno)}${nova === "geral" ? "" : `&aba=${nova}`}${prova ? `&simulado=${prova}` : ""}`;
+  const assunto = Number(parametros.get("assunto")) || null;
+  const endereco = (nova: Aba, prova?: string, tema?: number) =>
+    `/admin/alunos/?aluno=${encodeURIComponent(aluno)}${nova === "geral" ? "" : `&aba=${nova}`}${prova ? `&simulado=${prova}` : ""}${tema ? `&assunto=${tema}` : ""}`;
   const desempenho = useDados(() => api.desempenho(aluno, simulado), [aluno, simulado]);
   const simulados = useDados(() => api.simuladosDoProfessor());
-  const assuntos = useDados(() => (aluno ? api.devolutivaDoAluno(aluno).catch(() => null) : Promise.resolve(null)), [aluno]);
+  const assuntos = useDados(() => api.devolutivaDoAluno(aluno), [aluno]);
   const geral = useDados(() => api.analiseDoAluno(aluno).catch(() => null), [aluno]);
+  const panorama = useDados(() => api.panorama(aluno), [aluno]);
   // A análise do simulado que está na tela: o escolhido, ou o último que ele começou.
   const idDoSimulado = desempenho.dados?.simulado_id ?? null;
   const doSimulado = useDados(() => (idDoSimulado ? api.analiseDoAluno(aluno, idDoSimulado).catch(() => null) : Promise.resolve(null)), [aluno, idDoSimulado]);
 
   return (
-    <Pagina titulo={desempenho.dados?.aluno ?? "Desempenho do aluno"} legenda="O que já fez do curso, como está em cada assunto e como foi em cada simulado, a qualquer momento, inclusive antes de fechar." voltar={{ href: "/admin/alunos/", rotulo: "Desempenho por aluno" }}>
+    <Pagina titulo={panorama.dados?.aluno ?? desempenho.dados?.aluno ?? "Desempenho do aluno"} legenda={panorama.dados?.turmas.length ? panorama.dados.turmas.join(", ") : "A análise geral, como está em cada assunto, o que já fez do curso e como foi em cada simulado."} voltar={{ href: "/admin/alunos/", rotulo: "Desempenho por aluno" }}>
       <Abas abas={ABAS} atual={aba} aoTrocar={(nova) => router.replace(endereco(nova, nova === "simulados" ? simulado : undefined), { scroll: false })} />
       {aba === "curso" && <CursoDoAluno aluno={aluno} />}
       {aba === "geral" && (
-        <>
-          {geral.dados && <AnaliseGeral dados={geral.dados} aoAtualizar={geral.recarregar} />}
-          {assuntos.dados && (
-            <section className="flex flex-col gap-3" aria-labelledby="titulo-por-assunto">
-              <TituloDeSecao>
-                <span id="titulo-por-assunto">Por assunto</span>
-              </TituloDeSecao>
-              <div className="-mt-1">
-                <ResumoDaDevolutiva dados={assuntos.dados} quem="O aluno" />
+        <Estado {...panorama} linhas={4}>
+          {(p) => (
+            <>
+              <NumerosDoPanorama p={p} />
+              <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
+                {geral.dados && (
+                  <AnaliseGeral
+                    dados={geral.dados}
+                    novas={p.respostas_novas}
+                    aoAtualizar={() => {
+                      geral.recarregar();
+                      panorama.recarregar();
+                    }}
+                  />
+                )}
+                <section className="flex flex-col gap-3" aria-labelledby="titulo-numeros">
+                  <TituloDeSecao>
+                    <span id="titulo-numeros">Os números por trás</span>
+                  </TituloDeSecao>
+                  <EvolucaoNosSimulados simulados={p.simulados} quem="o aluno" />
+                  <AssuntosAoLadoDosColegas
+                    p={p}
+                    limite={6}
+                    verTodos={<Botao tamanho="mini" onClick={() => router.replace(endereco("assuntos"), { scroll: false })}>Ver todos os assuntos</Botao>}
+                  />
+                </section>
               </div>
-              <PorAssunto dados={assuntos.dados} />
-              {assuntos.dados.sem_assunto > 0 && (
-                <p className="text-[13px] text-suave">
-                  {assuntos.dados.sem_assunto === 1 ? "1 resposta ficou" : `${assuntos.dados.sem_assunto} respostas ficaram`} de fora desta leitura: {assuntos.dados.questoes_sem_assunto === 1 ? "a questão não tem" : "as questões não têm"} assunto.
-                </p>
-              )}
-            </section>
+            </>
           )}
-        </>
+        </Estado>
+      )}
+      {aba === "assuntos" && (
+        <Estado {...assuntos} linhas={4}>
+          {(d) =>
+            d.assuntos.length === 0 ? (
+              <Vazio titulo="Sem respostas por assunto ainda">Assim que o aluno responder questões classificadas, o desempenho dele aparece aqui, separado por assunto.</Vazio>
+            ) : (
+              <AssuntosEmDetalhe d={d} escolhido={assunto} quem="professor" aoEscolher={(id) => router.replace(endereco("assuntos", undefined, id), { scroll: false })} />
+            )
+          }
+        </Estado>
       )}
       {aba === "simulados" && (
         <>

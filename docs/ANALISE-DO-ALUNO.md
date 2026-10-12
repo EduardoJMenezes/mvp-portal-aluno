@@ -72,9 +72,45 @@ ele respondeu, em aula e em simulado, na visão do professor), o texto mostrado 
 ok, `gravar_analises` sem simulado. Fica guardada no acompanhamento do aluno, com as anteriores,
 para reconsultar. O aluno não tem por onde lê-la.
 
-O professor chega ao aluno por **Turmas → Desempenho por aluno**, que busca por nome ou e-mail.
+O professor chega ao aluno por **Turmas → Desempenho por aluno**, que busca por nome ou e-mail. O
+acompanhamento abre na **Visão geral**:
 
-## O que vai no resumo
+- quatro números: questões respondidas e acerto, quantas ficaram em branco, simulados (a média dele
+  e a de quem fez) e quanto do curso ele concluiu;
+- **a análise**, com os títulos da geral ("Onde erra e por quê", "Evolução", "Para a conversa"), o
+  aviso de quantas respostas chegaram depois de ela ser escrita e o botão que copia o pedido para
+  colar no Claude;
+- **os números por trás**, sem IA: uma coluna por simulado, do mais antigo para o mais novo, com a
+  média de quem fez riscada; e o acerto por assunto ao lado do dos colegas de turma *nas mesmas
+  questões*.
+
+As outras abas são **Por assunto** (um assunto por vez, com o que há no curso do aluno para indicar
+em cada sub-assunto), **No curso** e **Simulados**.
+
+**Página para imprimir** (`/admin/alunos/relatorio/`): a análise e os números numa folha, para o
+professor imprimir ou salvar em PDF e levar à conversa com o aluno ou o responsável. É uma tela do
+professor; o aluno não a abre. Por isso a descrição da tool pede um texto que descreva as respostas,
+sem rótulo sobre a pessoa.
+
+### O material da geral é outro
+
+O resumo de um simulado lista os erros um a um: são vinte questões. O histórico inteiro não cabe
+assim (num aluno real, 20 dos 30 erros mais recentes eram questões em branco de uma prova só).
+Na geral, `PanoramaServico.resumoGeral` entrega:
+
+- `marcou_errado` e `em_branco`, separados: do que ficou em branco não se sabe o porquê;
+- `curso`: vídeos vistos, materiais lidos, questões de aula respondidas e a última atividade;
+- `simulados`: cada prova entregue, em ordem, com erros, em branco, a média de quem fez e a posição;
+- `por_assunto`, com `em_branco` e `colegas` (o acerto dos colegas de turma nas mesmas questões);
+- `onde_erra`: cada ponto com erro, do que tem mais para o que tem menos, com até quatro `exemplos`
+  (os comentados primeiro) e teto de 40 no resumo;
+- `repetidas`: a mesma questão respondida mais de uma vez, lida como `ERROU_DE_NOVO`, `CORRIGIU` ou
+  `VOLTOU_A_ERRAR`;
+- `no_curso`, `analise_anterior` e `respostas_novas`.
+
+A tela lê os mesmos números por `/api/admin/alunos/{aluno}/panorama`.
+
+## O que vai no resumo de um simulado
 
 - `por_assunto`: respostas, acertos e nível por assunto e sub-assunto, dentro do recorte.
 - `erros_recentes`: até 30 erros. De cada um, onde foi ("Simulado 02, questão 4" ou a linha da
@@ -111,15 +147,17 @@ rascunho e por `drafts.aprovado_por_id`.
   mais recente de cada aluno em cada recorte; as outras são histórico.
 - `exams.resultado_liberado_em` e `resultado_liberado_por_id` (V17).
 - `analytics/AnaliseServico.java`: o resumo, gravar, liberar, o gráfico por assunto e a busca.
+- `analytics/PanoramaServico.java`: os números do aluno para a tela e o material da análise geral.
 - `/comandos/listar_analises_pendentes`, `/comandos/gravar_analises` e
   `/comandos/liberar_resultado_simulado` (`AnalyticsComandos`).
-- `/api/admin/alunos`, `/api/admin/alunos/{aluno}/analise`, `.../analise/visibilidade`,
+- `/api/admin/alunos`, `/api/admin/alunos/{aluno}/analise`, `.../panorama`, `.../analise/visibilidade`,
   `/api/admin/simulados/{simulado}/resultado/liberar`, `/api/admin/simulados/{simulado}/analise`
   (a turma) e `/api/admin/simulados/{simulado}/alunos/{aluno}/resultado` (a tela de um aluno), em
   `DevolutivaPortal`.
 - O aluno recebe a análise e o gráfico dentro de `/api/aluno/simulados/{simulado}/resultado`.
 - `frontend/components/Analise.tsx`, `GraficosDoSimulado.tsx`, `ResultadoDoSimulado.tsx` (a tela
-  do resultado, do aluno e do professor) e `SimuladoDepoisDaProva.tsx`.
+  do resultado, do aluno e do professor), `SimuladoDepoisDaProva.tsx`, `PanoramaDoAluno.tsx` (os
+  gráficos da geral) e `AssuntosEmDetalhe.tsx` (um assunto por vez, do aluno e do professor).
 - `AnaliseDoAlunoTest` trava a espera pelo professor, o resumo, quem lê o quê e a busca.
 
 ## Limites conhecidos
@@ -129,3 +167,7 @@ rascunho e por `drafts.aprovado_por_id`.
 - Uma alternativa marcada uma vez pode ter sido chute: a descrição da tool manda tratar como
   padrão só o motivo que se repete em dois erros ou mais.
 - Não há recolher resultado nem antecipar o fechamento de um simulado aberto.
+- A análise geral é pedida de um aluno por vez. Não há fila por turma.
+- "Colegas" são todos os matriculados nas turmas do aluno, e a comparação carrega as respostas
+  deles a cada abertura da tela: numa turma muito grande, é a primeira conta a pesar.
+- Simulado de teste entra no histórico como qualquer outro. Para não poluir a análise, remova-o.

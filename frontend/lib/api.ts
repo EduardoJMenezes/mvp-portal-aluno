@@ -407,6 +407,64 @@ export type VisaoDoSimulado = {
   mais_erradas: QuestaoMaisErrada[];
   alunos: AlunoNoSimulado[];
 };
+/** `colegas`: o acerto dos colegas de turma nas mesmas questões; nulo se nenhum respondeu. */
+export type AssuntoNoPanorama = {
+  id: number;
+  nome: string;
+  respostas: number;
+  acertos: number;
+  em_branco: number;
+  percentual: number;
+  nivel: NivelNoAssunto;
+  colegas: number | null;
+  subassuntos: { id: number; nome: string; respostas: number; acertos: number; em_branco: number; percentual: number; nivel: NivelNoAssunto }[];
+};
+/** Uma prova entregue. `encerrado` falso: ainda está aberta, e média e posição são parciais. */
+export type SimuladoNoPanorama = {
+  simulado_id: number;
+  titulo: string;
+  fechou_em: string | null;
+  encerrado: boolean;
+  acertos: number;
+  erros: number;
+  em_branco: number;
+  total: number;
+  percentual: number;
+  media: number;
+  posicao: number;
+  participantes: number;
+};
+/** Os números por trás da análise geral. `erros`: marcou errado; `em_branco`: não marcou, em prova entregue. */
+export type Panorama = {
+  aluno_id: number;
+  aluno: string;
+  turmas: string[];
+  respostas: number;
+  acertos: number;
+  erros: number;
+  em_branco: number;
+  percentual: number | null;
+  da_aula: number;
+  de_simulado: number;
+  colegas: number;
+  por_assunto: AssuntoNoPanorama[];
+  simulados: SimuladoNoPanorama[];
+  curso: {
+    concluidos: number;
+    total: number;
+    videos_vistos: number;
+    videos: number;
+    materiais_lidos: number;
+    materiais: number;
+    questoes_respondidas: number;
+    questoes: number;
+    questoes_certas: number;
+    ultima_atividade: string | null;
+  };
+  analise_geral_em: string | null;
+  /** Quantas respostas chegaram depois da análise geral que está valendo; nulo sem análise. */
+  respostas_novas: number | null;
+};
 export type AlunoNaBusca = { id: number; nome: string; email: string; turmas: string[]; analise_geral_em: string | null };
 export type ResultadoLiberado = { simulado: string; liberado_agora: boolean; liberado_em: string; participantes: number; com_analise: number; sem_analise: number };
 export type QuestaoDaAulaNaTurma = {
@@ -888,6 +946,7 @@ export const api = {
   devolutivaDoAluno: (aluno: string | number) => pedir<Devolutiva>(`/admin/alunos/${seg(String(aluno))}/assuntos`),
   devolutivaDaTurma: (turma: number) => pedir<DevolutivaDaTurma>(`/admin/turmas/${turma}/devolutiva`),
   alunos: (busca?: string) => pedir<AlunoNaBusca[]>(`/admin/alunos${q({ busca })}`),
+  panorama: (aluno: string | number) => pedir<Panorama>(`/admin/alunos/${seg(String(aluno))}/panorama`),
   analiseDoAluno: (aluno: string | number, simulado?: number) =>
     pedir<AnaliseParaOProfessor>(`/admin/alunos/${seg(String(aluno))}/analise${q({ simulado })}`),
   ocultarAnalise: (aluno: string | number, simulado: number, oculta: boolean) =>

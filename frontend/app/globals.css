@@ -411,6 +411,22 @@
   }
 }
 
+/* O relatório do aluno é feito para imprimir: as barras são cor de fundo, que o navegador
+   descarta por padrão, e a página sai sem o fundo cinza do portal. */
+@media print {
+  body {
+    background: #fff;
+  }
+  .relatorio,
+  .relatorio * {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  @page {
+    margin: 14mm;
+  }
+}
+
 /* Material não se imprime. Imprimir para PDF sairia com a apostila inteira,
    limpa, em dois cliques — é a cópia fácil que dá para fechar. Print de tela
    não dá: nenhum navegador deixa a página bloquear isso (docs/MATERIAIS.md). */

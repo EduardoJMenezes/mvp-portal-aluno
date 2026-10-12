@@ -355,8 +355,8 @@ class AnaliseDoAlunoTest extends BaseDoPortal {
                 .andExpect(jsonPath("$.simulado").doesNotExist())
                 .andExpect(jsonPath("$.alunos[0].aluno_id").value(ALUNO))
                 .andExpect(jsonPath("$.alunos[0].respostas").value(4))
-                .andExpect(jsonPath("$.alunos[0].outros_simulados[0].titulo").value("Simulado 02"))
-                .andExpect(jsonPath("$.alunos[0].outros_simulados[0].acertos").value(2));
+                .andExpect(jsonPath("$.alunos[0].simulados[0].titulo").value("Simulado 02"))
+                .andExpect(jsonPath("$.alunos[0].simulados[0].acertos").value(2));
 
         comando("gravar_analises", "{\"analises\": [" + analise(ALUNO, "Bruno confunde massa molar com massa atômica.") + "]}")
                 .andExpect(status().isOk())
@@ -383,6 +383,86 @@ class AnaliseDoAlunoTest extends BaseDoPortal {
         post("/api/admin/alunos/" + ALUNO + "/analise/visibilidade", "{\"oculta\": true}", ADMIN)
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.detail").value(containsString("já é só do professor")));
+    }
+
+    @Test
+    void oMaterialDaGeralAgrupaOsErrosPorPontoESeparaOQueFicouEmBranco() throws Exception {
+        // Uma segunda prova, com duas questões repetidas: o Bruno acerta a 1, que tinha errado, e deixa a 4 em branco de novo.
+        var outra = criarSimulado("Simulado 03", "PUBLICADO", "2026-02-01T10:00:00Z", "2026-02-02T10:00:00Z");
+        jdbc.update("INSERT INTO exam_classes (simulado_id, turma_id) VALUES (?, 10)", outra);
+        var q4 = jdbc.queryForObject("SELECT id FROM questions WHERE enunciado = 'Q4'", Integer.class);
+        porNaProva(outra, q1, 1);
+        porNaProva(outra, q4, 2);
+        prova(outra, ALUNO, new int[] {q1, q4}, "A", null);
+
+        comando("listar_analises_pendentes", "{\"aluno\": \"Bruno\"}")
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.alunos[0].respostas").value(6))
+                .andExpect(jsonPath("$.alunos[0].acertos").value(3))
+                // Errar marcando e deixar em branco são coisas diferentes: da segunda não se sabe o porquê.
+                .andExpect(jsonPath("$.alunos[0].marcou_errado").value(1))
+                .andExpect(jsonPath("$.alunos[0].em_branco").value(2))
+                .andExpect(jsonPath("$.alunos[0].turmas").value(contains("Extensivo 2027")))
+                // As provas, da mais antiga para a mais nova, com a média de quem fez e a posição dele.
+                .andExpect(jsonPath("$.alunos[0].simulados[*].titulo").value(contains("Simulado 02", "Simulado 03")))
+                .andExpect(jsonPath("$.alunos[0].simulados[0].em_branco").value(1))
+                .andExpect(jsonPath("$.alunos[0].simulados[0].media").value(62.5))
+                .andExpect(jsonPath("$.alunos[0].simulados[0].posicao").value(2))
+                .andExpect(jsonPath("$.alunos[0].simulados[0].participantes").value(2))
+                // Cada ponto de erro, com os exemplos comentados; o que ficou em branco só entra na conta.
+                .andExpect(jsonPath("$.alunos[0].onde_erra[*].assunto").value(contains("Atomística", "Estequiometria")))
+                .andExpect(jsonPath("$.alunos[0].onde_erra[0].em_branco").value(2))
+                .andExpect(jsonPath("$.alunos[0].onde_erra[0].exemplos").isEmpty())
+                .andExpect(jsonPath("$.alunos[0].onde_erra[1].subassunto").value("Mol"))
+                .andExpect(jsonPath("$.alunos[0].onde_erra[1].marcou_errado").value(1))
+                .andExpect(jsonPath("$.alunos[0].onde_erra[1].exemplos[0].onde").value("Simulado 02, questão 1"))
+                .andExpect(jsonPath("$.alunos[0].onde_erra[1].exemplos[0].marcada").value("B"))
+                .andExpect(jsonPath("$.alunos[0].onde_erra[1].exemplos[0].comentario_da_marcada").value(containsString("massa molar")))
+                // A mesma questão duas vezes é um fato só: corrigiu, ou errou de novo.
+                .andExpect(jsonPath("$.alunos[0].repetidas[*].leitura").value(contains("CORRIGIU", "ERROU_DE_NOVO")))
+                .andExpect(jsonPath("$.alunos[0].repetidas[0].vezes[*].onde").value(contains("Simulado 02, questão 1", "Simulado 03, questão 1")))
+                .andExpect(jsonPath("$.alunos[0].repetidas[1].vezes[0].marcada").doesNotExist())
+                // Ao lado dos colegas, nas mesmas questões: a Maria acertou as duas de Mol e uma das de Atomística.
+                .andExpect(jsonPath("$.alunos[0].colegas").value(1))
+                .andExpect(jsonPath("$.alunos[0].por_assunto[?(@.nome == 'Estequiometria')].colegas").value(contains(100.0)))
+                .andExpect(jsonPath("$.alunos[0].por_assunto[?(@.nome == 'Atomística')].colegas").value(contains(50.0)))
+                .andExpect(jsonPath("$.alunos[0].por_assunto[?(@.nome == 'Atomística')].em_branco").value(contains(2)));
+    }
+
+    @Test
+    void oPanoramaDaTelaTemOsMesmosNumerosEAvisaQuandoAAnaliseFicouVelha() throws Exception {
+        get("/api/admin/alunos/" + ALUNO + "/panorama", ADMIN)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.aluno").value("Aluno Bruno"))
+                .andExpect(jsonPath("$.respostas").value(4))
+                .andExpect(jsonPath("$.acertos").value(2))
+                .andExpect(jsonPath("$.erros").value(1))
+                .andExpect(jsonPath("$.em_branco").value(1))
+                .andExpect(jsonPath("$.percentual").value(50.0))
+                .andExpect(jsonPath("$.de_simulado").value(4))
+                .andExpect(jsonPath("$.simulados[0].percentual").value(50.0))
+                .andExpect(jsonPath("$.simulados[0].encerrado").value(true))
+                .andExpect(jsonPath("$.curso.total").exists())
+                .andExpect(jsonPath("$.analise_geral_em").doesNotExist())
+                .andExpect(jsonPath("$.respostas_novas").doesNotExist());
+
+        comando("gravar_analises", "{\"analises\": [" + analise(ALUNO, "Geral do Bruno.") + "]}").andExpect(status().isOk());
+        get("/api/admin/alunos/" + ALUNO + "/panorama", ADMIN)
+                .andExpect(jsonPath("$.analise_geral_em").exists())
+                .andExpect(jsonPath("$.respostas_novas").value(0));
+
+        // Ele faz outra prova: a análise que está na tela já não leu tudo.
+        var outra = criarSimulado("Simulado 03", "PUBLICADO", "2026-02-01T10:00:00Z", "2026-02-02T10:00:00Z");
+        porNaProva(outra, q1, 1);
+        porNaProva(outra, q3, 2);
+        prova(outra, ALUNO, new int[] {q1, q3}, "A", "A");
+        get("/api/admin/alunos/" + ALUNO + "/panorama", ADMIN).andExpect(jsonPath("$.respostas_novas").value(2));
+
+        // Na tela, cada ponto de erro vem com o que há no curso do aluno para indicar.
+        get("/api/admin/alunos/" + ALUNO + "/assuntos", ADMIN)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.onde_revisar[*].topico").value(org.hamcrest.Matchers.containsInAnyOrder("Mol", "Atomística")));
+        get("/api/admin/alunos/" + ALUNO + "/panorama", ALUNO).andExpect(status().isForbidden());
     }
 
     @Test
