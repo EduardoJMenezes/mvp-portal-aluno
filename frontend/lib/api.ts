@@ -416,8 +416,11 @@ export type AssuntoNoPanorama = {
   em_branco: number;
   percentual: number;
   nivel: NivelNoAssunto;
+  /** As que ele marcou, e o acerto só sobre elas (nulo se não marcou nenhuma). */
+  respondidas: number;
+  acerto_no_que_respondeu: number | null;
   colegas: number | null;
-  subassuntos: { id: number; nome: string; respostas: number; acertos: number; em_branco: number; percentual: number; nivel: NivelNoAssunto }[];
+  subassuntos: { id: number; nome: string; respostas: number; respondidas: number; acertos: number; em_branco: number; percentual: number; acerto_no_que_respondeu: number | null; nivel: NivelNoAssunto }[];
 };
 /** Uma prova entregue. `encerrado` falso: ainda está aberta, e média e posição são parciais. */
 export type SimuladoNoPanorama = {
@@ -444,6 +447,8 @@ export type Panorama = {
   erros: number;
   em_branco: number;
   percentual: number | null;
+  /** O acerto só sobre o que ele marcou: é a leitura do que ele sabe. */
+  acerto_no_que_respondeu: number | null;
   da_aula: number;
   de_simulado: number;
   colegas: number;

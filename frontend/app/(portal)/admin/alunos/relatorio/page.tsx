@@ -123,7 +123,7 @@ function Subassuntos({ p }: { p: Panorama }) {
       <thead>
         <tr>
           <th scope="col">Assunto</th>
-          <th scope="col">Sub-assuntos (acertos de respostas)</th>
+          <th scope="col">Sub-assuntos (acertos no que respondeu)</th>
         </tr>
       </thead>
       <tbody>
@@ -135,7 +135,7 @@ function Subassuntos({ p }: { p: Panorama }) {
                 {a.subassuntos.map((s) => (
                   <li key={s.id} className="flex items-center gap-1.5 text-[14px] text-tinta-2">
                     <span className={`size-2 shrink-0 rounded-full ${NIVEL[s.nivel].barra}`} aria-hidden="true" />
-                    {s.nome} <span className="tabular-nums text-suave">{s.acertos} de {s.respostas}{s.em_branco > 0 ? `, ${s.em_branco} em branco` : ""}</span>
+                    {s.nome} <span className="tabular-nums text-suave">{s.acertos} de {s.respondidas}{s.em_branco > 0 ? `, ${s.em_branco} em branco` : ""}</span>
                   </li>
                 ))}
               </ul>

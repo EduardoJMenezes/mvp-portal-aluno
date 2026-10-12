@@ -95,9 +95,15 @@ public class AnaliseServico {
 
     // --- o resumo de um recorte ----------------------------------------------------
 
-    public record SubassuntoNoResumo(String nome, int respostas, int acertos, Nivel nivel) {}
+    /**
+     * {@code respondidas}: as que ele marcou; {@code emBranco}: as que deixou sem marcar. A análise
+     * é sobre o que ele respondeu, então o acerto que interessa é {@code acertos} em
+     * {@code respondidas}.
+     */
+    public record SubassuntoNoResumo(String nome, int respostas, int respondidas, int acertos, int emBranco, Nivel nivel) {}
 
-    public record AssuntoNoResumo(String nome, int respostas, int acertos, Nivel nivel, List<SubassuntoNoResumo> subassuntos) {}
+    public record AssuntoNoResumo(String nome, int respostas, int respondidas, int acertos, int emBranco, Nivel nivel,
+            List<SubassuntoNoResumo> subassuntos) {}
 
     /**
      * Um erro do aluno. {@code marcada} nula: deixou em branco. Os comentários são os que o
@@ -121,9 +127,15 @@ public class AnaliseServico {
     /** O material de um aluno para quem escreve: o de uma prova, ou o geral ({@link PanoramaServico.ResumoGeral}). */
     public interface Resumo {}
 
-    public record ResumoDoAluno(Integer alunoId, String aluno, int respostas, int acertos, Double percentual,
-            List<AssuntoNoResumo> porAssunto, int erros, List<ErroDoAluno> errosRecentes, List<ParaRevisar> noCurso,
-            List<OutroSimulado> outrosSimulados, Texto analiseAnterior) implements Resumo {}
+    /**
+     * {@code erros} soma o que ele marcou errado ({@code marcouErrado}) e o que deixou em branco
+     * ({@code emBranco}). {@code acertoNoQueRespondeu}: o acerto só sobre o que ele marcou; nulo se
+     * não marcou nada.
+     */
+    public record ResumoDoAluno(Integer alunoId, String aluno, int respostas, int respondidas, int acertos, int marcouErrado,
+            int emBranco, Double percentual, Double acertoNoQueRespondeu, List<AssuntoNoResumo> porAssunto, int erros,
+            List<ErroDoAluno> errosRecentes, List<ParaRevisar> noCurso, List<OutroSimulado> outrosSimulados,
+            Texto analiseAnterior) implements Resumo {}
 
     /**
      * {@code recorte}: {@code SIMULADO} ou {@code GERAL}. Os campos do simulado só vêm nele:
@@ -179,9 +191,30 @@ public class AnaliseServico {
         var d = devolutiva.comoOAlunoVe(aluno, respostas, agora);
         var etiquetas = devolutiva.etiquetasDas(respostas.stream().map(RespostaAvaliada::questaoId).collect(Collectors.toSet()));
 
-        var porAssunto = d.assuntos().stream().map(a -> new AssuntoNoResumo(a.nome(), a.respostas(), a.acertos(), a.nivel(),
-                a.subassuntos().stream().map(s -> new SubassuntoNoResumo(s.nome(), s.respostas(), s.acertos(), s.nivel())).toList()))
-                .toList();
+        var brancosPorAssunto = new HashMap<Integer, Integer>();
+        var brancosPorSub = new HashMap<Integer, Integer>();
+        var emBranco = 0;
+        for (var r : respostas) {
+            if (r.correta() || r.marcada() != null) {
+                continue;
+            }
+            emBranco++;
+            var e = etiquetas.get(r.questaoId());
+            if (e != null) {
+                brancosPorAssunto.merge(e.assuntoId(), 1, Integer::sum);
+                if (e.subassuntoId() != null) {
+                    brancosPorSub.merge(e.subassuntoId(), 1, Integer::sum);
+                }
+            }
+        }
+        var porAssunto = d.assuntos().stream().map(a -> {
+            var brancos = brancosPorAssunto.getOrDefault(a.id(), 0);
+            return new AssuntoNoResumo(a.nome(), a.respostas(), a.respostas() - brancos, a.acertos(), brancos, a.nivel(),
+                    a.subassuntos().stream().map(s -> {
+                        var doSub = brancosPorSub.getOrDefault(s.id(), 0);
+                        return new SubassuntoNoResumo(s.nome(), s.respostas(), s.respostas() - doSub, s.acertos(), doSub, s.nivel());
+                    }).toList());
+        }).toList();
 
         // Os erros, do mais recente para o mais antigo (na prova, na ordem das questões), com o
         // comentário de cada alternativa.
@@ -233,7 +266,10 @@ public class AnaliseServico {
         var outrosSimulados = provas.entrySet().stream().map(par -> new OutroSimulado(
                 dasProvas.get(par.getKey()).prova(), par.getValue()[0], par.getValue()[1], dasProvas.get(par.getKey()).quando())).toList();
 
-        return new ResumoDoAluno(aluno.getId(), aluno.getNome(), d.respostas(), d.acertos(), d.percentual(), porAssunto,
+        var respondidas = d.respostas() - emBranco;
+        return new ResumoDoAluno(aluno.getId(), aluno.getNome(), d.respostas(), respondidas, d.acertos(),
+                errados.size() - emBranco, emBranco, d.percentual(),
+                respondidas == 0 ? null : AnalyticsServico.percentual(d.acertos(), respondidas), porAssunto,
                 errados.size(), erros, noCurso, outrosSimulados, texto(anterior));
     }
 

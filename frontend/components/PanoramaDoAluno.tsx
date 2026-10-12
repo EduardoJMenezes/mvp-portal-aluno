@@ -23,7 +23,13 @@ export function NumerosDoPanorama({ p }: { p: Panorama }) {
       <Numero
         rotulo="Em branco"
         valor={String(p.em_branco)}
-        detalhe={p.respostas ? `${plural(p.erros, "marcada errada", "marcadas erradas")} · ${plural(p.acertos, "acerto", "acertos")}` : "sem respostas"}
+        detalhe={
+          !p.respostas
+            ? "sem respostas"
+            : p.em_branco > 0 && p.acerto_no_que_respondeu !== null
+              ? `no que respondeu, ${porcento(p.acerto_no_que_respondeu)} de acerto (${p.acertos} de ${p.acertos + p.erros})`
+              : `${plural(p.erros, "marcada errada", "marcadas erradas")} · ${plural(p.acertos, "acerto", "acertos")}`
+        }
       />
       <Numero
         rotulo="Simulados"
@@ -93,7 +99,8 @@ function LinhaDoAssunto({ a }: { a: AssuntoNoPanorama }) {
         {a.colegas !== null && <span className="absolute -top-1 h-[18px] w-0.5 bg-tinta" style={{ left: `calc(${Math.min(a.colegas, 99.5)}% - 1px)` }} />}
       </span>
       <span className="col-start-2 row-start-1 text-right text-[13px] tabular-nums text-suave sm:col-start-3">
-        <span className="font-semibold text-tinta">{a.acertos} de {a.respostas}</span>
+        <span className="font-semibold text-tinta">{a.acertos} de {a.respondidas}</span>
+        {a.em_branco > 0 && <> · {a.em_branco} em branco</>}
         {a.colegas !== null && <> · colegas {porcento(Math.round(a.colegas))}</>}
       </span>
     </li>
@@ -125,8 +132,8 @@ export function AssuntosAoLadoDosColegas({ p, limite, verTodos }: { p: Panorama;
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-[13px] text-suave">
           {p.colegas > 0
-            ? `Ao lado de ${plural(p.colegas, "colega", "colegas")} de turma, nas mesmas questões que ele respondeu. Em branco conta como erro.`
-            : "Nenhum colega de turma respondeu estas questões ainda. Em branco conta como erro."}
+            ? `Acertos sobre as questões que ele respondeu; as em branco vêm ao lado. A barra e a comparação com ${plural(p.colegas, "colega", "colegas")} de turma, nas mesmas questões, contam o em branco como erro.`
+            : "Acertos sobre as questões que ele respondeu; as em branco vêm ao lado. Nenhum colega de turma respondeu estas questões ainda."}
         </p>
         {escondidos > 0 && verTodos}
       </div>

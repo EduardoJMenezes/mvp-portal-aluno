@@ -11,6 +11,18 @@ erros, o que melhorou e os próximos passos. O conjunto lido é o *recorte*. Hoj
 
 Recorte novo (um módulo, uma lista, um período) é outro filtro sobre as mesmas respostas.
 
+## A análise é sobre o que o aluno respondeu
+
+Os acertos e os erros em que ele marcou uma alternativa. A questão em branco não mostra o que ele
+sabe nem o que confunde: entra em uma frase (quantas e em que prova), nunca como ponto principal
+nem como padrão, e não rebaixa a leitura de um tema. Por isso o material traz, no total e em cada
+assunto, `respondidas`, `marcou_errado`, `em_branco` e `acerto_no_que_respondeu`, e a descrição de
+`gravar_analises` manda falar de um tema pelo acerto sobre o que ele respondeu ("das 3 que respondeu
+de Eletroquímica, acertou 1; deixou 4 em branco").
+
+A nota da prova e a posição continuam contando a em branco como erro: é a regra da prova. O que
+muda é a leitura do que o aluno sabe.
+
 ## Quem faz o quê
 
 | Quem | Faz |

@@ -68,15 +68,20 @@ public class PanoramaServico {
 
     // --- os números ----------------------------------------------------------------
 
-    public record SubassuntoNoPanorama(Integer id, String nome, int respostas, int acertos, int emBranco, double percentual,
-            Nivel nivel) {}
+    /**
+     * {@code respondidas}: as que ele marcou. {@code acertoNoQueRespondeu}: o acerto só sobre elas,
+     * que é a leitura do que ele sabe; nulo se não marcou nenhuma. {@code percentual} conta a em
+     * branco como erro, como na nota da prova.
+     */
+    public record SubassuntoNoPanorama(Integer id, String nome, int respostas, int respondidas, int acertos, int emBranco,
+            double percentual, Double acertoNoQueRespondeu, Nivel nivel) {}
 
     /**
      * {@code colegas}: o acerto dos colegas de turma <i>nas mesmas questões</i> que ele respondeu
      * daquele assunto; nulo quando nenhum colega respondeu nenhuma delas.
      */
-    public record AssuntoNoPanorama(Integer id, String nome, int respostas, int acertos, int emBranco, double percentual,
-            Nivel nivel, Double colegas, List<SubassuntoNoPanorama> subassuntos) {}
+    public record AssuntoNoPanorama(Integer id, String nome, int respostas, int respondidas, int acertos, int emBranco,
+            double percentual, Double acertoNoQueRespondeu, Nivel nivel, Double colegas, List<SubassuntoNoPanorama> subassuntos) {}
 
     /**
      * Uma prova entregue. {@code media} é o acerto médio de quem fez; {@code encerrado} falso: a
@@ -95,8 +100,12 @@ public class PanoramaServico {
      * {@code respostasNovas}: quantas respostas chegaram depois da análise geral que está valendo.
      */
     public record Panorama(Integer alunoId, String aluno, List<String> turmas, int respostas, int acertos, int erros,
-            int emBranco, Double percentual, int daAula, int deSimulado, int colegas, List<AssuntoNoPanorama> porAssunto,
+            int emBranco, Double percentual, Double acertoNoQueRespondeu, int daAula, int deSimulado, int colegas, List<AssuntoNoPanorama> porAssunto,
             List<SimuladoNoPanorama> simulados, CursoNoPanorama curso, Instant analiseGeralEm, Integer respostasNovas) {}
+
+    private static Double noQueRespondeu(int acertos, int respondidas) {
+        return respondidas == 0 ? null : AnalyticsServico.percentual(acertos, respondidas);
+    }
 
     private static boolean emBranco(RespostaAvaliada r) {
         return r.marcada() == null && !r.correta();
@@ -153,10 +162,15 @@ public class PanoramaServico {
         }
         var porAssunto = devolutiva.semMaterial(respostas, agora).assuntos().stream().map(a -> {
             var c = dosColegas.get(a.id());
-            return new AssuntoNoPanorama(a.id(), a.nome(), a.respostas(), a.acertos(), brancosPorAssunto.getOrDefault(a.id(), 0),
-                    a.percentual(), a.nivel(), c == null ? null : AnalyticsServico.percentual(c[1], c[0]),
-                    a.subassuntos().stream().map(s -> new SubassuntoNoPanorama(s.id(), s.nome(), s.respostas(), s.acertos(),
-                            brancosPorSub.getOrDefault(s.id(), 0), s.percentual(), s.nivel())).toList());
+            var brancos = brancosPorAssunto.getOrDefault(a.id(), 0);
+            return new AssuntoNoPanorama(a.id(), a.nome(), a.respostas(), a.respostas() - brancos, a.acertos(), brancos,
+                    a.percentual(), noQueRespondeu(a.acertos(), a.respostas() - brancos), a.nivel(),
+                    c == null ? null : AnalyticsServico.percentual(c[1], c[0]),
+                    a.subassuntos().stream().map(s -> {
+                        var doSub = brancosPorSub.getOrDefault(s.id(), 0);
+                        return new SubassuntoNoPanorama(s.id(), s.nome(), s.respostas(), s.respostas() - doSub, s.acertos(), doSub,
+                                s.percentual(), noQueRespondeu(s.acertos(), s.respostas() - doSub), s.nivel());
+                    }).toList());
         }).toList();
 
         return new Base(aluno, turmas, respostas, etiquetas,
@@ -244,7 +258,7 @@ public class PanoramaServico {
         var total = b.respostas().size();
         return new Panorama(b.aluno().getId(), b.aluno().getNome(), b.turmas(), total, b.acertos(),
                 total - b.acertos() - b.emBranco(), b.emBranco(), total == 0 ? null : AnalyticsServico.percentual(b.acertos(), total),
-                b.daAula(), total - b.daAula(), b.colegas(), b.porAssunto(), b.simulados(), b.curso(),
+                noQueRespondeu(b.acertos(), total - b.emBranco()), b.daAula(), total - b.daAula(), b.colegas(), b.porAssunto(), b.simulados(), b.curso(),
                 geral == null ? null : geral.getEscritaEm(), novasDesde(geral, b.respostas()));
     }
 
@@ -284,8 +298,9 @@ public class PanoramaServico {
      * couberam na lista. {@code noCurso} só tem os pontos em que há material: ponto de fora não tem
      * nada no curso do aluno.
      */
-    public record ResumoGeral(Integer alunoId, String aluno, List<String> turmas, int respostas, int acertos, int marcouErrado,
-            int marcouErradoSemComentario, int emBranco, Double percentual, CursoNoPanorama curso,
+    public record ResumoGeral(Integer alunoId, String aluno, List<String> turmas, int respostas, int respondidas, int acertos,
+            int marcouErrado, int marcouErradoSemComentario, int emBranco, Double percentual, Double acertoNoQueRespondeu,
+            CursoNoPanorama curso,
             List<SimuladoNoPanorama> simulados, int colegas, List<AssuntoNoPanorama> porAssunto, List<PontoDeErro> ondeErra,
             List<Repetida> repetidas, int repetidasEmBranco, int repetidasForaDoResumo,
             List<AnaliseServico.ParaRevisar> noCurso, AnaliseServico.Texto analiseAnterior, Integer respostasNovas)
@@ -401,9 +416,10 @@ public class PanoramaServico {
         }).limit(REPETIDAS_NO_RESUMO).toList();
 
         var total = respostas.size();
-        return new ResumoGeral(aluno.getId(), aluno.getNome(), b.turmas(), total, b.acertos(),
+        return new ResumoGeral(aluno.getId(), aluno.getNome(), b.turmas(), total, total - b.emBranco(), b.acertos(),
                 total - b.acertos() - b.emBranco(), semComentario, b.emBranco(),
                 total == 0 ? null : AnalyticsServico.percentual(b.acertos(), total),
+                noQueRespondeu(b.acertos(), total - b.emBranco()),
                 b.curso(), b.simulados(), b.colegas(), b.porAssunto(), ondeErra, lidas, repetidasEmBranco,
                 comQuestao.size() - lidas.size(),
                 AnaliseServico.paraRevisar(devolutiva.comoOAlunoVe(aluno, respostas, agora), DevolutivaServico.PONTOS_PARA_REVISAR, true),

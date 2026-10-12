@@ -200,6 +200,13 @@ class AnaliseDoAlunoTest extends BaseDoPortal {
                 .andExpect(jsonPath("$.alunos[0].respostas").value(4))
                 .andExpect(jsonPath("$.alunos[0].acertos").value(2))
                 .andExpect(jsonPath("$.alunos[0].erros").value(2))
+                // O que ele marcou e o que deixou em branco vêm separados: a análise é sobre o que respondeu.
+                .andExpect(jsonPath("$.alunos[0].respondidas").value(3))
+                .andExpect(jsonPath("$.alunos[0].marcou_errado").value(1))
+                .andExpect(jsonPath("$.alunos[0].em_branco").value(1))
+                .andExpect(jsonPath("$.alunos[0].acerto_no_que_respondeu").value(66.7))
+                .andExpect(jsonPath("$.alunos[0].por_assunto[?(@.nome == 'Atomística')].em_branco").value(contains(1)))
+                .andExpect(jsonPath("$.alunos[0].por_assunto[?(@.nome == 'Atomística')].respondidas").value(contains(1)))
                 .andExpect(jsonPath("$.alunos[0].por_assunto[*].nome").value(org.hamcrest.Matchers.containsInAnyOrder("Estequiometria", "Atomística")))
                 .andExpect(jsonPath("$.alunos[0].erros_recentes[*].onde").value(contains("Simulado 02, questão 1", "Simulado 02, questão 4")))
                 .andExpect(jsonPath("$.alunos[0].erros_recentes[0].marcada").value("B"))
@@ -415,6 +422,11 @@ class AnaliseDoAlunoTest extends BaseDoPortal {
                 // Errar marcando e deixar em branco são coisas diferentes: da segunda não se sabe o porquê.
                 .andExpect(jsonPath("$.alunos[0].marcou_errado").value(1))
                 .andExpect(jsonPath("$.alunos[0].em_branco").value(2))
+                // A análise é sobre o que ele respondeu: das 4 que marcou, acertou 3.
+                .andExpect(jsonPath("$.alunos[0].respondidas").value(4))
+                .andExpect(jsonPath("$.alunos[0].acerto_no_que_respondeu").value(75.0))
+                .andExpect(jsonPath("$.alunos[0].por_assunto[?(@.nome == 'Atomística')].respondidas").value(contains(1)))
+                .andExpect(jsonPath("$.alunos[0].por_assunto[?(@.nome == 'Atomística')].acerto_no_que_respondeu").value(contains(100.0)))
                 .andExpect(jsonPath("$.alunos[0].turmas").value(contains("Extensivo 2027")))
                 // As provas, da mais antiga para a mais nova, com a média de quem fez e a posição dele.
                 .andExpect(jsonPath("$.alunos[0].simulados[*].titulo").value(contains("Simulado 02", "Simulado 03")))
