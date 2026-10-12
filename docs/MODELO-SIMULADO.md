@@ -391,6 +391,13 @@ rascunho continua aberto e **sem** aprovação, para o "sim" a uma questão não
 liberar o resto pelo chat. Questão de simulado em rascunho ou de linha de aula
 em rascunho não sai sozinha; com imagem pendente ou incompleta, também não.
 
+**Várias de uma vez** (12/10/2026): na lista do banco, cada questão em rascunho
+tem uma caixa de marcar, e "Publicar marcadas" publica todas juntas
+(`POST /api/admin/questoes/publicacao`, com os ids). É a mesma porta, chamada
+uma vez por questão, cada uma na sua transação: a que não pode sair volta com o
+motivo e continua marcada, sem segurar as outras. Foi o que faltou a quem
+importou vinte questões de um .docx em rascunho.
+
 **O simulado em rascunho é publicado na página dele** (11/10/2026), pelo botão
 "Publicar simulado" (`POST /api/admin/simulados/{id}/publicacao` →
 `PublicacaoServico.publicarSimulado`, que aprova e publica o rascunho dele). O

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { ComoFunciona, Passos } from "@/components/ComoFunciona";
-import { Aviso, Botao, BotaoLink, Campo, Cartao, Carregando, Etiqueta, LinkNoTexto, Pagina, Vazio } from "@/components/ui";
+import { Aviso, Botao, BotaoLink, Campo, Cartao, Carregando, Etiqueta, LinkNoTexto, Pagina, Vazio, useConfirmar } from "@/components/ui";
 import { api, useDados, type Questao } from "@/lib/api";
 import { plural } from "@/lib/formato";
 import { DIFICULDADE } from "@/lib/rotulos";
@@ -95,6 +95,48 @@ export default function BancoDeQuestoes() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [buscaAplicada, assunto, dificuldade, status]);
 
+  // --- publicar várias de uma vez ---
+  // Quem importou vinte questões não precisa abrir vinte: marca as que conferiu e publica juntas.
+  const [marcadas, setMarcadas] = useState<Set<number>>(new Set());
+  const [publicando, setPublicando] = useState(false);
+  const [resultado, setResultado] = useState<{ publicadas: number; recusadas: { questao_id: number; motivo: string }[] } | null>(null);
+  const [dialogo, confirmar] = useConfirmar();
+  const emRascunho = questoes.filter((q) => q.status !== "PUBLICADO").map((q) => q.questao_id);
+  const escolhidas = emRascunho.filter((id) => marcadas.has(id));
+  const todasMarcadas = emRascunho.length > 0 && escolhidas.length === emRascunho.length;
+
+  const alternar = (id: number) =>
+    setMarcadas((atuais) => {
+      const novas = new Set(atuais);
+      if (novas.has(id)) novas.delete(id);
+      else novas.add(id);
+      return novas;
+    });
+
+  async function publicarMarcadas() {
+    const sim = await confirmar({
+      titulo: `Publicar ${plural(escolhidas.length, "questão", "questões")}?`,
+      texto: "Elas saem do rascunho e passam a poder entrar em simulado e em aula. Dá para corrigir uma questão depois de publicada.",
+      confirmar: "Publicar",
+    });
+    if (!sim) return;
+    setPublicando(true);
+    setErro("");
+    setResultado(null);
+    try {
+      const r = await api.publicarQuestoes(escolhidas);
+      setResultado({ publicadas: r.publicadas.length, recusadas: r.recusadas });
+      setImportado(null);
+      // As que não saíram continuam marcadas: é nelas que falta mexer.
+      setMarcadas(new Set(r.recusadas.map((x) => x.questao_id)));
+      await carregar(0);
+    } catch (e) {
+      setErro((e as Error).message);
+    } finally {
+      setPublicando(false);
+    }
+  }
+
   return (
     <Pagina
       titulo="Banco de questões"
@@ -112,7 +154,7 @@ export default function BancoDeQuestoes() {
           {importado.publicadas === importado.total
             ? "Já estão publicadas, em cima da lista: podem entrar em simulado e em aula."
             : importado.publicadas === 0
-              ? "Estão em rascunho, em cima da lista. Abra cada uma, confira e publique."
+              ? "Estão em rascunho, em cima da lista. Abra cada uma para conferir e publicar, ou marque várias e publique de uma vez."
               : `${plural(importado.publicadas, "foi publicada", "foram publicadas")}; ${plural(importado.total - importado.publicadas, "ficou em rascunho", "ficaram em rascunho")}, em cima da lista.`}
           {importado.pendentes > 0 && ` ${plural(importado.pendentes, "está com imagem pendente", "estão com imagem pendente")}: insira a figura no texto antes de publicar.`}
         </Aviso>
@@ -153,6 +195,33 @@ export default function BancoDeQuestoes() {
         </Campo>
       </Cartao>
 
+      {dialogo}
+      {resultado && (
+        <Aviso tom={resultado.recusadas.length ? "atencao" : "sucesso"} titulo={resultado.publicadas ? plural(resultado.publicadas, "questão publicada", "questões publicadas") : "Nenhuma questão foi publicada"}>
+          {resultado.recusadas.length > 0 && (
+            <>
+              {plural(resultado.recusadas.length, "não saiu", "não saíram")} e {resultado.recusadas.length === 1 ? "continua marcada" : "continuam marcadas"} na lista:
+              <ul className="mt-1 list-disc pl-5">
+                {resultado.recusadas.slice(0, 4).map((x) => (
+                  <li key={x.questao_id}>{x.motivo}</li>
+                ))}
+                {resultado.recusadas.length > 4 && <li>e mais {resultado.recusadas.length - 4}.</li>}
+              </ul>
+            </>
+          )}
+        </Aviso>
+      )}
+      {emRascunho.length > 0 && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-cartao border border-borda bg-papel px-4 py-2.5">
+          <label className="flex cursor-pointer items-center gap-2 text-[15px]">
+            <input type="checkbox" className="size-4 accent-acento" checked={todasMarcadas} onChange={() => setMarcadas(todasMarcadas ? new Set() : new Set(emRascunho))} />
+            Marcar {emRascunho.length === 1 ? "a questão em rascunho" : `as ${emRascunho.length} em rascunho`} desta lista
+          </label>
+          <Botao variante="primario" tamanho="pequeno" ocupado={publicando} disabled={!escolhidas.length || publicando} onClick={publicarMarcadas}>
+            {publicando ? "Publicando…" : escolhidas.length ? `Publicar ${plural(escolhidas.length, "marcada", "marcadas")}` : "Publicar marcadas"}
+          </Botao>
+        </div>
+      )}
       {erro && <Aviso tom="erro">{erro}</Aviso>}
       {carregando && questoes.length === 0 ? (
         <Carregando linhas={4} />
@@ -164,6 +233,9 @@ export default function BancoDeQuestoes() {
             <Cartao key={q.questao_id} como="li" className="flex flex-col gap-3 p-5">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="flex flex-wrap items-center gap-2">
+                  {q.status !== "PUBLICADO" && (
+                    <input type="checkbox" className="size-4 accent-acento" aria-label={`Marcar a questão ${q.questao_id} para publicar`} checked={marcadas.has(q.questao_id)} onChange={() => alternar(q.questao_id)} />
+                  )}
                   <span className="font-mono text-sm text-suave">#{q.questao_id}</span>
                   {q.status === "PUBLICADO" ? <Etiqueta tom="sucesso">Publicada</Etiqueta> : <Etiqueta tom="atencao">Rascunho</Etiqueta>}
                   <Etiqueta>{DIFICULDADE[q.dificuldade] ?? q.dificuldade}</Etiqueta>

@@ -891,6 +891,9 @@ export const api = {
     pedir<QuestaoDetalhada>(`/admin/questoes/${id}`, { method: "PATCH", json: dados }),
   /** Tira do rascunho a questão que o professor conferiu no Banco de questões. */
   publicarQuestao: (id: number) => pedir<QuestaoDetalhada>(`/admin/questoes/${id}/publicacao`, { method: "POST" }),
+  /** Várias de uma vez. A que não pode sair (imagem pendente, é de simulado em rascunho) volta em `recusadas`, com o motivo. */
+  publicarQuestoes: (ids: number[]) =>
+    pedir<{ publicadas: number[]; recusadas: { questao_id: number; motivo: string }[] }>("/admin/questoes/publicacao", { method: "POST", json: { questoes: ids } }),
   removerQuestao: (id: number) => pedir(`/admin/questoes/${id}`, { method: "DELETE" }),
   /**
    * Várias questões novas de uma vez no Banco de questões, num rascunho só. Com `publicar`, as que

@@ -534,6 +534,42 @@ public class AdminPortal {
         return questoes.detalhar(ident, questaoId, Instant.now());
     }
 
+    public record PublicarQuestoesIn(
+            @NotEmpty(message = "é obrigatória: ao menos uma questão")
+            @Size(max = 200, message = "aceita até 200 questões por vez") List<@NotNull Integer> questoes) {}
+
+    public record QuestaoRecusada(Integer questaoId, String motivo) {}
+
+    public record QuestoesPublicadas(List<Integer> publicadas, List<QuestaoRecusada> recusadas) {}
+
+    /**
+     * Várias questões em rascunho publicadas de uma vez, do Banco de questões: quem importou vinte
+     * não precisa abrir vinte. Cada uma passa pela mesma porta do "Publicar" — e pelas mesmas
+     * recusas: a de imagem pendente e a que é de simulado ou de aula em rascunho ficam onde estão,
+     * com o motivo, sem segurar as outras.
+     *
+     * <p>Sem transação aqui de propósito: cada questão é a sua, para a recusa de uma não desfazer
+     * a publicação das demais.
+     */
+    @PostMapping("/questoes/publicacao")
+    public QuestoesPublicadas publicarQuestoes(@AuthenticationPrincipal Identidade ident,
+            @Valid @RequestBody PublicarQuestoesIn dados) {
+        ident.exigirOperador();
+        ident.exigirHumanoNoPortal("Publicar questões");
+        var agora = Instant.now();
+        var publicadas = new java.util.ArrayList<Integer>();
+        var recusadas = new java.util.ArrayList<QuestaoRecusada>();
+        for (var id : new java.util.LinkedHashSet<>(dados.questoes())) {
+            try {
+                publicacao.publicarQuestao(ident, String.valueOf(id), agora);
+                publicadas.add(id);
+            } catch (RegraDeNegocio | br.com.plataforma.comum.NaoEncontrado e) {
+                recusadas.add(new QuestaoRecusada(id, e.getMessage()));
+            }
+        }
+        return new QuestoesPublicadas(publicadas, recusadas);
+    }
+
     @DeleteMapping("/questoes/{questaoId}")
     public QuestoesServico.QuestaoRemovida removerQuestao(@AuthenticationPrincipal Identidade ident,
             @PathVariable String questaoId) {

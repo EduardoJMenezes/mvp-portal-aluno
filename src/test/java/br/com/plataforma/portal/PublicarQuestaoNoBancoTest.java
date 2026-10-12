@@ -85,6 +85,38 @@ class PublicarQuestaoNoBancoTest extends BaseDoPortal {
     }
 
     @Test
+    void variasSaemDeUmaVezEARecusadaNaoSeguraAsOutras() throws Exception {
+        var primeira = doClaude("");
+        var segunda = doClaude("");
+        var semFigura = doClaude(", \"imagem_pendente\": true");
+
+        post("/api/admin/questoes/publicacao", "{\"questoes\": [%d, %d, %d, 9999]}".formatted(primeira, semFigura, segunda), ADMIN)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.publicadas.length()").value(2))
+                .andExpect(jsonPath("$.publicadas[0]").value(primeira))
+                .andExpect(jsonPath("$.publicadas[1]").value(segunda))
+                .andExpect(jsonPath("$.recusadas.length()").value(2))
+                .andExpect(jsonPath("$.recusadas[0].questao_id").value(semFigura))
+                .andExpect(jsonPath("$.recusadas[0].motivo").value(containsString("imagem pendente")))
+                .andExpect(jsonPath("$.recusadas[1].questao_id").value(9999));
+
+        assertThat(situacao(primeira)).isEqualTo("PUBLICADO");
+        assertThat(situacao(segunda)).isEqualTo("PUBLICADO");
+        assertThat(situacao(semFigura)).isEqualTo("RASCUNHO");
+        // A aprovação fica gravada no rascunho de cada uma, como no "Publicar" de uma só.
+        assertThat(contar("drafts WHERE status = 'PUBLICADO' AND aprovado_via = 'PORTAL' AND aprovado_por_id = ?", ADMIN)).isEqualTo(2);
+    }
+
+    @Test
+    void publicarVariasTambemEDoProfessorNoPortal() throws Exception {
+        var nova = doClaude("");
+
+        post("/api/admin/questoes/publicacao", "{\"questoes\": [%d]}".formatted(nova), ALUNO).andExpect(status().isForbidden());
+        post("/api/admin/questoes/publicacao", "{\"questoes\": []}", ADMIN).andExpect(status().is(422));
+        assertThat(situacao(nova)).isEqualTo("RASCUNHO");
+    }
+
+    @Test
     void aQuestaoDeSimuladoEmRascunhoNaoSaiSozinha() throws Exception {
         comando("criar_simulado_rascunho", """
                 {"turmas": ["Extensivo 2027"], "titulo": "Simulado 05",

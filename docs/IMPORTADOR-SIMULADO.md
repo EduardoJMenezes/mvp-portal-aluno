@@ -173,7 +173,7 @@ questão. Só ao importar é que elas nascem, todas num rascunho só
 rascunhos, e ou entram todas ou nenhuma.
 
 Entram **em rascunho**, em cima da lista do banco, para abrir, conferir e
-publicar uma a uma. "Importar e publicar" é para quando a conferência já foi
+publicar — uma a uma, ou marcando várias e publicando de uma vez. "Importar e publicar" é para quando a conferência já foi
 feita na lista: cada questão sai pela mesma porta do "Publicar" do banco, com a
 aprovação gravada, e a que estiver com figura pendente fica em rascunho.
 Assunto e comentário por alternativa não vêm do documento.
