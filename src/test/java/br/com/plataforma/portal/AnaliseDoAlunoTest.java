@@ -386,6 +386,19 @@ class AnaliseDoAlunoTest extends BaseDoPortal {
     }
 
     @Test
+    void oBlocoDaGeralCabeMaisQueODoSimulado() throws Exception {
+        var longo = "x".repeat(1500);
+        var corpo = "{\"aluno_id\": %d, \"ponto_principal\": \"Ponto.\", \"padroes\": \"%s\"}".formatted(ALUNO, longo);
+        comando("gravar_analises", "{\"analises\": [" + corpo + "]}")
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.gravadas").value(1));
+        comando("gravar_analises", "{\"simulado\": \"Simulado 02\", \"analises\": [" + corpo + "]}")
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.gravadas").value(0))
+                .andExpect(jsonPath("$.recusadas[0].motivo").value(containsString("o limite é 1200")));
+    }
+
+    @Test
     void oMaterialDaGeralAgrupaOsErrosPorPontoESeparaOQueFicouEmBranco() throws Exception {
         // Uma segunda prova, com duas questões repetidas: o Bruno acerta a 1, que tinha errado, e deixa a 4 em branco de novo.
         var outra = criarSimulado("Simulado 03", "PUBLICADO", "2026-02-01T10:00:00Z", "2026-02-02T10:00:00Z");
@@ -412,16 +425,22 @@ class AnaliseDoAlunoTest extends BaseDoPortal {
                 // Cada ponto de erro, com os exemplos comentados; o que ficou em branco só entra na conta.
                 .andExpect(jsonPath("$.alunos[0].onde_erra[*].assunto").value(contains("Atomística", "Estequiometria")))
                 .andExpect(jsonPath("$.alunos[0].onde_erra[0].em_branco").value(2))
+                .andExpect(jsonPath("$.alunos[0].onde_erra[0].em_branco_em").value(contains("Simulado 02: questão 4", "Simulado 03: questão 2")))
                 .andExpect(jsonPath("$.alunos[0].onde_erra[0].exemplos").isEmpty())
+                .andExpect(jsonPath("$.alunos[0].marcou_errado_sem_comentario").value(0))
                 .andExpect(jsonPath("$.alunos[0].onde_erra[1].subassunto").value("Mol"))
                 .andExpect(jsonPath("$.alunos[0].onde_erra[1].marcou_errado").value(1))
                 .andExpect(jsonPath("$.alunos[0].onde_erra[1].exemplos[0].onde").value("Simulado 02, questão 1"))
                 .andExpect(jsonPath("$.alunos[0].onde_erra[1].exemplos[0].marcada").value("B"))
                 .andExpect(jsonPath("$.alunos[0].onde_erra[1].exemplos[0].comentario_da_marcada").value(containsString("massa molar")))
-                // A mesma questão duas vezes é um fato só: corrigiu, ou errou de novo.
-                .andExpect(jsonPath("$.alunos[0].repetidas[*].leitura").value(contains("CORRIGIU", "ERROU_DE_NOVO")))
+                // A mesma questão duas vezes é um fato só: corrigiu, ou errou de novo. A que ficou em
+                // branco nas duas não diz mais que isso: é só contada.
+                .andExpect(jsonPath("$.alunos[0].repetidas[*].leitura").value(contains("CORRIGIU")))
                 .andExpect(jsonPath("$.alunos[0].repetidas[0].vezes[*].onde").value(contains("Simulado 02, questão 1", "Simulado 03, questão 1")))
-                .andExpect(jsonPath("$.alunos[0].repetidas[1].vezes[0].marcada").doesNotExist())
+                .andExpect(jsonPath("$.alunos[0].repetidas_em_branco").value(1))
+                .andExpect(jsonPath("$.alunos[0].repetidas_fora_do_resumo").value(0))
+                // Do curso só vêm os pontos em que há o que indicar: aqui, nenhum.
+                .andExpect(jsonPath("$.alunos[0].no_curso").isEmpty())
                 // Ao lado dos colegas, nas mesmas questões: a Maria acertou as duas de Mol e uma das de Atomística.
                 .andExpect(jsonPath("$.alunos[0].colegas").value(1))
                 .andExpect(jsonPath("$.alunos[0].por_assunto[?(@.nome == 'Estequiometria')].colegas").value(contains(100.0)))

@@ -258,10 +258,11 @@ public class PanoramaServico {
     /**
      * Um ponto (sub-assunto, ou o assunto que não tem) em que ele errou. {@code marcouErrado} e
      * {@code emBranco} somam os erros; os {@code exemplos} são só dos que ele marcou, os comentados
-     * primeiro. {@code subassunto} nulo: a questão só tem o assunto.
+     * primeiro. {@code emBrancoEm} diz onde ficaram as que ele não marcou ("Simulado 03: questões
+     * 7 e 17"). {@code subassunto} nulo: a questão só tem o assunto.
      */
     public record PontoDeErro(String assunto, String subassunto, int respostas, int acertos, int marcouErrado, int emBranco,
-            List<ErroNoPonto> exemplos) {}
+            List<String> emBrancoEm, List<ErroNoPonto> exemplos) {}
 
     /** Uma das vezes em que ele respondeu a mesma questão. {@code marcada} nula: deixou em branco. */
     public record Vez(String onde, Letra marcada, boolean acertou) {}
@@ -273,10 +274,20 @@ public class PanoramaServico {
     public record Repetida(Integer questaoId, String assunto, String subassunto, String enunciado, List<Vez> vezes,
             String leitura) {}
 
-    /** O resumo de tudo o que o aluno respondeu, para quem vai escrever a análise geral dele. */
+    /**
+     * O resumo de tudo o que o aluno respondeu, para quem vai escrever a análise geral dele.
+     *
+     * <p>{@code marcouErradoSemComentario}: dos erros marcados, em quantos o professor não comentou a
+     * alternativa — neles só se sabe que errou. {@code repetidas} traz as questões respondidas mais
+     * de uma vez em que ele marcou alguma coisa; as que ficaram em branco todas as vezes são só
+     * contadas, em {@code repetidasEmBranco}, e {@code repetidasForaDoResumo} diz quantas não
+     * couberam na lista. {@code noCurso} só tem os pontos em que há material: ponto de fora não tem
+     * nada no curso do aluno.
+     */
     public record ResumoGeral(Integer alunoId, String aluno, List<String> turmas, int respostas, int acertos, int marcouErrado,
-            int emBranco, Double percentual, CursoNoPanorama curso, List<SimuladoNoPanorama> simulados, int colegas,
-            List<AssuntoNoPanorama> porAssunto, List<PontoDeErro> ondeErra, List<Repetida> repetidas,
+            int marcouErradoSemComentario, int emBranco, Double percentual, CursoNoPanorama curso,
+            List<SimuladoNoPanorama> simulados, int colegas, List<AssuntoNoPanorama> porAssunto, List<PontoDeErro> ondeErra,
+            List<Repetida> repetidas, int repetidasEmBranco, int repetidasForaDoResumo,
             List<AnaliseServico.ParaRevisar> noCurso, AnaliseServico.Texto analiseAnterior, Integer respostasNovas)
             implements AnaliseServico.Resumo {}
 
@@ -309,6 +320,8 @@ public class PanoramaServico {
         // {respostas, acertos, marcou errado, em branco} de cada ponto, e o último erro marcado em cada questão.
         var conta = new LinkedHashMap<Ponto, int[]>();
         var marcados = new LinkedHashMap<Ponto, Map<Integer, RespostaAvaliada>>();
+        // As que ficaram em branco em cada ponto, por prova: {prova -> números das questões}.
+        var brancos = new HashMap<Ponto, Map<String, List<Integer>>>();
         for (var r : respostas) {
             var e = etiquetas.get(r.questaoId());
             var ponto = e == null ? new Ponto(null, null) : new Ponto(e.assuntoId(), e.subassuntoId());
@@ -316,6 +329,10 @@ public class PanoramaServico {
             c[0]++;
             c[1] += r.correta() ? 1 : 0;
             c[3] += emBranco(r) ? 1 : 0;
+            if (emBranco(r) && r.prova() != null) {
+                brancos.computeIfAbsent(ponto, k -> new LinkedHashMap<>()).computeIfAbsent(r.prova(), k -> new ArrayList<>())
+                        .add(r.numero());
+            }
             if (!r.correta() && r.marcada() != null) {
                 c[2]++;
                 marcados.computeIfAbsent(ponto, k -> new HashMap<>())
@@ -323,8 +340,12 @@ public class PanoramaServico {
             }
         }
 
-        var repetidas = porQuestao.entrySet().stream()
+        // Respondida mais de uma vez e errada em alguma. A que ficou em branco todas as vezes não diz
+        // nada além de "em branco de novo": é só contada.
+        var maisDeUmaVez = porQuestao.entrySet().stream()
                 .filter(par -> par.getValue().size() > 1 && par.getValue().stream().anyMatch(r -> !r.correta())).toList();
+        var repetidas = maisDeUmaVez.stream().filter(par -> par.getValue().stream().anyMatch(r -> r.marcada() != null)).toList();
+        var repetidasEmBranco = maisDeUmaVez.size() - repetidas.size();
         var questoes = new HashMap<Integer, Questao>();
         var idsDasQuestoes = new HashSet<Integer>();
         marcados.values().forEach(m -> idsDasQuestoes.addAll(m.keySet()));
@@ -357,11 +378,19 @@ public class PanoramaServico {
                             .filter(x -> Objects.equals(x.assuntoId(), par.getKey().assuntoId())
                                     && Objects.equals(x.subassuntoId(), par.getKey().subassuntoId()))
                             .findFirst().orElse(null);
+                    var emBrancoEm = brancos.getOrDefault(par.getKey(), Map.of()).entrySet().stream()
+                            .map(b2 -> "%s: %s %s".formatted(b2.getKey(), b2.getValue().size() == 1 ? "questão" : "questões",
+                                    b2.getValue().stream().sorted().map(String::valueOf).collect(Collectors.joining(", "))))
+                            .toList();
                     ondeErra.add(new PontoDeErro(e == null ? "Sem assunto" : e.assunto(), e == null ? null : e.subassunto(),
-                            c[0], c[1], c[2], c[3], exemplos));
+                            c[0], c[1], c[2], c[3], emBrancoEm, exemplos));
                 });
 
-        var lidas = repetidas.stream().filter(par -> questoes.containsKey(par.getKey())).map(par -> {
+        var comQuestao = repetidas.stream().filter(par -> questoes.containsKey(par.getKey())).toList();
+        var semComentario = (int) respostas.stream().filter(r -> !r.correta() && r.marcada() != null)
+                .filter(r -> !questoes.containsKey(r.questaoId()) || !questoes.get(r.questaoId()).comentarios().containsKey(r.marcada()))
+                .count();
+        var lidas = comQuestao.stream().map(par -> {
             var vezes = par.getValue();
             var e = etiquetas.get(par.getKey());
             var ultima = vezes.getLast().correta();
@@ -373,9 +402,11 @@ public class PanoramaServico {
 
         var total = respostas.size();
         return new ResumoGeral(aluno.getId(), aluno.getNome(), b.turmas(), total, b.acertos(),
-                total - b.acertos() - b.emBranco(), b.emBranco(), total == 0 ? null : AnalyticsServico.percentual(b.acertos(), total),
-                b.curso(), b.simulados(), b.colegas(), b.porAssunto(), ondeErra, lidas,
-                AnaliseServico.paraRevisar(devolutiva.comoOAlunoVe(aluno, respostas, agora)), AnaliseServico.texto(anterior),
-                novasDesde(anterior, respostas));
+                total - b.acertos() - b.emBranco(), semComentario, b.emBranco(),
+                total == 0 ? null : AnalyticsServico.percentual(b.acertos(), total),
+                b.curso(), b.simulados(), b.colegas(), b.porAssunto(), ondeErra, lidas, repetidasEmBranco,
+                comQuestao.size() - lidas.size(),
+                AnaliseServico.paraRevisar(devolutiva.comoOAlunoVe(aluno, respostas, agora), DevolutivaServico.PONTOS_PARA_REVISAR, true),
+                AnaliseServico.texto(anterior), novasDesde(anterior, respostas));
     }
 }

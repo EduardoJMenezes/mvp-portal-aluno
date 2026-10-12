@@ -98,15 +98,23 @@ O resumo de um simulado lista os erros um a um: são vinte questões. O históri
 assim (num aluno real, 20 dos 30 erros mais recentes eram questões em branco de uma prova só).
 Na geral, `PanoramaServico.resumoGeral` entrega:
 
-- `marcou_errado` e `em_branco`, separados: do que ficou em branco não se sabe o porquê;
+- `marcou_errado` e `em_branco`, separados: do que ficou em branco não se sabe o porquê; e
+  `marcou_errado_sem_comentario`, os erros em que o professor não comentou a alternativa;
 - `curso`: vídeos vistos, materiais lidos, questões de aula respondidas e a última atividade;
 - `simulados`: cada prova entregue, em ordem, com erros, em branco, a média de quem fez e a posição;
 - `por_assunto`, com `em_branco` e `colegas` (o acerto dos colegas de turma nas mesmas questões);
-- `onde_erra`: cada ponto com erro, do que tem mais para o que tem menos, com até quatro `exemplos`
-  (os comentados primeiro) e teto de 40 no resumo;
-- `repetidas`: a mesma questão respondida mais de uma vez, lida como `ERROU_DE_NOVO`, `CORRIGIU` ou
-  `VOLTOU_A_ERRAR`;
-- `no_curso`, `analise_anterior` e `respostas_novas`.
+- `onde_erra`: cada ponto com erro, do que tem mais para o que tem menos, com `em_branco_em` (em
+  que prova e em que questões ficou em branco) e até quatro `exemplos` (os comentados primeiro),
+  com teto de 40 no resumo;
+- `repetidas`: a mesma questão respondida mais de uma vez em que ele marcou alguma coisa, lida como
+  `ERROU_DE_NOVO`, `CORRIGIU` ou `VOLTOU_A_ERRAR`. As que ficaram em branco todas as vezes são só
+  contadas (`repetidas_em_branco`), e `repetidas_fora_do_resumo` diz quantas não couberam: lista
+  cortada sem aviso vira número errado no texto;
+- `no_curso`, só com os pontos em que há material no curso dele; `analise_anterior` e
+  `respostas_novas`.
+
+Os blocos da geral aceitam até 2000 caracteres (os do simulado, 1200): "Onde erra e por quê" fala de
+um histórico inteiro, tema a tema.
 
 A tela lê os mesmos números por `/api/admin/alunos/{aluno}/panorama`.
 

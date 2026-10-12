@@ -66,6 +66,8 @@ public class AnaliseServico {
     public static final int LOTE_MAXIMO = 10;
     static final int TAMANHO_DO_PONTO = 700;
     static final int TAMANHO_DO_BLOCO = 1200;
+    /** Na geral o bloco fala de um histórico inteiro, tema a tema: precisa de mais espaço. */
+    static final int TAMANHO_DO_BLOCO_NA_GERAL = 2000;
     /** Quantas análises anteriores o professor vê ao reconsultar. */
     static final int HISTORICO = 10;
 
@@ -151,10 +153,17 @@ public class AnaliseServico {
 
     /** Só os pontos mais fracos: é material para até três próximos passos, não o curso inteiro. */
     static List<ParaRevisar> paraRevisar(DevolutivaServico.Devolutiva d) {
-        return d.ondeRevisar().stream().limit(PONTOS_NO_RESUMO).map(p -> new ParaRevisar(p.topico(), p.erros(),
+        return paraRevisar(d, PONTOS_NO_RESUMO, false);
+    }
+
+    /** {@code soComMaterial}: deixa de fora o ponto em que não há nada no curso do aluno. */
+    static List<ParaRevisar> paraRevisar(DevolutivaServico.Devolutiva d, int limite, boolean soComMaterial) {
+        return d.ondeRevisar().stream().limit(limite).map(p -> new ParaRevisar(p.topico(), p.erros(),
                 Stream.concat(nomes(p, "VIDEO").stream(),
                         p.videos().stream().filter(v -> !v.bloqueado()).map(v -> v.titulo())).toList(),
-                nomes(p, "PDF"), nomes(p, "QUESTAO"), nomes(p, "ERRO"))).toList();
+                nomes(p, "PDF"), nomes(p, "QUESTAO"), nomes(p, "ERRO")))
+                .filter(p -> !soComMaterial || !(p.assistir().isEmpty() && p.ler().isEmpty() && p.praticar().isEmpty() && p.rever().isEmpty()))
+                .toList();
     }
 
     private static final Comparator<RespostaAvaliada> POR_DATA =
@@ -332,6 +341,7 @@ public class AnaliseServico {
         var s = branco(simuladoRef) ? null : exigirEncerrado(simuladoRef, agora);
         Set<Integer> fizeram = s == null ? Set.of()
                 : quemFez(s, agora).stream().map(t -> t.getAluno().getId()).collect(Collectors.toSet());
+        var bloco = s == null ? TAMANHO_DO_BLOCO_NA_GERAL : TAMANHO_DO_BLOCO;
         var gravadas = new ArrayList<String>();
         var recusadas = new ArrayList<Recusada>();
         var vistos = new HashSet<Integer>();
@@ -348,8 +358,8 @@ public class AnaliseServico {
                     : ponto == null ? "ponto_principal é obrigatório: é a frase que abre a análise."
                     : s != null && !fizeram.contains(aluno.getId())
                             ? "%s não fez '%s': só quem fez a prova recebe a análise dela.".formatted(aluno.getNome(), s.getTitulo())
-                    : Stream.of(grande("ponto_principal", ponto, TAMANHO_DO_PONTO), grande("padroes", padroes, TAMANHO_DO_BLOCO),
-                            grande("melhorou", melhorou, TAMANHO_DO_BLOCO), grande("proximos_passos", passos, TAMANHO_DO_BLOCO))
+                    : Stream.of(grande("ponto_principal", ponto, TAMANHO_DO_PONTO), grande("padroes", padroes, bloco),
+                            grande("melhorou", melhorou, bloco), grande("proximos_passos", passos, bloco))
                             .filter(Objects::nonNull).findFirst().orElse(null);
             var respostas = 0;
             if (motivo == null) {
