@@ -349,6 +349,18 @@ export type Devolutiva = {
   assuntos: AssuntoNaDevolutiva[];
   onde_revisar: Recomendacao[];
 };
+/** A análise escrita do aluno. Os blocos sem o que dizer vêm nulos. */
+export type TextoDaAnalise = { ponto_principal: string; padroes: string | null; melhorou: string | null; proximos_passos: string | null; escrita_em: string };
+export type MinhaAnalise = { analise: TextoDaAnalise | null; tem_novidade: boolean };
+export type AnaliseParaOProfessor = {
+  analise: TextoDaAnalise | null;
+  oculta: boolean;
+  refazer_pedido_em: string | null;
+  orientacao: string | null;
+  escrita_por: string | null;
+  na_fila: boolean;
+  motivo_da_fila: string | null;
+};
 export type QuestaoDaAulaNaTurma = {
   item_id: number;
   item: string;
@@ -760,6 +772,7 @@ export const api = {
   resultado: (id: number) => pedir<Resultado>(`/aluno/simulados/${id}/resultado`),
   historico: () => pedir<Historico>("/aluno/desempenho"),
   minhaDevolutiva: () => pedir<Devolutiva>("/aluno/desempenho/assuntos"),
+  minhaAnalise: () => pedir<MinhaAnalise>("/aluno/analise"),
 
   // materiais
   materiais: () => pedir<Material[]>("/aluno/materiais"),
@@ -818,6 +831,11 @@ export const api = {
   progressoDoAluno: (aluno: string | number) => pedir<ProgressoDoAluno>(`/admin/alunos/${seg(String(aluno))}/progresso`),
   devolutivaDoAluno: (aluno: string | number) => pedir<Devolutiva>(`/admin/alunos/${seg(String(aluno))}/assuntos`),
   devolutivaDaTurma: (turma: number) => pedir<DevolutivaDaTurma>(`/admin/turmas/${turma}/devolutiva`),
+  analiseDoAluno: (aluno: string | number) => pedir<AnaliseParaOProfessor>(`/admin/alunos/${seg(String(aluno))}/analise`),
+  ocultarAnalise: (aluno: string | number, oculta: boolean) =>
+    pedir<AnaliseParaOProfessor>(`/admin/alunos/${seg(String(aluno))}/analise/visibilidade`, { method: "POST", json: { oculta } }),
+  pedirOutraAnalise: (aluno: string | number, orientacao: string) =>
+    pedir<AnaliseParaOProfessor>(`/admin/alunos/${seg(String(aluno))}/analise/refazer`, { method: "POST", json: { orientacao } }),
 
   // turmas e alunos
   criarTurma: (nome: string) => pedir<{ id: number; nome: string }>("/admin/turmas", { method: "POST", json: { nome } }),

@@ -1,5 +1,6 @@
 "use client";
 
+import { MinhaAnalise } from "@/components/Analise";
 import { PorAssunto, ResumoDaDevolutiva } from "@/components/Devolutiva";
 import { OndeRevisar } from "@/components/Resultado";
 import { Cartao, Estado, LinkDeTitulo, Pagina, TituloDeSecao, Vazio } from "@/components/ui";
@@ -8,18 +9,21 @@ import { emBrasilia, porcento } from "@/lib/formato";
 
 export default function MeuDesempenho() {
   const dados = useDados(async () => {
-    const [historico, devolutiva] = await Promise.all([api.historico(), api.minhaDevolutiva()]);
-    return { historico, devolutiva };
+    // A análise é um a mais: se ela falhar, o desempenho por assunto continua na tela.
+    const [historico, devolutiva, analise] = await Promise.all([api.historico(), api.minhaDevolutiva(), api.minhaAnalise().catch(() => null)]);
+    return { historico, devolutiva, analise };
   });
 
   return (
     <Pagina titulo="Meu desempenho" legenda="Como você está indo em cada assunto, juntando as questões das aulas e os simulados que já fecharam.">
       <Estado {...dados} linhas={3}>
-        {({ historico: h, devolutiva: d }) =>
+        {({ historico: h, devolutiva: d, analise: a }) =>
           d.respostas === 0 && h.simulados.length === 0 ? (
             <Vazio titulo="Nada para mostrar ainda">Responda as questões das aulas ou faça um simulado: o seu desempenho por assunto aparece aqui.</Vazio>
           ) : (
             <>
+              {a?.analise && <MinhaAnalise analise={a.analise} temNovidade={a.tem_novidade} />}
+
               <section className="flex flex-col gap-3" aria-labelledby="titulo-por-assunto">
                 <TituloDeSecao>
                   <span id="titulo-por-assunto">Por assunto</span>

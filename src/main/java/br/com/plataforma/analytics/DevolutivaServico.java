@@ -3,9 +3,12 @@ package br.com.plataforma.analytics;
 import br.com.plataforma.acervo.AcessoServico;
 import br.com.plataforma.acervo.Video;
 import br.com.plataforma.catalogo.Turma;
+import br.com.plataforma.comum.Canal;
 import br.com.plataforma.comum.Identidade;
+import br.com.plataforma.comum.Papel;
 import br.com.plataforma.comum.RegraDeNegocio;
 import br.com.plataforma.contas.ContasServico;
+import br.com.plataforma.contas.Usuario;
 import br.com.plataforma.estrutura.EstruturaServico;
 import br.com.plataforma.exercicios.ExerciciosServico;
 import br.com.plataforma.exercicios.RespostaDeExercicio;
@@ -73,8 +76,15 @@ public class DevolutivaServico {
 
     public enum Origem { AULA, SIMULADO }
 
-    /** Uma questão respondida (ou deixada em branco numa prova entregue), venha de onde vier. */
-    record RespostaAvaliada(Integer alunoId, Integer questaoId, boolean correta, Origem origem) {}
+    /**
+     * Uma questão respondida (ou deixada em branco numa prova entregue), venha de onde vier.
+     *
+     * <p>{@code marcada}: nula quando ficou em branco. {@code quando}: o instante em que a resposta
+     * passou a valer para o aluno — na aula, quando respondeu; no simulado, quando ele fechou.
+     * {@code itemId} é da aula; {@code prova} e {@code numero}, do simulado.
+     */
+    record RespostaAvaliada(Integer alunoId, Integer questaoId, boolean correta, Origem origem, Letra marcada,
+            Instant quando, Integer itemId, String prova, Integer numero) {}
 
     /**
      * As respostas destes alunos, de todas as fontes.
@@ -83,14 +93,15 @@ public class DevolutivaServico {
      * fecha. O professor vê a prova entregue a qualquer momento. Questão em branco numa prova
      * entregue conta como erro; prova ainda em andamento conta só o que já foi marcado.
      */
-    private List<RespostaAvaliada> respostasDe(Collection<Integer> alunos, boolean soEncerrados, Instant agora) {
+    List<RespostaAvaliada> respostasDe(Collection<Integer> alunos, boolean soEncerrados, Instant agora) {
         var saida = new ArrayList<RespostaAvaliada>();
         if (alunos.isEmpty()) {
             return saida;
         }
         em.createQuery("select r from RespostaDeExercicio r where r.alunoId in :alunos", RespostaDeExercicio.class)
                 .setParameter("alunos", alunos).getResultList()
-                .forEach(r -> saida.add(new RespostaAvaliada(r.getAlunoId(), r.getQuestaoId(), r.isCorreta(), Origem.AULA)));
+                .forEach(r -> saida.add(new RespostaAvaliada(r.getAlunoId(), r.getQuestaoId(), r.isCorreta(), Origem.AULA,
+                        r.getAlternativaMarcada(), r.getRespondidoEm(), r.getItemId(), null, null)));
 
         var tentativas = em.createQuery("""
                 select distinct t from Tentativa t left join fetch t.respostas
@@ -104,17 +115,19 @@ public class DevolutivaServico {
             }
             var entregue = t.consolidar(agora) || encerrado;
             var certas = new HashSet<Integer>();
-            var marcadas = new HashSet<Integer>();
+            var marcadas = new HashMap<Integer, Letra>();
             t.getRespostas().forEach(r -> {
-                marcadas.add(r.getQuestaoId());
+                marcadas.put(r.getQuestaoId(), r.getAlternativaMarcada());
                 if (r.isCorreta()) {
                     certas.add(r.getQuestaoId());
                 }
             });
+            var quando = encerrado ? s.getFechaEm() : t.getFinalizadoEm() != null ? t.getFinalizadoEm() : t.getIniciadoEm();
             for (var sq : s.getQuestoes()) {
                 var id = sq.getQuestao().getId();
-                if (entregue || marcadas.contains(id)) {
-                    saida.add(new RespostaAvaliada(t.getAluno().getId(), id, certas.contains(id), Origem.SIMULADO));
+                if (entregue || marcadas.containsKey(id)) {
+                    saida.add(new RespostaAvaliada(t.getAluno().getId(), id, certas.contains(id), Origem.SIMULADO,
+                            marcadas.get(id), quando, null, s.getTitulo(), sq.getOrdem()));
                 }
             }
         }
@@ -171,10 +184,10 @@ public class DevolutivaServico {
         }
     }
 
-    private record Etiqueta(Integer assuntoId, String assunto, Integer subassuntoId, String subassunto) {}
+    record Etiqueta(Integer assuntoId, String assunto, Integer subassuntoId, String subassunto) {}
 
     /** A primeira etiqueta de cada questão. O {@code left join} é obrigatório: ver {@code AnalyticsServico}. */
-    private Map<Integer, Etiqueta> etiquetasDas(Collection<Integer> questoes) {
+    Map<Integer, Etiqueta> etiquetasDas(Collection<Integer> questoes) {
         var saida = new HashMap<Integer, Etiqueta>();
         if (questoes.isEmpty()) {
             return saida;
@@ -351,6 +364,16 @@ public class DevolutivaServico {
             throw new RegraDeNegocio("Esta é a visão do aluno. Para um aluno específico, use o acompanhamento dele.");
         }
         return montar(respostasDe(List.of(ident.usuarioId()), true, agora), ident, agora);
+    }
+
+    /**
+     * A devolutiva como o próprio aluno a vê, montada para quem vai escrever a análise dele: só o
+     * que já fechou, e com o "onde revisar" do curso dele. A identidade é a do aluno, porque é o
+     * curso dele que se percorre; quem pediu já foi conferido por quem chama.
+     */
+    Devolutiva comoOAlunoVe(Usuario aluno, List<RespostaAvaliada> respostas, Instant agora) {
+        var ident = new Identidade(aluno.getId(), aluno.getNome(), aluno.getEmail(), Papel.ALUNO, Canal.PORTAL);
+        return montar(respostas, ident, agora);
     }
 
     /** O professor olhando para um aluno: vale a prova entregue, mesmo com o simulado aberto. */

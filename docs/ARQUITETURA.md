@@ -85,6 +85,14 @@ os dois: tenta `ctx.elicit()` (clientes de era anterior) e cai no guard/return
 quando o protocolo é o novo. Se o cliente não suportar nenhum dos dois, a tool
 **não publica** — devolve a instrução de aprovar no portal.
 
+### A exceção escrita: a análise do aluno
+
+Um texto chega ao aluno sem aprovação uma a uma: a análise personalizada dele, que o Claude do
+professor escreve todo dia pelo MCP (`gravar_analises`). Não é conteúdo do curso e não passa por
+`drafts`; em troca, quem escreve só recebe o que o professor já aprovou (os comentários de cada
+alternativa), o aluno lê que foi escrito por IA, e o professor oculta ou pede outra. As quatro
+camadas acima continuam valendo para tudo o mais. Ver [ANALISE-DO-ALUNO.md](ANALISE-DO-ALUNO.md).
+
 ## Segregação por turma (§11)
 
 Aplicada nas consultas, no backend. `exigir_acesso_a_turma`

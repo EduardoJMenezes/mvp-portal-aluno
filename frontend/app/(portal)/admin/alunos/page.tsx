@@ -2,6 +2,7 @@
 
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense } from "react";
+import { AnaliseDoAluno } from "@/components/Analise";
 import { CursoDoAluno } from "@/components/CursoDoAluno";
 import { PorAssunto, ResumoDaDevolutiva } from "@/components/Devolutiva";
 import { OndeRevisar } from "@/components/Resultado";
@@ -26,6 +27,7 @@ function DesempenhoDoAluno() {
   const desempenho = useDados(() => api.desempenho(aluno, simulado), [aluno, simulado]);
   const simulados = useDados(() => api.simuladosDoProfessor());
   const assuntos = useDados(() => (aluno ? api.devolutivaDoAluno(aluno).catch(() => null) : Promise.resolve(null)), [aluno]);
+  const analise = useDados(() => (aluno ? api.analiseDoAluno(aluno).catch(() => null) : Promise.resolve(null)), [aluno]);
 
   return (
     <Pagina titulo={desempenho.dados?.aluno ?? "Desempenho do aluno"} legenda="O que já fez do curso, como está em cada assunto e como foi em cada simulado, a qualquer momento, inclusive antes de fechar." voltar={{ href: "/admin/turmas/", rotulo: "Turmas" }}>
@@ -34,6 +36,7 @@ function DesempenhoDoAluno() {
       ) : (
         <>
           <CursoDoAluno aluno={aluno} />
+          {analise.dados && <AnaliseDoAluno aluno={aluno} dados={analise.dados} aoMudar={analise.setDados} />}
           {assuntos.dados && (
             <section className="flex flex-col gap-3" aria-labelledby="titulo-por-assunto">
               <TituloDeSecao>
