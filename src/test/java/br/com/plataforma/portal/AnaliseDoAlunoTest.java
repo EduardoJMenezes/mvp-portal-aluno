@@ -434,17 +434,19 @@ class AnaliseDoAlunoTest extends BaseDoPortal {
                 .andExpect(jsonPath("$.alunos[0].simulados[0].media").value(62.5))
                 .andExpect(jsonPath("$.alunos[0].simulados[0].posicao").value(2))
                 .andExpect(jsonPath("$.alunos[0].simulados[0].participantes").value(2))
-                // Cada ponto de erro, com os exemplos comentados; o que ficou em branco só entra na conta.
-                .andExpect(jsonPath("$.alunos[0].onde_erra[*].assunto").value(contains("Atomística", "Estequiometria")))
-                .andExpect(jsonPath("$.alunos[0].onde_erra[0].em_branco").value(2))
-                .andExpect(jsonPath("$.alunos[0].onde_erra[0].em_branco_em").value(contains("Simulado 02: questão 4", "Simulado 03: questão 2")))
-                .andExpect(jsonPath("$.alunos[0].onde_erra[0].exemplos").isEmpty())
+                // Cada ponto de erro, com os exemplos comentados, o que ele marcou errado primeiro; o
+                // ponto que só tem questão em branco fica no fim, e só entra na conta.
+                .andExpect(jsonPath("$.alunos[0].onde_erra[*].assunto").value(contains("Estequiometria", "Atomística")))
+                .andExpect(jsonPath("$.alunos[0].onde_erra[0].subassunto").value("Mol"))
+                .andExpect(jsonPath("$.alunos[0].onde_erra[0].marcou_errado").value(1))
+                .andExpect(jsonPath("$.alunos[0].onde_erra[0].exemplos[0].onde").value("Simulado 02, questão 1"))
+                .andExpect(jsonPath("$.alunos[0].onde_erra[0].exemplos[0].marcada").value("B"))
+                .andExpect(jsonPath("$.alunos[0].onde_erra[0].exemplos[0].comentario_da_marcada").value(containsString("massa molar")))
+                .andExpect(jsonPath("$.alunos[0].onde_erra[1].respondidas").value(1))
+                .andExpect(jsonPath("$.alunos[0].onde_erra[1].em_branco").value(2))
+                .andExpect(jsonPath("$.alunos[0].onde_erra[1].em_branco_em").value(contains("Simulado 02: questão 4", "Simulado 03: questão 2")))
+                .andExpect(jsonPath("$.alunos[0].onde_erra[1].exemplos").isEmpty())
                 .andExpect(jsonPath("$.alunos[0].marcou_errado_sem_comentario").value(0))
-                .andExpect(jsonPath("$.alunos[0].onde_erra[1].subassunto").value("Mol"))
-                .andExpect(jsonPath("$.alunos[0].onde_erra[1].marcou_errado").value(1))
-                .andExpect(jsonPath("$.alunos[0].onde_erra[1].exemplos[0].onde").value("Simulado 02, questão 1"))
-                .andExpect(jsonPath("$.alunos[0].onde_erra[1].exemplos[0].marcada").value("B"))
-                .andExpect(jsonPath("$.alunos[0].onde_erra[1].exemplos[0].comentario_da_marcada").value(containsString("massa molar")))
                 // A mesma questão duas vezes é um fato só: corrigiu, ou errou de novo. A que ficou em
                 // branco nas duas não diz mais que isso: é só contada.
                 .andExpect(jsonPath("$.alunos[0].repetidas[*].leitura").value(contains("CORRIGIU")))

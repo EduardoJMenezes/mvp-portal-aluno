@@ -96,9 +96,9 @@ function Relatorio() {
 function Numeros({ p }: { p: Panorama }) {
   const { curso } = p;
   const itens = [
-    { rotulo: "Questões respondidas", valor: String(p.respostas), detalhe: p.respostas ? `${porcento(p.percentual ?? 0)} de acerto` : "nenhuma ainda" },
+    { rotulo: "Questões respondidas", valor: String(p.acertos + p.erros), detalhe: p.acertos + p.erros ? `${porcento(p.acerto_no_que_respondeu ?? 0)} de acerto` : "nenhuma ainda" },
     { rotulo: "Acertos", valor: String(p.acertos), detalhe: `${p.erros} marcadas erradas` },
-    { rotulo: "Em branco", valor: String(p.em_branco), detalhe: "em provas entregues" },
+    { rotulo: "Em branco", valor: String(p.em_branco), detalhe: "fora da leitura por assunto" },
     { rotulo: "No curso", valor: curso.total ? porcento(Math.round((100 * curso.concluidos) / curso.total)) : "—", detalhe: curso.total ? `${curso.concluidos} de ${curso.total} concluídos` : "nada publicado" },
   ];
   return (
@@ -134,8 +134,8 @@ function Subassuntos({ p }: { p: Panorama }) {
               <ul className="flex flex-wrap gap-x-4 gap-y-1">
                 {a.subassuntos.map((s) => (
                   <li key={s.id} className="flex items-center gap-1.5 text-[14px] text-tinta-2">
-                    <span className={`size-2 shrink-0 rounded-full ${NIVEL[s.nivel].barra}`} aria-hidden="true" />
-                    {s.nome} <span className="tabular-nums text-suave">{s.acertos} de {s.respondidas}{s.em_branco > 0 ? `, ${s.em_branco} em branco` : ""}</span>
+                    <span className={`size-2 shrink-0 rounded-full ${s.nivel ? NIVEL[s.nivel].barra : "bg-gelo"}`} aria-hidden="true" />
+                    {s.nome} <span className="tabular-nums text-suave">{s.respondidas ? `${s.acertos} de ${s.respondidas}` : "não respondeu"}{s.em_branco > 0 ? `, ${s.em_branco} em branco` : ""}</span>
                   </li>
                 ))}
               </ul>

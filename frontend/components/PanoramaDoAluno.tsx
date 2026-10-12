@@ -13,23 +13,19 @@ export function NumerosDoPanorama({ p }: { p: Panorama }) {
   const media = p.simulados.length ? p.simulados.reduce((soma, s) => soma + s.percentual, 0) / p.simulados.length : null;
   const deQuemFez = p.simulados.length ? p.simulados.reduce((soma, s) => soma + s.media, 0) / p.simulados.length : null;
   const { curso } = p;
+  // O que ele marcou: é sobre isso que a análise e os assuntos falam.
+  const respondidas = p.acertos + p.erros;
   return (
     <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
       <Numero
         rotulo="Questões respondidas"
-        valor={String(p.respostas)}
-        detalhe={p.respostas ? `${porcento(p.percentual ?? 0)} de acerto · ${p.da_aula} de aula, ${p.de_simulado} de simulado` : "nenhuma ainda"}
+        valor={String(respondidas)}
+        detalhe={respondidas ? `${porcento(p.acerto_no_que_respondeu ?? 0)} de acerto (${p.acertos} de ${respondidas}) · ${p.da_aula} de aula` : "nenhuma ainda"}
       />
       <Numero
         rotulo="Em branco"
         valor={String(p.em_branco)}
-        detalhe={
-          !p.respostas
-            ? "sem respostas"
-            : p.em_branco > 0 && p.acerto_no_que_respondeu !== null
-              ? `no que respondeu, ${porcento(p.acerto_no_que_respondeu)} de acerto (${p.acertos} de ${p.acertos + p.erros})`
-              : `${plural(p.erros, "marcada errada", "marcadas erradas")} · ${plural(p.acertos, "acerto", "acertos")}`
-        }
+        detalhe={p.em_branco ? "em provas entregues; ficam fora da leitura por assunto" : "nenhuma questão sem marcar"}
       />
       <Numero
         rotulo="Simulados"
@@ -95,11 +91,11 @@ function LinhaDoAssunto({ a }: { a: AssuntoNoPanorama }) {
     <li className="grid break-inside-avoid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-1 sm:grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)_auto]">
       <span className="truncate text-[15px] font-medium text-tinta">{a.nome}</span>
       <span className="relative col-span-2 block h-2.5 rounded-full bg-gelo sm:col-span-1 sm:col-start-2 sm:row-start-1" aria-hidden="true">
-        <span className={`block h-full rounded-full ${NIVEL[a.nivel].barra}`} style={{ width: `${Math.max(a.percentual, 2)}%` }} />
+        {a.nivel && <span className={`block h-full rounded-full ${NIVEL[a.nivel].barra}`} style={{ width: `${Math.max(a.acerto_no_que_respondeu ?? 0, 2)}%` }} />}
         {a.colegas !== null && <span className="absolute -top-1 h-[18px] w-0.5 bg-tinta" style={{ left: `calc(${Math.min(a.colegas, 99.5)}% - 1px)` }} />}
       </span>
       <span className="col-start-2 row-start-1 text-right text-[13px] tabular-nums text-suave sm:col-start-3">
-        <span className="font-semibold text-tinta">{a.acertos} de {a.respondidas}</span>
+        <span className="font-semibold text-tinta">{a.respondidas ? `${a.acertos} de ${a.respondidas}` : "não respondeu"}</span>
         {a.em_branco > 0 && <> · {a.em_branco} em branco</>}
         {a.colegas !== null && <> · colegas {porcento(Math.round(a.colegas))}</>}
       </span>
@@ -132,8 +128,8 @@ export function AssuntosAoLadoDosColegas({ p, limite, verTodos }: { p: Panorama;
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-[13px] text-suave">
           {p.colegas > 0
-            ? `Acertos sobre as questões que ele respondeu; as em branco vêm ao lado. A barra e a comparação com ${plural(p.colegas, "colega", "colegas")} de turma, nas mesmas questões, contam o em branco como erro.`
-            : "Acertos sobre as questões que ele respondeu; as em branco vêm ao lado. Nenhum colega de turma respondeu estas questões ainda."}
+            ? `O acerto é sobre o que ele respondeu; as em branco vêm ao lado e não entram na barra. O risco é o acerto de ${plural(p.colegas, "colega", "colegas")} de turma no que responderam das mesmas questões.`
+            : "O acerto é sobre o que ele respondeu; as em branco vêm ao lado e não entram na barra. Nenhum colega de turma respondeu estas questões ainda."}
         </p>
         {escondidos > 0 && verTodos}
       </div>

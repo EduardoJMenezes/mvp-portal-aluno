@@ -77,8 +77,9 @@ public class PanoramaServico {
             double percentual, Double acertoNoQueRespondeu, Nivel nivel) {}
 
     /**
-     * {@code colegas}: o acerto dos colegas de turma <i>nas mesmas questões</i> que ele respondeu
-     * daquele assunto; nulo quando nenhum colega respondeu nenhuma delas.
+     * {@code colegas}: o acerto dos colegas de turma <i>nas mesmas questões</i> daquele assunto,
+     * sobre o que eles responderam; nulo quando nenhum colega respondeu nenhuma delas.
+     * {@code nivel} sai só do que ele respondeu, e é nulo no assunto em que não marcou nenhuma.
      */
     public record AssuntoNoPanorama(Integer id, String nome, int respostas, int respondidas, int acertos, int emBranco,
             double percentual, Double acertoNoQueRespondeu, Nivel nivel, Double colegas, List<SubassuntoNoPanorama> subassuntos) {}
@@ -138,7 +139,8 @@ public class PanoramaServico {
                     .setParameter("turmas", idsDasTurmas).setParameter("aluno", aluno.getId()).getResultList();
             for (var r : devolutiva.respostasDe(colegas, false, agora)) {
                 var e = etiquetas.get(r.questaoId());
-                if (e == null || !questoes.contains(r.questaoId())) {
+                // Como na leitura dele: conta o que o colega respondeu, não o que deixou em branco.
+                if (e == null || !questoes.contains(r.questaoId()) || emBranco(r)) {
                     continue;
                 }
                 quantosColegas.add(r.alunoId());
@@ -160,18 +162,53 @@ public class PanoramaServico {
                 brancosPorSub.merge(e.subassuntoId(), 1, Integer::sum);
             }
         }
-        var porAssunto = devolutiva.semMaterial(respostas, agora).assuntos().stream().map(a -> {
+        // A leitura de cada assunto é sobre o que ele respondeu: o nível e a ordem saem só das
+        // questões em que marcou alguma coisa. O que ficou em branco vem contado ao lado, e o assunto
+        // em que ele não marcou nenhuma entra no fim, sem nível.
+        var nomesDosAssuntos = new LinkedHashMap<Integer, String>();
+        var subsDoAssunto = new HashMap<Integer, Map<Integer, String>>();
+        for (var e : etiquetas.values()) {
+            nomesDosAssuntos.putIfAbsent(e.assuntoId(), e.assunto());
+            if (e.subassuntoId() != null) {
+                subsDoAssunto.computeIfAbsent(e.assuntoId(), k -> new LinkedHashMap<>()).putIfAbsent(e.subassuntoId(), e.subassunto());
+            }
+        }
+        java.util.function.BiFunction<Integer, java.util.Set<Integer>, List<SubassuntoNoPanorama>> soEmBranco = (assuntoId, jaLidos) ->
+                subsDoAssunto.getOrDefault(assuntoId, Map.of()).entrySet().stream()
+                        .filter(par -> !jaLidos.contains(par.getKey()) && brancosPorSub.getOrDefault(par.getKey(), 0) > 0)
+                        .map(par -> {
+                            var brancos = brancosPorSub.get(par.getKey());
+                            return new SubassuntoNoPanorama(par.getKey(), par.getValue(), brancos, 0, 0, brancos, 0.0, null, null);
+                        }).toList();
+        var respondidas = respostas.stream().filter(r -> !emBranco(r)).toList();
+        var porAssunto = new ArrayList<AssuntoNoPanorama>();
+        var lidos = new HashSet<Integer>();
+        for (var a : devolutiva.semMaterial(respondidas, agora).assuntos()) {
+            lidos.add(a.id());
             var c = dosColegas.get(a.id());
             var brancos = brancosPorAssunto.getOrDefault(a.id(), 0);
-            return new AssuntoNoPanorama(a.id(), a.nome(), a.respostas(), a.respostas() - brancos, a.acertos(), brancos,
-                    a.percentual(), noQueRespondeu(a.acertos(), a.respostas() - brancos), a.nivel(),
-                    c == null ? null : AnalyticsServico.percentual(c[1], c[0]),
-                    a.subassuntos().stream().map(s -> {
-                        var doSub = brancosPorSub.getOrDefault(s.id(), 0);
-                        return new SubassuntoNoPanorama(s.id(), s.nome(), s.respostas(), s.respostas() - doSub, s.acertos(), doSub,
-                                s.percentual(), noQueRespondeu(s.acertos(), s.respostas() - doSub), s.nivel());
-                    }).toList());
-        }).toList();
+            var subs = new ArrayList<SubassuntoNoPanorama>();
+            var subsLidos = new HashSet<Integer>();
+            for (var sub : a.subassuntos()) {
+                subsLidos.add(sub.id());
+                var doSub = brancosPorSub.getOrDefault(sub.id(), 0);
+                subs.add(new SubassuntoNoPanorama(sub.id(), sub.nome(), sub.respostas() + doSub, sub.respostas(), sub.acertos(), doSub,
+                        AnalyticsServico.percentual(sub.acertos(), sub.respostas() + doSub), sub.percentual(), sub.nivel()));
+            }
+            subs.addAll(soEmBranco.apply(a.id(), subsLidos));
+            porAssunto.add(new AssuntoNoPanorama(a.id(), a.nome(), a.respostas() + brancos, a.respostas(), a.acertos(), brancos,
+                    AnalyticsServico.percentual(a.acertos(), a.respostas() + brancos), a.percentual(), a.nivel(),
+                    c == null ? null : AnalyticsServico.percentual(c[1], c[0]), subs));
+        }
+        nomesDosAssuntos.forEach((id, nome) -> {
+            var brancos = brancosPorAssunto.getOrDefault(id, 0);
+            if (lidos.contains(id) || brancos == 0) {
+                return;
+            }
+            var c = dosColegas.get(id);
+            porAssunto.add(new AssuntoNoPanorama(id, nome, brancos, 0, 0, brancos, 0.0, null, null,
+                    c == null ? null : AnalyticsServico.percentual(c[1], c[0]), soEmBranco.apply(id, java.util.Set.of())));
+        });
 
         return new Base(aluno, turmas, respostas, etiquetas,
                 (int) respostas.stream().filter(RespostaAvaliada::correta).count(),
@@ -275,8 +312,8 @@ public class PanoramaServico {
      * primeiro. {@code emBrancoEm} diz onde ficaram as que ele não marcou ("Simulado 03: questões
      * 7 e 17"). {@code subassunto} nulo: a questão só tem o assunto.
      */
-    public record PontoDeErro(String assunto, String subassunto, int respostas, int acertos, int marcouErrado, int emBranco,
-            List<String> emBrancoEm, List<ErroNoPonto> exemplos) {}
+    public record PontoDeErro(String assunto, String subassunto, int respostas, int respondidas, int acertos, int marcouErrado,
+            int emBranco, List<String> emBrancoEm, List<ErroNoPonto> exemplos) {}
 
     /** Uma das vezes em que ele respondeu a mesma questão. {@code marcada} nula: deixou em branco. */
     public record Vez(String onde, Letra marcada, boolean acertou) {}
@@ -370,11 +407,13 @@ public class PanoramaServico {
                     .setParameter("ids", idsDasQuestoes).getResultList().forEach(q -> questoes.put(q.getId(), q));
         }
 
-        // Os pontos com mais erro primeiro: são eles que levam os exemplos enquanto houver espaço.
+        // Os pontos em que ele mais marcou errado primeiro: são eles que levam os exemplos enquanto
+        // houver espaço. O ponto que só tem questão em branco fica no fim.
         var ondeErra = new ArrayList<PontoDeErro>();
         var espaco = new int[] {EXEMPLOS_NO_RESUMO};
         conta.entrySet().stream().filter(par -> par.getValue()[2] + par.getValue()[3] > 0)
-                .sorted(Comparator.comparingInt((Map.Entry<Ponto, int[]> par) -> -(par.getValue()[2] + par.getValue()[3])))
+                .sorted(Comparator.comparingInt((Map.Entry<Ponto, int[]> par) -> -par.getValue()[2])
+                        .thenComparingInt(par -> -par.getValue()[3]))
                 .forEach(par -> {
                     var c = par.getValue();
                     var exemplos = marcados.getOrDefault(par.getKey(), Map.of()).values().stream()
@@ -398,7 +437,7 @@ public class PanoramaServico {
                                     b2.getValue().stream().sorted().map(String::valueOf).collect(Collectors.joining(", "))))
                             .toList();
                     ondeErra.add(new PontoDeErro(e == null ? "Sem assunto" : e.assunto(), e == null ? null : e.subassunto(),
-                            c[0], c[1], c[2], c[3], emBrancoEm, exemplos));
+                            c[0], c[0] - c[3], c[1], c[2], c[3], emBrancoEm, exemplos));
                 });
 
         var comQuestao = repetidas.stream().filter(par -> questoes.containsKey(par.getKey())).toList();
@@ -422,7 +461,9 @@ public class PanoramaServico {
                 noQueRespondeu(b.acertos(), total - b.emBranco()),
                 b.curso(), b.simulados(), b.colegas(), b.porAssunto(), ondeErra, lidas, repetidasEmBranco,
                 comQuestao.size() - lidas.size(),
-                AnaliseServico.paraRevisar(devolutiva.comoOAlunoVe(aluno, respostas, agora), DevolutivaServico.PONTOS_PARA_REVISAR, true),
+                // O que indicar do curso segue os erros que ele marcou: em branco não é ponto fraco.
+                AnaliseServico.paraRevisar(devolutiva.comoOAlunoVe(aluno, respostas.stream().filter(r -> !emBranco(r)).toList(), agora),
+                        DevolutivaServico.PONTOS_PARA_REVISAR, true),
                 AnaliseServico.texto(anterior), novasDesde(anterior, respostas));
     }
 }

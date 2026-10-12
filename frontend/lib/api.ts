@@ -407,7 +407,11 @@ export type VisaoDoSimulado = {
   mais_erradas: QuestaoMaisErrada[];
   alunos: AlunoNoSimulado[];
 };
-/** `colegas`: o acerto dos colegas de turma nas mesmas questões; nulo se nenhum respondeu. */
+/**
+ * A leitura é sobre o que ele respondeu: `nivel` e `acerto_no_que_respondeu` saem só das questões em
+ * que marcou alguma coisa, e são nulos no assunto em que não marcou nenhuma. `colegas`: o acerto
+ * dos colegas de turma nas mesmas questões, também sobre o que responderam; nulo se nenhum respondeu.
+ */
 export type AssuntoNoPanorama = {
   id: number;
   nome: string;
@@ -415,12 +419,12 @@ export type AssuntoNoPanorama = {
   acertos: number;
   em_branco: number;
   percentual: number;
-  nivel: NivelNoAssunto;
+  nivel: NivelNoAssunto | null;
   /** As que ele marcou, e o acerto só sobre elas (nulo se não marcou nenhuma). */
   respondidas: number;
   acerto_no_que_respondeu: number | null;
   colegas: number | null;
-  subassuntos: { id: number; nome: string; respostas: number; respondidas: number; acertos: number; em_branco: number; percentual: number; acerto_no_que_respondeu: number | null; nivel: NivelNoAssunto }[];
+  subassuntos: { id: number; nome: string; respostas: number; respondidas: number; acertos: number; em_branco: number; percentual: number; acerto_no_que_respondeu: number | null; nivel: NivelNoAssunto | null }[];
 };
 /** Uma prova entregue. `encerrado` falso: ainda está aberta, e média e posição são parciais. */
 export type SimuladoNoPanorama = {

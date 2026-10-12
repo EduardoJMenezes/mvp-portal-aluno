@@ -23,6 +23,12 @@ de Eletroquímica, acertou 1; deixou 4 em branco").
 A nota da prova e a posição continuam contando a em branco como erro: é a regra da prova. O que
 muda é a leitura do que o aluno sabe.
 
+Na análise geral os números seguem a mesma regra de ponta a ponta (`PanoramaServico`): o nível e a
+ordem de cada assunto saem só do que ele respondeu, o acerto dos colegas também é sobre o que eles
+responderam, `onde_erra` põe na frente os pontos em que ele marcou errado (o que só tem questão em
+branco vai para o fim) e `no_curso` indica material só para erro marcado. O assunto em que ele não
+marcou nenhuma aparece no fim, sem nível, como "não respondeu".
+
 ## Quem faz o quê
 
 | Quem | Faz |
