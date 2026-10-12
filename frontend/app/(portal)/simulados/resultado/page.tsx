@@ -2,7 +2,9 @@
 
 import { useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
+import { AnaliseDoSimulado } from "@/components/Analise";
 import { GradeQuestoes } from "@/components/GradeQuestoes";
+import { GraficosDoSimulado } from "@/components/GraficosDoSimulado";
 import { VideoSobDemanda } from "@/components/Player";
 import { Anel, OndeRevisar } from "@/components/Resultado";
 import { Botao, Cartao, Estado, Etiqueta, Pagina } from "@/components/ui";
@@ -48,6 +50,9 @@ function Painel({ r }: { r: Resultado }) {
           {r.entregue_automaticamente && <p className="mt-3 text-sm text-suave">A prova foi entregue automaticamente quando o tempo acabou.</p>}
         </div>
       </Cartao>
+
+      {r.analise_escrita && <AnaliseDoSimulado analise={r.analise_escrita} />}
+      <GraficosDoSimulado r={r} />
 
       <div className="grid gap-5 lg:grid-cols-[17rem_minmax(0,1fr)]">
         <aside className="lg:sticky lg:top-20 lg:self-start">

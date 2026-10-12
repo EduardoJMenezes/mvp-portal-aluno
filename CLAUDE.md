@@ -64,12 +64,12 @@ humana gravada em `drafts.aprovado_por_id`. `mcp/tests/test_publicacao.py`
 existe para travar isso — se um teste de lá começar a falhar, o problema é a
 mudança, não o teste.
 
-**Uma exceção, escrita e fechada:** a análise personalizada do aluno
-(`student_analyses`) vai a ele sem aprovação uma a uma — quem escreve é o
-Claude do professor, pelo MCP, todo dia. Ela não é conteúdo do curso, não passa
-por `drafts`, e o professor a oculta ou pede outra. Não use isso de precedente
-para mais nada: o porquê e as compensações estão em
-[docs/ANALISE-DO-ALUNO.md](docs/ANALISE-DO-ALUNO.md).
+**Um caso à parte, escrito e fechado:** a análise escrita do aluno
+(`student_analyses`) não passa por `drafts`. A do simulado só chega a ele quando
+o professor libera o resultado da prova (`liberar_resultado_simulado`, com
+preview e ok no chat, ou o botão do portal); a geral é só do professor. Quem
+escreve é o Claude dele, pelo MCP. Não use isso de precedente para conteúdo do
+curso: o porquê está em [docs/ANALISE-DO-ALUNO.md](docs/ANALISE-DO-ALUNO.md).
 
 Duas regras de mesma natureza:
 
@@ -232,15 +232,19 @@ Ensaio geral dos quatro fluxos do §21, contra o servidor no ar:
   seguidas mostra a resposta guardada, não a regra de negócio recusando. Nos
   testes Java a janela é zero (`BaseDeComando`). Mora em memória, e isso só
   vale com uma instância. Ver [docs/PADRAO-BOTOES.md](docs/PADRAO-BOTOES.md).
-* **A análise do aluno só conta o que ele já pode ver.** O resumo que vai para
-  quem escreve é a devolutiva na visão do aluno (`comoOAlunoVe`): simulado
-  aberto fica de fora, senão o texto entrega o resultado antes do fechamento. E
-  a plataforma não chama modelo: `AnaliseServico` monta o resumo e guarda o
+* **Fechar o simulado não solta o resultado.** O aluno só vê nota, gabarito,
+  gráficos e análise quando o professor libera (`exams.resultado_liberado_em`),
+  depois de o Claude dele escrever as análises. A pergunta "o aluno já pode
+  ver?" tem um dono só, `SimuladosServico.resultadoSaiu`: resultado, histórico
+  e desempenho por assunto passam por ela. Conferir `Situacao.ENCERRADO`
+  sozinho na visão do aluno é o bug — entrega o resultado antes da hora. E a
+  plataforma não chama modelo: `AnaliseServico` monta o resumo e guarda o
   texto; escrever é do Claude do professor.
 * **Simulado: o relógio entra como parâmetro.** Os services de
   [simulados.py](mcp/app/services/simulados.py) recebem `agora`; não há job
   de entrega automática — a tentativa vencida é consolidada na próxima consulta.
-  O resultado só sai depois do fechamento, e quem recusa é o backend. Ver
+  O resultado só sai depois do fechamento e de o professor liberar, e quem
+  recusa é o backend. Ver
   [docs/MODELO-SIMULADO.md](docs/MODELO-SIMULADO.md).
 
 ## Nunca

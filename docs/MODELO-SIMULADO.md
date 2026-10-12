@@ -101,10 +101,13 @@ A entrega automática não precisa de job agendado: a tentativa cujo prazo passo
 
 ### Resultado
 
-**Sai quando o simulado fecha — não quando cada aluno termina.** Se saísse ao
-terminar, quem fez primeiro repassaria o gabarito para quem ainda não fez, e o
-ranking mudaria com a prova aberta. O backend recusa mostrar resultado antes do
-fechamento; não é uma tela escondendo.
+**Sai depois que o simulado fecha, quando o professor libera — não quando cada
+aluno termina.** Se saísse ao terminar, quem fez primeiro repassaria o gabarito
+para quem ainda não fez, e o ranking mudaria com a prova aberta. E fechar não
+basta: o professor gera as análises dos alunos pelo Claude e libera o resultado
+inteiro de uma vez (nota, gabarito, gráficos e análise), ou libera pelo portal
+sem as análises. O backend recusa mostrar resultado antes disso; não é uma tela
+escondendo. Ver [ANALISE-DO-ALUNO.md](ANALISE-DO-ALUNO.md).
 
 O aluno vê **só o próprio resultado e a posição dele no ranking**:
 

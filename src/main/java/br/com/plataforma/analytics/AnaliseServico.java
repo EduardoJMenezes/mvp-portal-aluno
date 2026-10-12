@@ -1,184 +1,97 @@
 package br.com.plataforma.analytics;
 
-import com.fasterxml.jackson.annotation.JsonInclude;
 import br.com.plataforma.analytics.DevolutivaServico.Nivel;
 import br.com.plataforma.analytics.DevolutivaServico.Origem;
 import br.com.plataforma.analytics.DevolutivaServico.RespostaAvaliada;
 import br.com.plataforma.comum.Identidade;
 import br.com.plataforma.comum.Papel;
 import br.com.plataforma.comum.RegraDeNegocio;
+import br.com.plataforma.comum.Relogio;
 import br.com.plataforma.contas.ContasServico;
 import br.com.plataforma.contas.Usuario;
 import br.com.plataforma.questoes.Letra;
 import br.com.plataforma.questoes.Questao;
+import br.com.plataforma.simulados.Resposta;
 import br.com.plataforma.simulados.Simulado;
 import br.com.plataforma.simulados.SimuladosServico;
 import br.com.plataforma.simulados.Situacao;
+import br.com.plataforma.simulados.Tentativa;
+import com.fasterxml.jackson.annotation.JsonInclude;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
+import java.text.Normalizer;
 import java.time.Instant;
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * A análise do aluno: o retrato dele em texto, que junta aula e simulado e se renova com o tempo.
+ * A análise escrita de um aluno sobre um conjunto de respostas — o recorte.
  *
  * <p><b>A plataforma conta; quem escreve é o Claude do professor.</b> Este serviço não chama modelo
- * nenhum. Ele monta o resumo de cada aluno — o acerto por assunto, os erros com o comentário da
- * alternativa marcada, o que há no curso para revisar e a análise anterior —, entrega pelo MCP e
- * guarda o texto que volta. O aluno abre o que está guardado.
+ * nenhum. Ele monta o resumo do recorte — o acerto por assunto, os erros com o comentário da
+ * alternativa marcada, o que há no curso para revisar —, entrega pelo MCP e guarda o texto que
+ * volta. Toda questão tem assunto, sub-assunto e comentário por alternativa, então qualquer
+ * conjunto de questões respondidas sustenta uma análise; hoje há dois recortes:
  *
- * <p><b>É a exceção escrita à regra da aprovação.</b> O texto vai ao aluno sem um professor aprovar
- * um por um, porque sai todo dia e para a turma inteira. Em troca: quem escreve só recebe material
- * que o professor já aprovou (os comentários das alternativas), o aluno lê que foi escrito por IA,
- * e o professor vê a análise de qualquer aluno e pode ocultar ou pedir outra. Conteúdo do curso
- * continua passando por rascunho; nada daqui publica questão, aula ou prova.
+ * <ul>
+ *   <li><b>um simulado</b>: escrita para o aluno, que a lê no resultado da prova. O resultado
+ *       inteiro (nota, gabarito, gráficos e esta análise) só sai quando o professor libera,
+ *       depois de gerar as análises — ver {@link #liberarResultado};
+ *   <li><b>geral</b>: tudo o que ele respondeu, escrita para o professor, que a pede no Claude
+ *       quando quer conversar com aquele aluno. O aluno não vê.
+ * </ul>
  *
- * <p><b>Só o que o aluno já pode ver.</b> O resumo é a devolutiva como ele a vê: simulado aberto não
- * entra, senão a análise contaria o resultado antes da hora.
+ * <p>Recorte novo (um módulo, uma lista, um período) é outro filtro sobre as mesmas respostas.
  */
 @Service
 public class AnaliseServico {
 
-    /** Menos que isso não sustenta um retrato: o aluno fica fora da fila. */
-    static final int MINIMO_DE_RESPOSTAS = 5;
-    /** Quantas respostas novas fazem a análise ser reescrita. Simulado que fecha reescreve sempre. */
-    static final int NOVIDADE = 5;
     /** Os erros mais recentes que vão no resumo, com o comentário de cada um. */
-    static final int ERROS_NO_RESUMO = 20;
+    static final int ERROS_NO_RESUMO = 30;
     public static final int LOTE_PADRAO = 5;
     public static final int LOTE_MAXIMO = 10;
     static final int TAMANHO_DO_PONTO = 700;
     static final int TAMANHO_DO_BLOCO = 1200;
-    static final int TAMANHO_DA_ORIENTACAO = 500;
+    /** Quantas análises anteriores o professor vê ao reconsultar. */
+    static final int HISTORICO = 10;
 
     private final AnaliseDoAlunoRepositorio analises;
     private final DevolutivaServico devolutiva;
     private final ContasServico contas;
+    private final SimuladosServico simulados;
 
     @PersistenceContext
     private EntityManager em;
 
-    public AnaliseServico(AnaliseDoAlunoRepositorio analises, DevolutivaServico devolutiva, ContasServico contas) {
+    public AnaliseServico(AnaliseDoAlunoRepositorio analises, DevolutivaServico devolutiva, ContasServico contas,
+            SimuladosServico simulados) {
         this.analises = analises;
         this.devolutiva = devolutiva;
         this.contas = contas;
+        this.simulados = simulados;
     }
 
-    // --- quem está na fila ---------------------------------------------------------
-
-    /** O que o aluno tem respondido, e quanto disso chegou depois da última análise. */
-    private record Movimento(int total, int novas, String simuladoQueFechou) {
-        static final Movimento NADA = new Movimento(0, 0, null);
+    private static boolean branco(String texto) {
+        return texto == null || texto.isBlank();
     }
 
-    private static boolean depois(AnaliseDoAluno ultima, Instant quando) {
-        return ultima == null || (quando != null && quando.isAfter(ultima.getEscritaEm()));
-    }
+    // --- o resumo de um recorte ----------------------------------------------------
 
-    /**
-     * A conta de cada aluno em duas consultas, sem carregar resposta por resposta: a fila é
-     * conferida para a turma inteira, e o resumo completo só é montado para quem sai dela.
-     * Segue a regra de {@link DevolutivaServico#respostasDe}: no simulado encerrado, toda questão
-     * conta (em branco é erro), e a resposta passa a valer quando ele fecha.
-     */
-    private Map<Integer, Movimento> movimentos(Collection<Integer> alunos, Map<Integer, AnaliseDoAluno> ultimas, Instant agora) {
-        var conta = new HashMap<Integer, int[]>();
-        var fechou = new HashMap<Integer, String>();
-        if (alunos.isEmpty()) {
-            return Map.of();
-        }
-        em.createQuery("select r.alunoId, r.respondidoEm from RespostaDeExercicio r where r.alunoId in :alunos", Object[].class)
-                .setParameter("alunos", alunos).getResultList().forEach(l -> {
-                    var c = conta.computeIfAbsent((Integer) l[0], k -> new int[2]);
-                    c[0]++;
-                    if (depois(ultimas.get((Integer) l[0]), (Instant) l[1])) {
-                        c[1]++;
-                    }
-                });
-        em.createQuery("""
-                select t.aluno.id, s from Tentativa t join t.simulado s
-                 where t.aluno.id in :alunos and s.removidoEm is null""", Object[].class)
-                .setParameter("alunos", alunos).getResultList().forEach(l -> {
-                    var s = (Simulado) l[1];
-                    if (SimuladosServico.situacao(s, agora) != Situacao.ENCERRADO) {
-                        return;
-                    }
-                    var id = (Integer) l[0];
-                    var c = conta.computeIfAbsent(id, k -> new int[2]);
-                    var questoes = s.getQuestoes().size();
-                    c[0] += questoes;
-                    if (depois(ultimas.get(id), s.getFechaEm())) {
-                        c[1] += questoes;
-                        fechou.putIfAbsent(id, s.getTitulo());
-                    }
-                });
-        var saida = new HashMap<Integer, Movimento>();
-        conta.forEach((id, c) -> saida.put(id, new Movimento(c[0], c[1], fechou.get(id))));
-        return saida;
-    }
+    public record SubassuntoNoResumo(String nome, int respostas, int acertos, Nivel nivel) {}
 
-    private record NaFila(Usuario aluno, AnaliseDoAluno ultima, Movimento movimento, String motivo, boolean pedida) {}
-
-    /** O aluno na fila, com o motivo; nulo quando não há o que escrever de novo. */
-    private static NaFila avaliar(Usuario aluno, AnaliseDoAluno ultima, Movimento m) {
-        if (m.total() < MINIMO_DE_RESPOSTAS) {
-            return null;
-        }
-        if (ultima == null) {
-            return new NaFila(aluno, null, m, "primeira análise", false);
-        }
-        if (ultima.getRefazerPedidoEm() != null) {
-            return new NaFila(aluno, ultima, m, "o professor pediu outra", true);
-        }
-        if (m.simuladoQueFechou() != null) {
-            return new NaFila(aluno, ultima, m, "fechou o simulado '%s'".formatted(m.simuladoQueFechou()), false);
-        }
-        if (m.novas() >= NOVIDADE) {
-            return new NaFila(aluno, ultima, m, "%d respostas novas".formatted(m.novas()), false);
-        }
-        return null;
-    }
-
-    private static Map<Integer, AnaliseDoAluno> porAluno(List<AnaliseDoAluno> ultimas) {
-        return ultimas.stream().collect(Collectors.toMap(AnaliseDoAluno::getAlunoId, a -> a));
-    }
-
-    /** Quem tem o que analisar: o que o professor pediu primeiro, depois quem tem mais novidade. */
-    private List<NaFila> fila(Instant agora) {
-        // Só quem está em alguma turma: aluno que saiu não precisa de análise nova.
-        var alunos = em.createQuery("""
-                select u from Usuario u
-                 where u.papel = :papel and u.id in (select m.usuarioId from Matricula m)""", Usuario.class)
-                .setParameter("papel", Papel.ALUNO).getResultList();
-        var ids = alunos.stream().map(Usuario::getId).toList();
-        var ultimas = porAluno(analises.ultimas());
-        var movimentos = movimentos(ids, ultimas, agora);
-        return alunos.stream()
-                .map(a -> avaliar(a, ultimas.get(a.getId()), movimentos.getOrDefault(a.getId(), Movimento.NADA)))
-                .filter(Objects::nonNull)
-                .sorted(Comparator.comparing((NaFila f) -> !f.pedida())
-                        .thenComparing(f -> -f.movimento().novas())
-                        .thenComparing(f -> f.aluno().getId()))
-                .toList();
-    }
-
-    // --- o resumo de um aluno ------------------------------------------------------
-
-    public record SubassuntoNoResumo(String nome, int respostas, int acertos, Nivel nivel, int novasRespostas, int novosAcertos) {}
-
-    /** {@code novas*}: o que chegou depois da última análise — é daí que sai "o que melhorou". */
-    public record AssuntoNoResumo(String nome, int respostas, int acertos, Nivel nivel, int novasRespostas, int novosAcertos,
-            List<SubassuntoNoResumo> subassuntos) {}
+    public record AssuntoNoResumo(String nome, int respostas, int acertos, Nivel nivel, List<SubassuntoNoResumo> subassuntos) {}
 
     /**
      * Um erro do aluno. {@code marcada} nula: deixou em branco. Os comentários são os que o
@@ -188,7 +101,7 @@ public class AnaliseServico {
     public record ErroDoAluno(Integer questaoId, String onde, String assunto, String subassunto, String enunciado,
             Letra marcada, Letra gabarito,
             @JsonInclude(JsonInclude.Include.NON_NULL) String comentarioDaMarcada,
-            @JsonInclude(JsonInclude.Include.NON_NULL) String comentarioDaCorreta, boolean novo) {}
+            @JsonInclude(JsonInclude.Include.NON_NULL) String comentarioDaCorreta) {}
 
     /** O que há no curso do aluno sobre um ponto fraco, pelo nome que ele vê na tela. */
     public record ParaRevisar(String topico, int erros, List<String> assistir, List<String> ler, List<String> praticar,
@@ -196,12 +109,21 @@ public class AnaliseServico {
 
     public record Texto(String pontoPrincipal, String padroes, String melhorou, String proximosPassos, Instant escritaEm) {}
 
-    public record AlunoPendente(Integer alunoId, String aluno, String motivo, int respostas, int acertos, Double percentual,
-            int novasRespostas, List<AssuntoNoResumo> porAssunto, int erros, List<ErroDoAluno> errosRecentes,
-            List<ParaRevisar> noCurso, Texto analiseAnterior, String orientacaoDoProfessor) {}
+    /** Como ele foi em outra prova: é o que permite dizer se melhorou. */
+    public record OutroSimulado(String titulo, int acertos, int total, Instant fechouEm) {}
 
-    /** {@code naFila}: todos os que esperam análise; {@code restam}: os que não couberam nesta resposta. */
-    public record Pendentes(int naFila, List<AlunoPendente> alunos, int restam) {}
+    public record ResumoDoAluno(Integer alunoId, String aluno, int respostas, int acertos, Double percentual,
+            List<AssuntoNoResumo> porAssunto, int erros, List<ErroDoAluno> errosRecentes, List<ParaRevisar> noCurso,
+            List<OutroSimulado> outrosSimulados, Texto analiseAnterior) {}
+
+    /**
+     * {@code recorte}: {@code SIMULADO} ou {@code GERAL}. Os campos do simulado só vêm nele:
+     * {@code participantes} fizeram a prova, {@code naFila} ainda não têm análise dela, e
+     * {@code questoesSemComentario} são as questões em que o professor não comentou alternativa
+     * nenhuma — nelas a análise só sabe que o aluno errou.
+     */
+    public record Pendentes(String recorte, String simulado, Boolean resultadoLiberado, Integer participantes,
+            Integer questoes, Integer questoesSemComentario, int naFila, List<ResumoDoAluno> alunos, int restam) {}
 
     private static Texto texto(AnaliseDoAluno a) {
         return a == null ? null
@@ -214,43 +136,32 @@ public class AnaliseServico {
         return limpo.length() > 100 ? limpo.substring(0, 100) + "…" : limpo;
     }
 
-    private AlunoPendente resumir(NaFila f, Instant agora) {
-        var aluno = f.aluno();
-        var respostas = devolutiva.respostasDe(List.of(aluno.getId()), true, agora);
+    private static List<String> nomes(AnalyticsServico.Recomendacao ponto, String tipo) {
+        return ponto.noCurso().stream().filter(l -> tipo.equals(l.tipo()))
+                .map(l -> "%s (%s)".formatted(l.nome(), l.modulo())).toList();
+    }
+
+    private static final Comparator<RespostaAvaliada> POR_DATA =
+            Comparator.comparing(RespostaAvaliada::quando, Comparator.nullsFirst(Comparator.<Instant>naturalOrder()));
+
+    /**
+     * O resumo de um aluno sobre {@code respostas}, que já chegam recortadas. {@code outras} são as
+     * respostas de onde sai o desempenho dele nas outras provas; {@code simuladoDoRecorte} fica de
+     * fora dessa lista.
+     */
+    private ResumoDoAluno resumir(Usuario aluno, List<RespostaAvaliada> respostas, List<RespostaAvaliada> outras,
+            Integer simuladoDoRecorte, AnaliseDoAluno anterior, Instant agora) {
         var d = devolutiva.comoOAlunoVe(aluno, respostas, agora);
         var etiquetas = devolutiva.etiquetasDas(respostas.stream().map(RespostaAvaliada::questaoId).collect(Collectors.toSet()));
 
-        // O que chegou depois da última análise, por assunto e por sub-assunto.
-        var novasDoAssunto = new HashMap<Integer, int[]>();
-        var novasDoSub = new HashMap<Integer, int[]>();
-        for (var r : respostas) {
-            var e = etiquetas.get(r.questaoId());
-            // Na primeira análise não há "depois": tudo é a base, e nada conta como novidade.
-            if (e == null || f.ultima() == null || !depois(f.ultima(), r.quando())) {
-                continue;
-            }
-            var a = novasDoAssunto.computeIfAbsent(e.assuntoId(), k -> new int[2]);
-            a[0]++;
-            a[1] += r.correta() ? 1 : 0;
-            if (e.subassuntoId() != null) {
-                var s = novasDoSub.computeIfAbsent(e.subassuntoId(), k -> new int[2]);
-                s[0]++;
-                s[1] += r.correta() ? 1 : 0;
-            }
-        }
-        var semNada = new int[2];
-        var porAssunto = d.assuntos().stream().map(a -> {
-            var n = novasDoAssunto.getOrDefault(a.id(), semNada);
-            return new AssuntoNoResumo(a.nome(), a.respostas(), a.acertos(), a.nivel(), n[0], n[1],
-                    a.subassuntos().stream().map(s -> {
-                        var ns = novasDoSub.getOrDefault(s.id(), semNada);
-                        return new SubassuntoNoResumo(s.nome(), s.respostas(), s.acertos(), s.nivel(), ns[0], ns[1]);
-                    }).toList());
-        }).toList();
+        var porAssunto = d.assuntos().stream().map(a -> new AssuntoNoResumo(a.nome(), a.respostas(), a.acertos(), a.nivel(),
+                a.subassuntos().stream().map(s -> new SubassuntoNoResumo(s.nome(), s.respostas(), s.acertos(), s.nivel())).toList()))
+                .toList();
 
-        // Os erros, do mais recente para o mais antigo, com o comentário de cada alternativa.
+        // Os erros, do mais recente para o mais antigo (na prova, na ordem das questões), com o
+        // comentário de cada alternativa.
         var errados = respostas.stream().filter(r -> !r.correta())
-                .sorted(Comparator.comparing(RespostaAvaliada::quando, Comparator.nullsFirst(Comparator.<Instant>naturalOrder())).reversed())
+                .sorted(POR_DATA.reversed().thenComparing(r -> r.numero() == null ? 0 : r.numero()))
                 .toList();
         var noResumo = errados.stream().limit(ERROS_NO_RESUMO).toList();
         var questoes = new HashMap<Integer, Questao>();
@@ -278,50 +189,102 @@ public class AnaliseServico {
                     : linhas.containsKey(r.itemId()) ? "aula: " + linhas.get(r.itemId()) : "aula";
             erros.add(new ErroDoAluno(q.getId(), onde, e == null ? null : e.assunto(), e == null ? null : e.subassunto(),
                     emUmaLinha(q.getEnunciado()), r.marcada(), q.getGabarito(),
-                    r.marcada() == null ? null : comentarios.get(r.marcada()), comentarios.get(q.getGabarito()),
-                    f.ultima() != null && depois(f.ultima(), r.quando())));
+                    r.marcada() == null ? null : comentarios.get(r.marcada()), comentarios.get(q.getGabarito())));
         }
 
         var noCurso = d.ondeRevisar().stream().map(p -> new ParaRevisar(p.topico(), p.erros(),
-                java.util.stream.Stream.concat(
-                        nomes(p, "VIDEO").stream(),
+                Stream.concat(nomes(p, "VIDEO").stream(),
                         p.videos().stream().filter(v -> !v.bloqueado()).map(v -> v.titulo())).toList(),
                 nomes(p, "PDF"), nomes(p, "QUESTAO"), nomes(p, "ERRO"))).toList();
 
-        return new AlunoPendente(aluno.getId(), aluno.getNome(), f.motivo(), d.respostas(), d.acertos(), d.percentual(),
-                f.ultima() == null ? 0 : f.movimento().novas(), porAssunto, errados.size(), erros, noCurso, texto(f.ultima()),
-                f.ultima() == null ? null : f.ultima().getRefazerOrientacao());
+        // As outras provas, da mais antiga para a mais nova.
+        var provas = new LinkedHashMap<Integer, int[]>();
+        var dasProvas = new HashMap<Integer, RespostaAvaliada>();
+        outras.stream().filter(r -> r.origem() == Origem.SIMULADO && !r.simuladoId().equals(simuladoDoRecorte))
+                .sorted(POR_DATA)
+                .forEach(r -> {
+                    var c = provas.computeIfAbsent(r.simuladoId(), k -> new int[2]);
+                    c[0] += r.correta() ? 1 : 0;
+                    c[1]++;
+                    dasProvas.putIfAbsent(r.simuladoId(), r);
+                });
+        var outrosSimulados = provas.entrySet().stream().map(par -> new OutroSimulado(
+                dasProvas.get(par.getKey()).prova(), par.getValue()[0], par.getValue()[1], dasProvas.get(par.getKey()).quando())).toList();
+
+        return new ResumoDoAluno(aluno.getId(), aluno.getNome(), d.respostas(), d.acertos(), d.percentual(), porAssunto,
+                errados.size(), erros, noCurso, outrosSimulados, texto(anterior));
     }
 
-    private static List<String> nomes(AnalyticsServico.Recomendacao ponto, String tipo) {
-        return ponto.noCurso().stream().filter(l -> tipo.equals(l.tipo()))
-                .map(l -> "%s (%s)".formatted(l.nome(), l.modulo())).toList();
+    private Simulado exigirEncerrado(String referencia, Instant agora) {
+        var s = simulados.resolver(referencia);
+        var quando = SimuladosServico.situacao(s, agora);
+        if (quando != Situacao.ENCERRADO) {
+            throw new RegraDeNegocio(quando == Situacao.RASCUNHO
+                    ? "'%s' ainda é rascunho: ninguém fez a prova.".formatted(s.getTitulo())
+                    : "'%s' ainda não fechou (fecha em %s). As análises de um simulado são escritas depois do fechamento."
+                            .formatted(s.getTitulo(), Relogio.emBrasilia(s.getFechaEm())));
+        }
+        return s;
+    }
+
+    private List<Tentativa> quemFez(Simulado s, Instant agora) {
+        return simulados.classificar(s, agora).stream().map(SimuladosServico.Classificado::tentativa).toList();
+    }
+
+    private Map<Integer, AnaliseDoAluno> analisesDoSimulado(Simulado s) {
+        return analises.ultimasDoSimulado(s.getId()).stream().collect(Collectors.toMap(AnaliseDoAluno::getAlunoId, a -> a));
     }
 
     /**
-     * Os próximos alunos da fila, cada um com o resumo que sustenta a análise. Com {@code alunoRef},
-     * só aquele aluno, esteja ou não na fila: é o professor pedindo a análise de alguém.
+     * O material para escrever. Com simulado: os alunos que fizeram a prova e ainda não têm análise
+     * dela, em lotes (com {@code alunoRef}, só aquele, tenha ou não). Só com o aluno: o resumo de
+     * tudo o que ele respondeu, para a análise geral.
      */
     @Transactional
-    public Pendentes pendentes(Identidade ident, Integer limite, String alunoRef, Instant agora) {
+    public Pendentes pendentes(Identidade ident, String simuladoRef, String alunoRef, Integer limite, Instant agora) {
         ident.exigirOperador();
-        if (alunoRef != null && !alunoRef.isBlank()) {
-            var aluno = contas.resolverAluno(alunoRef);
-            var ultima = analises.findFirstByAlunoIdOrderByIdDesc(aluno.getId()).orElse(null);
-            var ultimas = ultima == null ? Map.<Integer, AnaliseDoAluno>of() : Map.of(aluno.getId(), ultima);
-            var m = movimentos(List.of(aluno.getId()), ultimas, agora).getOrDefault(aluno.getId(), Movimento.NADA);
-            if (m.total() == 0) {
-                throw new RegraDeNegocio(("%s ainda não tem resposta que conte: nem questão de aula, nem simulado "
-                        + "já encerrado. Não há o que analisar.").formatted(aluno.getNome()));
-            }
-            var naFila = avaliar(aluno, ultima, m);
-            return new Pendentes(1, List.of(resumir(
-                    naFila != null ? naFila : new NaFila(aluno, ultima, m, "pedida pelo professor", true), agora)), 0);
+        if (branco(simuladoRef) && branco(alunoRef)) {
+            throw new RegraDeNegocio("Informe o simulado, para as análises dos alunos que fizeram a prova, ou o aluno, "
+                    + "para a análise geral dele (que só o professor vê). Simulados: listar_simulados.");
         }
-        var fila = fila(agora);
+        if (branco(simuladoRef)) {
+            var aluno = contas.resolverAluno(alunoRef);
+            var todas = devolutiva.respostasDe(List.of(aluno.getId()), false, agora);
+            if (todas.isEmpty()) {
+                throw new RegraDeNegocio("%s ainda não respondeu nenhuma questão, nem em aula nem em simulado: não há o que analisar."
+                        .formatted(aluno.getNome()));
+            }
+            var anterior = analises.findByAlunoIdAndSimuladoIdIsNullOrderByIdDesc(aluno.getId()).stream().findFirst().orElse(null);
+            return new Pendentes("GERAL", null, null, null, null, null, 1,
+                    List.of(resumir(aluno, todas, todas, null, anterior, agora)), 0);
+        }
+
+        var s = exigirEncerrado(simuladoRef, agora);
+        var tentativas = quemFez(s, agora);
+        var escritas = analisesDoSimulado(s);
+        List<Tentativa> fila;
+        if (branco(alunoRef)) {
+            fila = tentativas.stream().filter(t -> !escritas.containsKey(t.getAluno().getId()))
+                    .sorted(Comparator.comparing(t -> t.getAluno().getNome())).toList();
+        } else {
+            var aluno = contas.resolverAluno(alunoRef);
+            fila = tentativas.stream().filter(t -> t.getAluno().getId().equals(aluno.getId())).toList();
+            if (fila.isEmpty()) {
+                throw new RegraDeNegocio("%s não fez '%s'.".formatted(aluno.getNome(), s.getTitulo()));
+            }
+        }
         var quantos = Math.min(limite == null ? LOTE_PADRAO : limite, LOTE_MAXIMO);
-        var alunos = fila.stream().limit(quantos).map(f -> resumir(f, agora)).toList();
-        return new Pendentes(fila.size(), alunos, fila.size() - alunos.size());
+        var alunos = fila.stream().limit(quantos).map(t -> {
+            var aluno = t.getAluno();
+            var daProva = devolutiva.respostasDe(List.of(aluno.getId()), false, agora).stream()
+                    .filter(r -> s.getId().equals(r.simuladoId())).toList();
+            // As outras provas entram como o aluno as vê: resultado ainda não liberado não aparece no texto dele.
+            var visiveis = devolutiva.respostasDe(List.of(aluno.getId()), true, agora);
+            return resumir(aluno, daProva, visiveis, s.getId(), escritas.get(aluno.getId()), agora);
+        }).toList();
+        var semComentario = (int) s.getQuestoes().stream().filter(sq -> sq.getQuestao().comentarios().isEmpty()).count();
+        return new Pendentes("SIMULADO", s.getTitulo(), s.resultadoLiberado(), tentativas.size(), s.getQuestoes().size(),
+                semComentario, fila.size(), alunos, fila.size() - alunos.size());
     }
 
     // --- gravar --------------------------------------------------------------------
@@ -330,11 +293,15 @@ public class AnaliseServico {
 
     public record Recusada(Integer alunoId, String motivo) {}
 
-    /** {@code restamNaFila}: quantos alunos ainda esperam análise depois deste envio. */
-    public record Gravadas(int gravadas, List<String> alunos, List<Recusada> recusadas, int restamNaFila) {}
+    /**
+     * {@code restam}: no simulado, quantos dos que fizeram a prova ainda não têm análise.
+     * {@code resultadoLiberado}: se os alunos já veem o resultado — e, com ele, a análise gravada.
+     */
+    public record Gravadas(String recorte, String simulado, int gravadas, List<String> alunos, List<Recusada> recusadas,
+            Integer restam, Boolean resultadoLiberado) {}
 
     private static String limpo(String texto) {
-        return texto == null || texto.isBlank() ? null : texto.strip();
+        return branco(texto) ? null : texto.strip();
     }
 
     private static String grande(String campo, String texto, int limite) {
@@ -343,17 +310,19 @@ public class AnaliseServico {
     }
 
     /**
-     * Guarda as análises escritas. Cada uma vale por si: a que não passa volta com o motivo, e as
-     * outras entram. A análise nova fica visível para o aluno na hora e atende o pedido de outra.
+     * Guarda as análises escritas. Com simulado, são as daquela prova: o aluno as lê no resultado,
+     * quando o professor liberar (ou na hora, se já liberou). Sem simulado, são gerais, e só o
+     * professor as vê. Cada uma vale por si: a que não passa volta com o motivo, e as outras entram.
      */
     @Transactional
-    public Gravadas gravar(Identidade ident, List<AnaliseNova> novas, Instant agora) {
+    public Gravadas gravar(Identidade ident, String simuladoRef, List<AnaliseNova> novas, Instant agora) {
         ident.exigirOperador();
+        var s = branco(simuladoRef) ? null : exigirEncerrado(simuladoRef, agora);
+        Set<Integer> fizeram = s == null ? Set.of()
+                : quemFez(s, agora).stream().map(t -> t.getAluno().getId()).collect(Collectors.toSet());
         var gravadas = new ArrayList<String>();
         var recusadas = new ArrayList<Recusada>();
         var vistos = new HashSet<Integer>();
-        var ids = novas.stream().map(AnaliseNova::alunoId).filter(Objects::nonNull).collect(Collectors.toSet());
-        var movimentos = movimentos(ids, porAluno(ids.isEmpty() ? List.of() : analises.ultimasDe(ids)), agora);
         for (var n : novas) {
             var aluno = n.alunoId() == null ? null
                     : contas.buscar(n.alunoId()).filter(u -> u.getPapel() == Papel.ALUNO).orElse(null);
@@ -361,100 +330,170 @@ public class AnaliseServico {
             var padroes = limpo(n.padroes());
             var melhorou = limpo(n.melhorou());
             var passos = limpo(n.proximosPassos());
-            var total = aluno == null ? 0 : movimentos.getOrDefault(aluno.getId(), Movimento.NADA).total();
             String motivo = n.alunoId() == null ? "faltou o aluno_id, que vem em listar_analises_pendentes."
                     : aluno == null ? "não existe aluno com id %d. Use o aluno_id de listar_analises_pendentes.".formatted(n.alunoId())
                     : !vistos.add(aluno.getId()) ? "o aluno veio duas vezes neste envio; fica a primeira."
                     : ponto == null ? "ponto_principal é obrigatório: é a frase que abre a análise."
-                    : total == 0 ? "%s não tem resposta que conte; não há o que analisar.".formatted(aluno.getNome())
-                    : java.util.stream.Stream.of(grande("ponto_principal", ponto, TAMANHO_DO_PONTO),
-                            grande("padroes", padroes, TAMANHO_DO_BLOCO), grande("melhorou", melhorou, TAMANHO_DO_BLOCO),
-                            grande("proximos_passos", passos, TAMANHO_DO_BLOCO)).filter(Objects::nonNull).findFirst().orElse(null);
+                    : s != null && !fizeram.contains(aluno.getId())
+                            ? "%s não fez '%s': só quem fez a prova recebe a análise dela.".formatted(aluno.getNome(), s.getTitulo())
+                    : Stream.of(grande("ponto_principal", ponto, TAMANHO_DO_PONTO), grande("padroes", padroes, TAMANHO_DO_BLOCO),
+                            grande("melhorou", melhorou, TAMANHO_DO_BLOCO), grande("proximos_passos", passos, TAMANHO_DO_BLOCO))
+                            .filter(Objects::nonNull).findFirst().orElse(null);
+            var respostas = 0;
+            if (motivo == null) {
+                respostas = s != null ? s.getQuestoes().size()
+                        : devolutiva.respostasDe(List.of(aluno.getId()), false, agora).size();
+                if (respostas == 0) {
+                    motivo = "%s ainda não respondeu nenhuma questão; não há o que analisar.".formatted(aluno.getNome());
+                }
+            }
             if (motivo != null) {
                 recusadas.add(new Recusada(n.alunoId(), motivo));
                 continue;
             }
-            analises.save(new AnaliseDoAluno(aluno.getId(), ponto, padroes, melhorou, passos, total, ident.usuarioId(), agora));
+            analises.save(new AnaliseDoAluno(aluno.getId(), s == null ? null : s.getId(), ponto, padroes, melhorou, passos,
+                    respostas, ident.usuarioId(), agora));
             gravadas.add(aluno.getNome());
         }
         analises.flush();
-        return new Gravadas(gravadas.size(), gravadas, recusadas, fila(agora).size());
+        if (s == null) {
+            return new Gravadas("GERAL", null, gravadas.size(), gravadas, recusadas, null, null);
+        }
+        var escritas = analisesDoSimulado(s);
+        return new Gravadas("SIMULADO", s.getTitulo(), gravadas.size(), gravadas, recusadas,
+                (int) fizeram.stream().filter(id -> !escritas.containsKey(id)).count(), s.resultadoLiberado());
     }
 
-    // --- o aluno lê ----------------------------------------------------------------
+    // --- liberar o resultado -------------------------------------------------------
+
+    /** {@code liberadoAgora}: falso quando já estava liberado. {@code semAnalise} veem só os gráficos. */
+    public record ResultadoLiberado(String simulado, boolean liberadoAgora, Instant liberadoEm, int participantes,
+            int comAnalise, int semAnalise) {}
 
     /**
-     * {@code analise} nula: ainda não há, ou o professor ocultou. {@code temNovidade}: há respostas
-     * que esta análise ainda não considera.
+     * O professor libera o resultado do simulado: a partir daqui o aluno vê nota, gabarito, gráficos
+     * e a análise escrita para ele. É o passo que fecha "gerar as análises do simulado"; antes
+     * dele, nada do resultado sai, por mais que a prova já tenha fechado.
      */
-    public record MinhaAnalise(Texto analise, boolean temNovidade) {}
-
     @Transactional
-    public MinhaAnalise minha(Identidade ident, Instant agora) {
-        if (!ident.eAluno()) {
-            throw new RegraDeNegocio("Esta é a visão do aluno. Para um aluno específico, use o acompanhamento dele.");
-        }
-        var ultima = analises.findFirstByAlunoIdOrderByIdDesc(ident.usuarioId()).orElse(null);
-        if (ultima == null || ultima.oculta()) {
-            return new MinhaAnalise(null, false);
-        }
-        var m = movimentos(List.of(ident.usuarioId()), Map.of(ident.usuarioId(), ultima), agora)
-                .getOrDefault(ident.usuarioId(), Movimento.NADA);
-        return new MinhaAnalise(texto(ultima), m.simuladoQueFechou() != null || m.novas() >= NOVIDADE);
+    public ResultadoLiberado liberarResultado(Identidade ident, String simuladoRef, Instant agora) {
+        ident.exigirOperador();
+        var s = simulados.resolver(simuladoRef);
+        var liberadoAgora = simulados.liberarResultado(ident, s, agora);
+        var fizeram = quemFez(s, agora);
+        var escritas = analisesDoSimulado(s);
+        var comAnalise = (int) fizeram.stream().filter(t -> escritas.containsKey(t.getAluno().getId())).count();
+        return new ResultadoLiberado(s.getTitulo(), liberadoAgora, s.getResultadoLiberadoEm(), fizeram.size(), comAnalise,
+                fizeram.size() - comAnalise);
     }
 
-    // --- o professor acompanha -----------------------------------------------------
+    // --- o aluno, no resultado do simulado ------------------------------------------
+
+    /** A análise que o aluno lê no resultado; nula se ainda não há, ou se o professor ocultou. */
+    @Transactional(readOnly = true)
+    public Texto doSimuladoParaOAluno(Integer simuladoId, Integer alunoId) {
+        return analises.findByAlunoIdAndSimuladoIdOrderByIdDesc(alunoId, simuladoId).stream().findFirst()
+                .filter(a -> !a.oculta()).map(AnaliseServico::texto).orElse(null);
+    }
+
+    /** {@code mediaDaTurma}: o acerto, naquele assunto, de todos os que fizeram a prova. */
+    public record AssuntoNoSimulado(String assunto, int questoes, int acertos, double percentual, double mediaDaTurma) {}
 
     /**
-     * A análise como o professor a vê: a última, mesmo oculta. {@code naFila}: o aluno espera uma
-     * análise nova, e {@code motivoDaFila} diz por quê.
+     * A leitura crua da prova para o gráfico do aluno: o acerto dele em cada assunto, ao lado da
+     * média de quem fez. Em branco conta como erro, para ele e para a turma. Do pior para o melhor.
      */
-    public record DoAluno(Texto analise, boolean oculta, Instant refazerPedidoEm, String orientacao, String escritaPor,
-            boolean naFila, String motivoDaFila) {}
+    public List<AssuntoNoSimulado> porAssuntoNoSimulado(Simulado s, Tentativa minha, List<Tentativa> todas) {
+        var ids = s.getQuestoes().stream().map(sq -> sq.getQuestao().getId()).toList();
+        var etiquetas = devolutiva.etiquetasDas(ids);
+        var minhasCertas = certas(minha);
+        var certasDaTurma = new HashMap<Integer, Integer>();
+        todas.forEach(t -> certas(t).forEach(id -> certasDaTurma.merge(id, 1, Integer::sum)));
 
-    private DoAluno descrever(Usuario aluno, AnaliseDoAluno ultima, Instant agora) {
-        var ultimas = ultima == null ? Map.<Integer, AnaliseDoAluno>of() : Map.of(aluno.getId(), ultima);
-        var naFila = avaliar(aluno, ultima, movimentos(List.of(aluno.getId()), ultimas, agora)
-                .getOrDefault(aluno.getId(), Movimento.NADA));
-        return new DoAluno(texto(ultima), ultima != null && ultima.oculta(),
-                ultima == null ? null : ultima.getRefazerPedidoEm(), ultima == null ? null : ultima.getRefazerOrientacao(),
-                ultima == null ? null : contas.buscar(ultima.getEscritaPorId()).map(Usuario::getNome).orElse(null),
-                naFila != null, naFila == null ? null : naFila.motivo());
-    }
-
-    @Transactional
-    public DoAluno doAluno(Identidade ident, String alunoRef, Instant agora) {
-        ident.exigirOperador();
-        var aluno = contas.resolverAluno(alunoRef);
-        return descrever(aluno, analises.findFirstByAlunoIdOrderByIdDesc(aluno.getId()).orElse(null), agora);
-    }
-
-    private AnaliseDoAluno exigirAnalise(Usuario aluno) {
-        return analises.findFirstByAlunoIdOrderByIdDesc(aluno.getId()).orElseThrow(() -> new RegraDeNegocio(
-                "%s ainda não tem análise escrita.".formatted(aluno.getNome())));
-    }
-
-    /** O professor tira a análise da frente do aluno, ou devolve. */
-    @Transactional
-    public DoAluno ocultar(Identidade ident, String alunoRef, boolean oculta, Instant agora) {
-        ident.exigirOperador();
-        var aluno = contas.resolverAluno(alunoRef);
-        var ultima = exigirAnalise(aluno);
-        ultima.ocultar(oculta, ident.usuarioId(), agora);
-        return descrever(aluno, ultima, agora);
-    }
-
-    /** O professor pede outra: esta sai da frente do aluno e ele volta para o começo da fila. */
-    @Transactional
-    public DoAluno pedirOutra(Identidade ident, String alunoRef, String orientacao, Instant agora) {
-        ident.exigirOperador();
-        var aluno = contas.resolverAluno(alunoRef);
-        var ultima = exigirAnalise(aluno);
-        var texto = limpo(orientacao);
-        if (texto != null && texto.length() > TAMANHO_DA_ORIENTACAO) {
-            throw new RegraDeNegocio("A orientação tem %d caracteres; o limite é %d.".formatted(texto.length(), TAMANHO_DA_ORIENTACAO));
+        // {questões, acertos dele, acertos somados da turma}
+        var conta = new LinkedHashMap<String, int[]>();
+        for (var id : ids) {
+            var e = etiquetas.get(id);
+            var c = conta.computeIfAbsent(e == null ? "Sem assunto" : e.assunto(), k -> new int[3]);
+            c[0]++;
+            c[1] += minhasCertas.contains(id) ? 1 : 0;
+            c[2] += certasDaTurma.getOrDefault(id, 0);
         }
-        ultima.pedirOutra(texto, ident.usuarioId(), agora);
-        return descrever(aluno, ultima, agora);
+        return conta.entrySet().stream().map(par -> {
+            var c = par.getValue();
+            return new AssuntoNoSimulado(par.getKey(), c[0], c[1], AnalyticsServico.percentual(c[1], c[0]),
+                    AnalyticsServico.percentual(c[2], c[0] * todas.size()));
+        }).sorted(Comparator.comparingDouble(AssuntoNoSimulado::percentual).thenComparing(AssuntoNoSimulado::assunto)).toList();
+    }
+
+    private static Set<Integer> certas(Tentativa t) {
+        return t.getRespostas().stream().filter(Resposta::isCorreta).map(Resposta::getQuestaoId).collect(Collectors.toSet());
+    }
+
+    // --- o professor ---------------------------------------------------------------
+
+    /**
+     * A análise como o professor a vê: a que vale, mesmo oculta, e as anteriores do mesmo recorte.
+     * {@code simulado} nulo: é a geral, que só ele vê; {@code oculta} só faz sentido na do simulado.
+     */
+    public record DoAluno(Integer alunoId, String aluno, String simulado, Texto analise, boolean oculta, String escritaPor,
+            List<Texto> anteriores) {}
+
+    private DoAluno descrever(Usuario aluno, Simulado s) {
+        var todas = s == null ? analises.findByAlunoIdAndSimuladoIdIsNullOrderByIdDesc(aluno.getId())
+                : analises.findByAlunoIdAndSimuladoIdOrderByIdDesc(aluno.getId(), s.getId());
+        var atual = todas.isEmpty() ? null : todas.getFirst();
+        return new DoAluno(aluno.getId(), aluno.getNome(), s == null ? null : s.getTitulo(), texto(atual),
+                atual != null && atual.oculta(),
+                atual == null ? null : contas.buscar(atual.getEscritaPorId()).map(Usuario::getNome).orElse(null),
+                todas.stream().skip(1).limit(HISTORICO).map(AnaliseServico::texto).toList());
+    }
+
+    /** A análise de um aluno: a geral, ou a de um simulado. */
+    @Transactional(readOnly = true)
+    public DoAluno doAluno(Identidade ident, String alunoRef, String simuladoRef) {
+        ident.exigirOperador();
+        return descrever(contas.resolverAluno(alunoRef), branco(simuladoRef) ? null : simulados.resolver(simuladoRef));
+    }
+
+    /** O professor tira a análise de um simulado da frente do aluno, ou devolve. */
+    @Transactional
+    public DoAluno ocultar(Identidade ident, String alunoRef, String simuladoRef, boolean oculta, Instant agora) {
+        ident.exigirOperador();
+        if (branco(simuladoRef)) {
+            throw new RegraDeNegocio("Só a análise de um simulado é mostrada ao aluno. A geral já é só do professor.");
+        }
+        var aluno = contas.resolverAluno(alunoRef);
+        var s = simulados.resolver(simuladoRef);
+        var atual = analises.findByAlunoIdAndSimuladoIdOrderByIdDesc(aluno.getId(), s.getId()).stream().findFirst()
+                .orElseThrow(() -> new RegraDeNegocio("%s ainda não tem análise de '%s'.".formatted(aluno.getNome(), s.getTitulo())));
+        atual.ocultar(oculta, ident.usuarioId(), agora);
+        return descrever(aluno, s);
+    }
+
+    /** {@code analiseGeralEm}: quando a análise geral dele foi escrita; nulo se ainda não há. */
+    public record AlunoNaBusca(Integer id, String nome, String email, List<String> turmas, Instant analiseGeralEm) {}
+
+    private static String semAcento(String texto) {
+        return Normalizer.normalize(texto, Normalizer.Form.NFD).replaceAll("\\p{M}", "").toLowerCase(Locale.ROOT);
+    }
+
+    /**
+     * Os alunos, para o professor achar um pelo nome ou pelo e-mail e abrir o acompanhamento dele.
+     * Três consultas para a lista inteira: os alunos, as turmas de cada um e quem já tem análise.
+     */
+    @Transactional(readOnly = true)
+    public List<AlunoNaBusca> alunos(Identidade ident, String busca) {
+        ident.exigirOperador();
+        var turmas = new HashMap<Integer, List<String>>();
+        em.createQuery("select m.usuarioId, t.nome from Matricula m join m.turma t order by t.nome", Object[].class)
+                .getResultList().forEach(l -> turmas.computeIfAbsent((Integer) l[0], k -> new ArrayList<>()).add((String) l[1]));
+        var gerais = analises.ultimasGerais().stream().collect(Collectors.toMap(AnaliseDoAluno::getAlunoId, AnaliseDoAluno::getEscritaEm));
+        var termo = branco(busca) ? null : semAcento(busca.strip());
+        return em.createQuery("select u from Usuario u where u.papel = :papel order by u.nome", Usuario.class)
+                .setParameter("papel", Papel.ALUNO).getResultList().stream()
+                .filter(u -> termo == null || semAcento(u.getNome()).contains(termo) || semAcento(u.getEmail()).contains(termo))
+                .map(u -> new AlunoNaBusca(u.getId(), u.getNome(), u.getEmail(), turmas.getOrDefault(u.getId(), List.of()), gerais.get(u.getId())))
+                .toList();
     }
 }

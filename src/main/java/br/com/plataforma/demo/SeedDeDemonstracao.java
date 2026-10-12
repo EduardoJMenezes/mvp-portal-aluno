@@ -324,10 +324,12 @@ public class SeedDeDemonstracao implements ApplicationRunner {
             int... turmas) {
         var id = inserir("""
                 INSERT INTO exams (titulo, abre_em, fecha_em, duracao_minutos, status, criado_por_id,
-                                   publicado_em)
-                VALUES (?, ?, ?, 60, 'PUBLICADO', ?, ?) RETURNING id""",
+                                   publicado_em, resultado_liberado_em)
+                VALUES (?, ?, ?, 60, 'PUBLICADO', ?, ?, ?) RETURNING id""",
                 titulo, Timestamp.from(abre), Timestamp.from(fecha), autor,
-                Timestamp.from(abre.minus(Duration.ofDays(1))));
+                Timestamp.from(abre.minus(Duration.ofDays(1))),
+                // O que já fechou na demonstração nasce com o resultado liberado, para haver o que mostrar.
+                fecha.isBefore(Instant.now()) ? Timestamp.from(fecha) : null);
         for (var turma : turmas) {
             jdbc.update("INSERT INTO exam_classes (simulado_id, turma_id) VALUES (?, ?)", id, turma);
         }

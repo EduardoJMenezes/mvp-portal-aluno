@@ -86,35 +86,48 @@ public class AnalyticsComandos {
         return analytics.estatisticasDoSimulado(ident, pedido.simulado(), Instant.now());
     }
 
-    // --- a análise de cada aluno ---------------------------------------------
+    // --- a análise escrita ---------------------------------------------------
 
     public record ListarAnalisesPendentes(
             @Min(value = 1, message = "vai de 1 a 10") @Max(value = AnaliseServico.LOTE_MAXIMO, message = "vai de 1 a 10") Integer limite,
-            String aluno) {}
+            String simulado, String aluno) {}
 
     /**
-     * Os próximos alunos que esperam análise, cada um com o resumo que a sustenta. Quem escreve é
-     * o Claude de quem chama; aqui só saem números e os comentários que o professor aprovou.
+     * O material para escrever: os alunos de um simulado que ainda não têm análise dele, ou tudo o
+     * que um aluno respondeu, para a análise geral. Quem escreve é o Claude de quem chama; aqui só
+     * saem números e os comentários que o professor aprovou.
      */
     @PostMapping("/listar_analises_pendentes")
     @Transactional
     public AnaliseServico.Pendentes listarAnalisesPendentes(
             @AuthenticationPrincipal Identidade ident,
             @Valid @RequestBody(required = false) ListarAnalisesPendentes pedido) {
-        return analises.pendentes(ident, pedido == null ? null : pedido.limite(),
-                pedido == null ? null : pedido.aluno(), Instant.now());
+        return analises.pendentes(ident, pedido == null ? null : pedido.simulado(),
+                pedido == null ? null : pedido.aluno(), pedido == null ? null : pedido.limite(), Instant.now());
     }
 
     public record GravarAnalises(
+            String simulado,
             @NotEmpty(message = "é obrigatória: ao menos uma análise")
             @Size(max = AnaliseServico.LOTE_MAXIMO, message = "aceita até 10 análises por vez")
             List<AnaliseServico.AnaliseNova> analises) {}
 
-    /** Guarda as análises escritas: valem para o aluno na hora. A recusada volta com o motivo. */
+    /** Guarda as análises escritas: as de um simulado, ou as gerais. A recusada volta com o motivo. */
     @PostMapping("/gravar_analises")
     @Transactional
     public AnaliseServico.Gravadas gravarAnalises(
             @AuthenticationPrincipal Identidade ident, @Valid @RequestBody GravarAnalises pedido) {
-        return analises.gravar(ident, pedido.analises(), Instant.now());
+        return analises.gravar(ident, pedido.simulado(), pedido.analises(), Instant.now());
+    }
+
+    public record LiberarResultado(
+            @NotBlank(message = "é obrigatório: o título ou o id do simulado") String simulado) {}
+
+    /** Libera o resultado do simulado aos alunos: nota, gabarito, gráficos e a análise de cada um. */
+    @PostMapping("/liberar_resultado_simulado")
+    @Transactional
+    public AnaliseServico.ResultadoLiberado liberarResultado(
+            @AuthenticationPrincipal Identidade ident, @Valid @RequestBody LiberarResultado pedido) {
+        return analises.liberarResultado(ident, pedido.simulado(), Instant.now());
     }
 }

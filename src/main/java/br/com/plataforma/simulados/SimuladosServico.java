@@ -178,16 +178,47 @@ public class SimuladosServico {
 
     // --- leitura -------------------------------------------------------------
 
+    /** {@code resultadoLiberadoEm}: nulo enquanto o professor não liberou o resultado aos alunos. */
     public record ResumoDoSimulado(
             Integer simuladoId, String titulo, Status status, Situacao situacao, List<String> turmas,
             String abreEm, String fechaEm, Integer duracaoMinutos, int totalQuestoes,
-            Integer tentativas, String categoria) {}
+            Integer tentativas, String categoria, String resultadoLiberadoEm) {}
 
     public ResumoDoSimulado resumo(Simulado s, Instant agora, Integer quantasTentativas) {
         return new ResumoDoSimulado(s.getId(), s.getTitulo(), s.getStatus(), situacao(s, agora),
                 s.getTurmas().stream().map(Turma::getNome).toList(),
                 Relogio.iso(s.getAbreEm()), Relogio.iso(s.getFechaEm()), s.getDuracaoMinutos(),
-                s.getQuestoes().size(), quantasTentativas, s.getCategoria());
+                s.getQuestoes().size(), quantasTentativas, s.getCategoria(),
+                Relogio.iso(s.getResultadoLiberadoEm()));
+    }
+
+    /**
+     * O aluno já pode ver o resultado: o simulado fechou <b>e</b> o professor liberou. É a única
+     * pergunta que decide nota, gabarito, histórico e desempenho por assunto na visão dele.
+     */
+    public static boolean resultadoSaiu(Simulado s, Instant agora) {
+        return situacao(s, agora) == Situacao.ENCERRADO && s.resultadoLiberado();
+    }
+
+    /**
+     * Libera o resultado aos alunos. Só depois do fechamento; liberar de novo não muda nada.
+     * Devolve se foi esta chamada que liberou.
+     */
+    @Transactional
+    public boolean liberarResultado(Identidade ident, Simulado s, Instant agora) {
+        ident.exigirOperador();
+        var quando = situacao(s, agora);
+        if (quando != Situacao.ENCERRADO) {
+            throw new RegraDeNegocio(quando == Situacao.RASCUNHO
+                    ? "'%s' ainda é rascunho: não há resultado para liberar.".formatted(s.getTitulo())
+                    : "'%s' ainda não fechou (fecha em %s): o resultado só pode ser liberado depois."
+                            .formatted(s.getTitulo(), Relogio.emBrasilia(s.getFechaEm())));
+        }
+        if (s.resultadoLiberado()) {
+            return false;
+        }
+        s.liberarResultado(ident.usuarioId(), agora);
+        return true;
     }
 
     @Transactional(readOnly = true)
@@ -224,7 +255,7 @@ public class SimuladosServico {
             Integer simuladoId, String titulo, Status status, Situacao situacao, List<String> turmas,
             String abreEm, String fechaEm, Integer duracaoMinutos, int totalQuestoes,
             Integer tentativas, Integer rascunhoId, List<QuestaoDaProva> questoes,
-            List<String> pendenciasParaPublicar) {}
+            List<String> pendenciasParaPublicar, String resultadoLiberadoEm) {}
 
     @Transactional(readOnly = true)
     public SimuladoDetalhado detalhar(Identidade ident, String referencia, Instant agora) {
@@ -247,7 +278,7 @@ public class SimuladosServico {
         return new SimuladoDetalhado(base.simuladoId(), base.titulo(), base.status(), base.situacao(),
                 base.turmas(), base.abreEm(), base.fechaEm(), base.duracaoMinutos(),
                 base.totalQuestoes(), base.tentativas(), s.getRascunhoId(), questoes,
-                pendenciasParaPublicar(s, agora));
+                pendenciasParaPublicar(s, agora), base.resultadoLiberadoEm());
     }
 
     // --- escrita -------------------------------------------------------------
@@ -316,10 +347,12 @@ public class SimuladosServico {
 
         if (antes == Situacao.ENCERRADO) {
             if (mexeNaProva || novoFechamento != null) {
-                throw new RegraDeNegocio(
-                        ("'%s' fechou em %s e o resultado já saiu: só o título muda. Reabrir "
-                                + "devolveria a prova a quem já viu o gabarito.")
-                                .formatted(s.getTitulo(), Relogio.emBrasilia(s.getFechaEm())));
+                throw new RegraDeNegocio((s.resultadoLiberado()
+                        ? "'%s' fechou em %s e o resultado já saiu: só o título muda. Reabrir "
+                                + "devolveria a prova a quem já viu o gabarito."
+                        : "'%s' fechou em %s: só o título muda. Reabrir devolveria a prova a quem já "
+                                + "a entregou.")
+                        .formatted(s.getTitulo(), Relogio.emBrasilia(s.getFechaEm())));
             }
         } else if (antes == Situacao.ABERTO) {
             if (mexeNaProva) {

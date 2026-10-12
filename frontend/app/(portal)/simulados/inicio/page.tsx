@@ -61,7 +61,7 @@ function AntesDeComecar() {
                 <li className="flex gap-2"><span aria-hidden="true" className="text-acento">●</span> O tempo de {simulado.duracao_minutos} minutos começa quando você clicar em começar — e não para se você sair da página.</li>
                 <li className="flex gap-2"><span aria-hidden="true" className="text-acento">●</span> Cada resposta é salva na hora. Se o tempo acabar, a prova é entregue com o que estiver marcado.</li>
                 <li className="flex gap-2"><span aria-hidden="true" className="text-acento">●</span> Questão em branco conta como erro.</li>
-                <li className="flex gap-2"><span aria-hidden="true" className="text-acento">●</span> O resultado, com gabarito e resoluções, sai quando o simulado fechar.</li>
+                <li className="flex gap-2"><span aria-hidden="true" className="text-acento">●</span> O resultado, com gabarito, resoluções e a sua análise, sai depois que o simulado fechar, quando o professor liberar.</li>
               </ul>
 
               <div className="flex flex-wrap gap-2">

@@ -9,11 +9,14 @@ import jakarta.persistence.Table;
 import java.time.Instant;
 
 /**
- * O retrato do aluno em texto, como estava num dia. Vale a mais recente; as outras são histórico.
+ * Uma análise escrita de um aluno, como estava num dia. Vale a mais recente de cada recorte; as
+ * outras são histórico.
  *
- * <p>Quem escreve é o Claude do professor, pelo MCP, só com o que o aluno respondeu e com os
- * comentários aprovados em cada alternativa. O aluno e o operador vão como id: a análise tem que
- * sobreviver ao que acontecer com as contas.
+ * <p>O recorte é o conjunto de respostas lido: com {@code simuladoId}, as daquela prova — é a
+ * análise que o aluno lê no resultado; sem, tudo o que ele respondeu — é a geral, que só o
+ * professor vê. Quem escreve é o Claude do professor, pelo MCP, só com o que o aluno respondeu e
+ * com os comentários aprovados em cada alternativa. Aluno, operador e simulado vão como id: a
+ * análise tem que sobreviver ao que acontecer com eles.
  */
 @Entity
 @Table(name = "student_analyses")
@@ -25,6 +28,10 @@ public class AnaliseDoAluno {
 
     @Column(name = "aluno_id", nullable = false)
     private Integer alunoId;
+
+    /** Nulo: é a análise geral, do professor. */
+    @Column(name = "simulado_id")
+    private Integer simuladoId;
 
     @Column(name = "ponto_principal", nullable = false)
     private String pontoPrincipal;
@@ -51,20 +58,12 @@ public class AnaliseDoAluno {
     @Column(name = "oculta_por_id")
     private Integer ocultaPorId;
 
-    @Column(name = "refazer_pedido_em")
-    private Instant refazerPedidoEm;
-
-    @Column(name = "refazer_pedido_por_id")
-    private Integer refazerPedidoPorId;
-
-    @Column(name = "refazer_orientacao")
-    private String refazerOrientacao;
-
     protected AnaliseDoAluno() {}
 
-    AnaliseDoAluno(Integer alunoId, String pontoPrincipal, String padroes, String melhorou, String proximosPassos,
-            int respostas, Integer escritaPorId, Instant escritaEm) {
+    AnaliseDoAluno(Integer alunoId, Integer simuladoId, String pontoPrincipal, String padroes, String melhorou,
+            String proximosPassos, int respostas, Integer escritaPorId, Instant escritaEm) {
         this.alunoId = alunoId;
+        this.simuladoId = simuladoId;
         this.pontoPrincipal = pontoPrincipal;
         this.padroes = padroes;
         this.melhorou = melhorou;
@@ -78,14 +77,6 @@ public class AnaliseDoAluno {
     void ocultar(boolean oculta, Integer porId, Instant agora) {
         this.ocultaEm = oculta ? (ocultaEm != null ? ocultaEm : agora) : null;
         this.ocultaPorId = oculta ? porId : null;
-    }
-
-    /** Pedir outra tira esta da frente do aluno: quem pede é porque não quer que ela fique. */
-    void pedirOutra(String orientacao, Integer porId, Instant agora) {
-        this.refazerPedidoEm = agora;
-        this.refazerPedidoPorId = porId;
-        this.refazerOrientacao = orientacao;
-        ocultar(true, porId, agora);
     }
 
     public Integer getId() {
@@ -128,11 +119,7 @@ public class AnaliseDoAluno {
         return ocultaEm != null;
     }
 
-    public Instant getRefazerPedidoEm() {
-        return refazerPedidoEm;
-    }
-
-    public String getRefazerOrientacao() {
-        return refazerOrientacao;
+    public Integer getSimuladoId() {
+        return simuladoId;
     }
 }

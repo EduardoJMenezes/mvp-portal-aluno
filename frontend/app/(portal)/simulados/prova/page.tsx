@@ -60,7 +60,7 @@ function ProvaDoAluno() {
       {prova.estado === "ENTREGUE" && (
         <Aviso tom="sucesso" titulo="Prova entregue">
           {prova.entregue_automaticamente ? "O tempo acabou e a prova foi entregue com o que estava respondido. " : ""}
-          O resultado sai {emBrasilia(prova.resultado_em)}, quando o simulado fechar.
+          O simulado fecha {emBrasilia(prova.resultado_em)}, e o resultado sai depois, quando o professor liberar.
         </Aviso>
       )}
       {prova.estado === "ENCERRADO" &&
@@ -69,6 +69,8 @@ function ProvaDoAluno() {
             <p className="text-[15px] text-tinta">Este simulado fechou e o seu resultado já saiu.</p>
             <BotaoLink variante="primario" href={`/simulados/resultado/?id=${prova.simulado_id}`}>Ver resultado</BotaoLink>
           </Cartao>
+        ) : prova.aguardando_resultado ? (
+          <Aviso tom="info" titulo="Aguardando o resultado">Este simulado fechou e a sua prova está guardada. O resultado aparece aqui quando o professor liberar.</Aviso>
         ) : (
           <Aviso tom="neutro">Este simulado já fechou, e você não chegou a fazer a prova.</Aviso>
         ))}

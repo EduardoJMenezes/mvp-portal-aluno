@@ -62,6 +62,7 @@ const DO_OPERADOR: (Destino | Grupo)[] = [
     rotulo: "Turmas",
     itens: [
       { href: "/admin/turmas/", rotulo: "Turmas e alunos" },
+      { href: "/admin/alunos/", rotulo: "Desempenho por aluno" },
       { href: "/admin/vendas/", rotulo: "Vendas" },
     ],
   },

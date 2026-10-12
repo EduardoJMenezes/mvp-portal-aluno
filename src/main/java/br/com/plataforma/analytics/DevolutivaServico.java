@@ -81,16 +81,16 @@ public class DevolutivaServico {
      *
      * <p>{@code marcada}: nula quando ficou em branco. {@code quando}: o instante em que a resposta
      * passou a valer para o aluno — na aula, quando respondeu; no simulado, quando ele fechou.
-     * {@code itemId} é da aula; {@code prova} e {@code numero}, do simulado.
+     * {@code itemId} é da aula; {@code simuladoId}, {@code prova} e {@code numero}, do simulado.
      */
     record RespostaAvaliada(Integer alunoId, Integer questaoId, boolean correta, Origem origem, Letra marcada,
-            Instant quando, Integer itemId, String prova, Integer numero) {}
+            Instant quando, Integer itemId, Integer simuladoId, String prova, Integer numero) {}
 
     /**
      * As respostas destes alunos, de todas as fontes.
      *
      * <p>{@code soEncerrados}: é a visão do aluno, que só vê o resultado do simulado depois que ele
-     * fecha. O professor vê a prova entregue a qualquer momento. Questão em branco numa prova
+     * fecha e o professor libera. O professor vê a prova entregue a qualquer momento. Questão em branco numa prova
      * entregue conta como erro; prova ainda em andamento conta só o que já foi marcado.
      */
     List<RespostaAvaliada> respostasDe(Collection<Integer> alunos, boolean soEncerrados, Instant agora) {
@@ -101,7 +101,7 @@ public class DevolutivaServico {
         em.createQuery("select r from RespostaDeExercicio r where r.alunoId in :alunos", RespostaDeExercicio.class)
                 .setParameter("alunos", alunos).getResultList()
                 .forEach(r -> saida.add(new RespostaAvaliada(r.getAlunoId(), r.getQuestaoId(), r.isCorreta(), Origem.AULA,
-                        r.getAlternativaMarcada(), r.getRespondidoEm(), r.getItemId(), null, null)));
+                        r.getAlternativaMarcada(), r.getRespondidoEm(), r.getItemId(), null, null, null)));
 
         var tentativas = em.createQuery("""
                 select distinct t from Tentativa t left join fetch t.respostas
@@ -110,7 +110,7 @@ public class DevolutivaServico {
         for (var t : tentativas) {
             Simulado s = t.getSimulado();
             var encerrado = SimuladosServico.situacao(s, agora) == Situacao.ENCERRADO;
-            if (soEncerrados && !encerrado) {
+            if (soEncerrados && !(encerrado && s.resultadoLiberado())) {
                 continue;
             }
             var entregue = t.consolidar(agora) || encerrado;
@@ -127,7 +127,7 @@ public class DevolutivaServico {
                 var id = sq.getQuestao().getId();
                 if (entregue || marcadas.containsKey(id)) {
                     saida.add(new RespostaAvaliada(t.getAluno().getId(), id, certas.contains(id), Origem.SIMULADO,
-                            marcadas.get(id), quando, null, s.getTitulo(), sq.getOrdem()));
+                            marcadas.get(id), quando, null, s.getId(), s.getTitulo(), sq.getOrdem()));
                 }
             }
         }
@@ -357,7 +357,7 @@ public class DevolutivaServico {
 
     // --- as três visões ------------------------------------------------------------
 
-    /** O aluno olhando para si: simulado só entra depois de fechar, como o resultado dele. */
+    /** O aluno olhando para si: simulado só entra depois de o resultado sair, como ele o vê. */
     @Transactional
     public Devolutiva minha(Identidade ident, Instant agora) {
         if (!ident.eAluno()) {

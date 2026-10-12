@@ -24,6 +24,32 @@ function Simulado() {
   const simulado = useDados(() => api.simulado(id), [id]);
   const [aba, setAba] = useState<Aba>("prova");
   const s = simulado.dados;
+  const [dialogo, confirmar] = useConfirmar();
+  const [aviso, setAviso] = useState<{ tom: "sucesso" | "erro"; texto: string } | null>(null);
+
+  // O caminho de sempre é o Claude, que escreve as análises antes. Este botão é para o resultado
+  // não ficar preso quando o professor não puder usá-lo.
+  async function liberar() {
+    if (!s) return;
+    const sim = await confirmar({
+      titulo: `Liberar o resultado de "${s.titulo}"?`,
+      texto: (
+        <>
+          <p>Cada aluno que fez a prova passa a ver a nota, o gabarito, as resoluções e os gráficos. Não dá para desfazer.</p>
+          <p className="mt-2">A análise escrita só aparece para quem já tem uma. Para gerar as análises antes, peça ao Claude: &ldquo;Gere o resultado do {s.titulo}&rdquo;.</p>
+        </>
+      ),
+      confirmar: "Liberar resultado",
+    });
+    if (!sim) return;
+    try {
+      const r = await api.liberarResultado(s.simulado_id);
+      setAviso({ tom: "sucesso", texto: `Resultado liberado para ${plural(r.participantes, "aluno", "alunos")}: ${r.com_analise} com análise escrita e ${r.sem_analise} sem.` });
+      await simulado.recarregar();
+    } catch (ex) {
+      setAviso({ tom: "erro", texto: (ex as Error).message });
+    }
+  }
 
   return (
     <Pagina
@@ -32,6 +58,21 @@ function Simulado() {
       voltar={{ href: "/admin/simulados/", rotulo: "Simulados" }}
       acoes={s && <Etiqueta tom={SITUACAO[s.situacao][0]}>{SITUACAO[s.situacao][1]}</Etiqueta>}
     >
+      {dialogo}
+      {aviso && <Aviso tom={aviso.tom}>{aviso.texto}</Aviso>}
+      {s?.situacao === "ENCERRADO" &&
+        (s.resultado_liberado_em ? (
+          <p className="text-[15px] text-suave">Resultado liberado aos alunos em {emBrasilia(s.resultado_liberado_em)}.</p>
+        ) : (
+          <Aviso tom="atencao" titulo="O resultado ainda não foi liberado">
+            <p>
+              A prova fechou, mas os alunos só veem nota, gabarito e análise quando você liberar. Peça ao Claude: &ldquo;Gere o resultado do {s.titulo}&rdquo;. Ele escreve a análise de cada aluno e libera com o seu ok.
+            </p>
+            <div className="mt-3">
+              <Botao tamanho="pequeno" onClick={liberar}>Liberar sem gerar as análises</Botao>
+            </div>
+          </Aviso>
+        ))}
       <Abas
         abas={[
           { valor: "prova", rotulo: "Prova" },

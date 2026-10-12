@@ -11,6 +11,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -49,33 +50,38 @@ public class DevolutivaPortal {
         return devolutiva.daTurma(ident, catalogo.resolverTurma(turma), Instant.now());
     }
 
-    // --- a análise escrita ---------------------------------------------------------
+    // --- a análise escrita e o acompanhamento ---------------------------------------
 
-    @GetMapping("/aluno/analise")
-    public AnaliseServico.MinhaAnalise minhaAnalise(@AuthenticationPrincipal Identidade ident) {
-        return analises.minha(ident, Instant.now());
+    /** Os alunos, para o professor procurar um pelo nome e abrir o acompanhamento dele. */
+    @GetMapping("/admin/alunos")
+    public java.util.List<AnaliseServico.AlunoNaBusca> alunos(@AuthenticationPrincipal Identidade ident,
+            @RequestParam(required = false) String busca) {
+        return analises.alunos(ident, busca);
     }
 
+    /** A análise de um aluno: a geral (só do professor) ou, com {@code simulado}, a que ele lê no resultado. */
     @GetMapping("/admin/alunos/{aluno}/analise")
-    public AnaliseServico.DoAluno analiseDoAluno(@AuthenticationPrincipal Identidade ident, @PathVariable String aluno) {
-        return analises.doAluno(ident, aluno, Instant.now());
+    public AnaliseServico.DoAluno analiseDoAluno(@AuthenticationPrincipal Identidade ident, @PathVariable String aluno,
+            @RequestParam(required = false) String simulado) {
+        return analises.doAluno(ident, aluno, simulado);
     }
 
-    public record Visibilidade(boolean oculta) {}
+    public record Visibilidade(String simulado, boolean oculta) {}
 
-    /** Ocultar tira a análise da frente do aluno; mostrar devolve. */
+    /** Ocultar tira a análise do simulado da frente do aluno; mostrar devolve. */
     @PostMapping("/admin/alunos/{aluno}/analise/visibilidade")
     public AnaliseServico.DoAluno visibilidade(@AuthenticationPrincipal Identidade ident, @PathVariable String aluno,
             @RequestBody Visibilidade pedido) {
-        return analises.ocultar(ident, aluno, pedido.oculta(), Instant.now());
+        return analises.ocultar(ident, aluno, pedido.simulado(), pedido.oculta(), Instant.now());
     }
 
-    public record PedirOutra(String orientacao) {}
-
-    /** Pedir outra oculta a atual e põe o aluno no começo da fila, com a orientação do professor. */
-    @PostMapping("/admin/alunos/{aluno}/analise/refazer")
-    public AnaliseServico.DoAluno pedirOutra(@AuthenticationPrincipal Identidade ident, @PathVariable String aluno,
-            @RequestBody(required = false) PedirOutra pedido) {
-        return analises.pedirOutra(ident, aluno, pedido == null ? null : pedido.orientacao(), Instant.now());
+    /**
+     * O professor libera o resultado pelo portal. O caminho de sempre é o Claude, que antes gera as
+     * análises; este botão existe para o resultado não ficar preso se ele não puder usá-lo.
+     */
+    @PostMapping("/admin/simulados/{simulado}/resultado/liberar")
+    public AnaliseServico.ResultadoLiberado liberarResultado(@AuthenticationPrincipal Identidade ident,
+            @PathVariable String simulado) {
+        return analises.liberarResultado(ident, simulado, Instant.now());
     }
 }

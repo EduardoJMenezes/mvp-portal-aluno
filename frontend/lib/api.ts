@@ -295,6 +295,8 @@ export type SimuladoResumo = {
   minha_prova?: { iniciada: boolean; entregue: boolean; prazo_em: string | null };
   resultado_disponivel?: boolean;
   categoria?: string | null;
+  /** Para o professor: quando ele liberou o resultado aos alunos. Nulo: ainda não liberou. */
+  resultado_liberado_em?: string | null;
 };
 
 export type QuestaoDaProva = {
@@ -312,6 +314,8 @@ export type Prova = SimuladoResumo & {
   questoes?: QuestaoDaProva[];
   entregue_automaticamente?: boolean;
   resultado_em?: string;
+  /** O simulado fechou, o aluno fez a prova e o professor ainda não liberou o resultado. */
+  aguardando_resultado?: boolean | null;
 };
 
 /**
@@ -351,16 +355,18 @@ export type Devolutiva = {
 };
 /** A análise escrita do aluno. Os blocos sem o que dizer vêm nulos. */
 export type TextoDaAnalise = { ponto_principal: string; padroes: string | null; melhorou: string | null; proximos_passos: string | null; escrita_em: string };
-export type MinhaAnalise = { analise: TextoDaAnalise | null; tem_novidade: boolean };
+/** `simulado` nulo: é a análise geral, que só o professor vê. `oculta` só vale na do simulado. */
 export type AnaliseParaOProfessor = {
+  aluno_id: number;
+  aluno: string;
+  simulado: string | null;
   analise: TextoDaAnalise | null;
   oculta: boolean;
-  refazer_pedido_em: string | null;
-  orientacao: string | null;
   escrita_por: string | null;
-  na_fila: boolean;
-  motivo_da_fila: string | null;
+  anteriores: TextoDaAnalise[];
 };
+export type AlunoNaBusca = { id: number; nome: string; email: string; turmas: string[]; analise_geral_em: string | null };
+export type ResultadoLiberado = { simulado: string; liberado_agora: boolean; liberado_em: string; participantes: number; com_analise: number; sem_analise: number };
 export type QuestaoDaAulaNaTurma = {
   item_id: number;
   item: string;
@@ -396,7 +402,12 @@ export type Resultado = {
     comentarios?: Record<string, string>;
   })[];
   analise: Recomendacao[];
+  /** O acerto do aluno em cada assunto da prova, ao lado da média de quem fez. */
+  por_assunto: AssuntoNoSimulado[];
+  /** A análise que o Claude do professor escreveu para ele; nula se não há. */
+  analise_escrita: TextoDaAnalise | null;
 };
+export type AssuntoNoSimulado = { assunto: string; questoes: number; acertos: number; percentual: number; media_da_turma: number };
 
 export type Historico = {
   simulados: {
@@ -772,7 +783,6 @@ export const api = {
   resultado: (id: number) => pedir<Resultado>(`/aluno/simulados/${id}/resultado`),
   historico: () => pedir<Historico>("/aluno/desempenho"),
   minhaDevolutiva: () => pedir<Devolutiva>("/aluno/desempenho/assuntos"),
-  minhaAnalise: () => pedir<MinhaAnalise>("/aluno/analise"),
 
   // materiais
   materiais: () => pedir<Material[]>("/aluno/materiais"),
@@ -831,11 +841,12 @@ export const api = {
   progressoDoAluno: (aluno: string | number) => pedir<ProgressoDoAluno>(`/admin/alunos/${seg(String(aluno))}/progresso`),
   devolutivaDoAluno: (aluno: string | number) => pedir<Devolutiva>(`/admin/alunos/${seg(String(aluno))}/assuntos`),
   devolutivaDaTurma: (turma: number) => pedir<DevolutivaDaTurma>(`/admin/turmas/${turma}/devolutiva`),
-  analiseDoAluno: (aluno: string | number) => pedir<AnaliseParaOProfessor>(`/admin/alunos/${seg(String(aluno))}/analise`),
-  ocultarAnalise: (aluno: string | number, oculta: boolean) =>
-    pedir<AnaliseParaOProfessor>(`/admin/alunos/${seg(String(aluno))}/analise/visibilidade`, { method: "POST", json: { oculta } }),
-  pedirOutraAnalise: (aluno: string | number, orientacao: string) =>
-    pedir<AnaliseParaOProfessor>(`/admin/alunos/${seg(String(aluno))}/analise/refazer`, { method: "POST", json: { orientacao } }),
+  alunos: (busca?: string) => pedir<AlunoNaBusca[]>(`/admin/alunos${q({ busca })}`),
+  analiseDoAluno: (aluno: string | number, simulado?: number) =>
+    pedir<AnaliseParaOProfessor>(`/admin/alunos/${seg(String(aluno))}/analise${q({ simulado })}`),
+  ocultarAnalise: (aluno: string | number, simulado: number, oculta: boolean) =>
+    pedir<AnaliseParaOProfessor>(`/admin/alunos/${seg(String(aluno))}/analise/visibilidade`, { method: "POST", json: { simulado: String(simulado), oculta } }),
+  liberarResultado: (simulado: number) => pedir<ResultadoLiberado>(`/admin/simulados/${simulado}/resultado/liberar`, { method: "POST" }),
 
   // turmas e alunos
   criarTurma: (nome: string) => pedir<{ id: number; nome: string }>("/admin/turmas", { method: "POST", json: { nome } }),

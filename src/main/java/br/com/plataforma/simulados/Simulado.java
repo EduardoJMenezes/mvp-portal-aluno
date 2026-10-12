@@ -66,6 +66,16 @@ public class Simulado extends Rastreavel implements Nomeavel {
     @Column(name = "publicado_em")
     private Instant publicadoEm;
 
+    /**
+     * Quando o professor liberou o resultado. Fechar não basta: até aqui o aluno não vê nota,
+     * gabarito nem análise.
+     */
+    @Column(name = "resultado_liberado_em")
+    private Instant resultadoLiberadoEm;
+
+    @Column(name = "resultado_liberado_por_id")
+    private Integer resultadoLiberadoPorId;
+
     /** Quem preenche é o DEFAULT do banco; aqui só se lê, para ordenar a listagem. */
     @Column(name = "criado_em", insertable = false, updatable = false)
     private Instant criadoEm;
@@ -164,6 +174,19 @@ public class Simulado extends Rastreavel implements Nomeavel {
     void mudarJanela(Instant abreEm, Instant fechaEm) {
         this.abreEm = abreEm;
         this.fechaEm = fechaEm;
+    }
+
+    void liberarResultado(Integer porId, Instant agora) {
+        this.resultadoLiberadoEm = agora;
+        this.resultadoLiberadoPorId = porId;
+    }
+
+    public boolean resultadoLiberado() {
+        return resultadoLiberadoEm != null;
+    }
+
+    public Instant getResultadoLiberadoEm() {
+        return resultadoLiberadoEm;
     }
 
     void mudarDuracao(Integer minutos) {

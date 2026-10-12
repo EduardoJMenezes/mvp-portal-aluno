@@ -8,11 +8,15 @@ import { emBrasilia, plural } from "@/lib/formato";
 
 type Grupo = { titulo: string; filtro: (s: SimuladoResumo) => boolean };
 
+// Quem fez a prova espera o resultado enquanto ela está aberta e, depois que fecha, até o professor liberar.
+const aguardando = (s: SimuladoResumo) =>
+  (s.situacao === "ABERTO" && !!s.minha_prova?.entregue) || (s.situacao === "ENCERRADO" && !!s.minha_prova?.iniciada && !s.resultado_disponivel);
+
 const GRUPOS: Grupo[] = [
   { titulo: "Abertos", filtro: (s) => s.situacao === "ABERTO" && !s.minha_prova?.entregue },
-  { titulo: "Entregues, aguardando o resultado", filtro: (s) => s.situacao === "ABERTO" && !!s.minha_prova?.entregue },
+  { titulo: "Entregues, aguardando o resultado", filtro: aguardando },
   { titulo: "Agendados", filtro: (s) => s.situacao === "AGENDADO" },
-  { titulo: "Encerrados", filtro: (s) => s.situacao === "ENCERRADO" },
+  { titulo: "Encerrados", filtro: (s) => s.situacao === "ENCERRADO" && !aguardando(s) },
 ];
 
 export default function PaginaDosSimulados() {
@@ -28,7 +32,7 @@ function Simulados() {
   const simulados = useDados(() => api.simulados());
 
   return (
-    <Pagina titulo={categoria ? `Simulados ${categoria}` : "Simulados"} legenda="Os simulados publicados para a sua turma. O resultado de cada um sai quando ele fecha.">
+    <Pagina titulo={categoria ? `Simulados ${categoria}` : "Simulados"} legenda="Os simulados publicados para a sua turma. O resultado de cada um sai depois que ele fecha, quando o professor liberar.">
       <Estado {...simulados} linhas={4} forma="lista">
         {(todos) => {
           const lista = todos.filter((s) => casaCategoria(categoria, s.categoria));
@@ -66,7 +70,7 @@ function Linha({ s }: { s: SimuladoResumo }) {
     detalhe = `Abre ${emBrasilia(s.abre_em)}`;
   } else if (s.situacao === "ABERTO" && s.minha_prova?.entregue) {
     etiqueta = ["info", "Entregue"];
-    detalhe = `O resultado sai ${emBrasilia(s.fecha_em)}`;
+    detalhe = `Fecha ${emBrasilia(s.fecha_em)} · o resultado sai depois, quando o professor liberar`;
   } else if (s.situacao === "ABERTO") {
     etiqueta = ["info", s.minha_prova?.iniciada ? "Em andamento" : "Aberto"];
     detalhe = `Fecha ${emBrasilia(s.fecha_em)}`;
@@ -79,6 +83,10 @@ function Linha({ s }: { s: SimuladoResumo }) {
     etiqueta = ["sucesso", "Resultado disponível"];
     detalhe = `Fechou ${emBrasilia(s.fecha_em)}`;
     acao = <BotaoLink variante="secundario" href={`/simulados/resultado/?id=${s.simulado_id}`}>Ver resultado</BotaoLink>;
+  } else if (s.minha_prova?.iniciada) {
+    // Fechou e ele fez: o resultado inteiro espera o professor liberar.
+    etiqueta = ["atencao", "Aguardando resultado"];
+    detalhe = `Fechou ${emBrasilia(s.fecha_em)} · o resultado sai quando o professor liberar`;
   } else {
     etiqueta = ["neutro", "Encerrado"];
     detalhe = "Você não fez esta prova";

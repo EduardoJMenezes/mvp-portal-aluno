@@ -110,11 +110,21 @@ public abstract class BaseDeComando {
         return id;
     }
 
+    /**
+     * O simulado dos testes nasce com o resultado liberado desde o fechamento: quase todos querem
+     * ver o que o aluno vê depois da prova. Quem testa a espera pela liberação usa
+     * {@link #segurarResultado}.
+     */
     protected int criarSimulado(String titulo, String status, String abreEm, String fechaEm) {
         return jdbc.queryForObject("""
-                INSERT INTO exams (titulo, status, abre_em, fecha_em, criado_por_id)
-                VALUES (?, ?, ?::timestamptz, ?::timestamptz, ?) RETURNING id""",
-                Integer.class, titulo, status, abreEm, fechaEm, ADMIN);
+                INSERT INTO exams (titulo, status, abre_em, fecha_em, criado_por_id, resultado_liberado_em)
+                VALUES (?, ?, ?::timestamptz, ?::timestamptz, ?, ?::timestamptz) RETURNING id""",
+                Integer.class, titulo, status, abreEm, fechaEm, ADMIN, fechaEm);
+    }
+
+    /** Como o simulado de verdade nasce: fechado ou não, o resultado espera o professor liberar. */
+    protected void segurarResultado(int simulado) {
+        jdbc.update("UPDATE exams SET resultado_liberado_em = NULL, resultado_liberado_por_id = NULL WHERE id = ?", simulado);
     }
 
     protected void porNaProva(int simulado, int questao, int ordem) {

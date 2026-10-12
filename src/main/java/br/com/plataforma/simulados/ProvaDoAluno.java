@@ -1,6 +1,7 @@
 package br.com.plataforma.simulados;
 
 import br.com.plataforma.acervo.AcessoServico;
+import br.com.plataforma.analytics.AnaliseServico;
 import br.com.plataforma.analytics.AnalyticsServico;
 import br.com.plataforma.catalogo.Turma;
 import br.com.plataforma.comum.Identidade;
@@ -24,8 +25,8 @@ import org.springframework.transaction.annotation.Transactional;
  * A prova do ponto de vista de quem faz.
  *
  * <p>As regras vêm de docs/MODELO-SIMULADO.md: uma janela só e um tempo de prova contado de quando
- * o aluno começa; estourou o prazo, entrega automática; o resultado só sai quando o simulado
- * fecha — e é o backend que recusa antes, não a tela que esconde.
+ * o aluno começa; estourou o prazo, entrega automática; o resultado só sai depois que o simulado
+ * fecha e o professor libera — e é o backend que recusa antes, não a tela que esconde.
  */
 @Service
 public class ProvaDoAluno {
@@ -37,9 +38,11 @@ public class ProvaDoAluno {
     private final ContasServico contas;
     private final AcessoServico acesso;
     private final AnalyticsServico analytics;
+    private final AnaliseServico analises;
 
     public ProvaDoAluno(SimuladosServico simulados, TentativaRepositorio tentativas,
-            ContasServico contas, AcessoServico acesso, AnalyticsServico analytics) {
+            ContasServico contas, AcessoServico acesso, AnalyticsServico analytics, AnaliseServico analises) {
+        this.analises = analises;
         this.simulados = simulados;
         this.tentativas = tentativas;
         this.contas = contas;
@@ -85,7 +88,7 @@ public class ProvaDoAluno {
             saida.add(new SimuladoDoAluno(r.simuladoId(), r.titulo(), r.status(), r.situacao(),
                     r.turmas(), r.abreEm(), r.fechaEm(), r.duracaoMinutos(), r.totalQuestoes(),
                     new MinhaProva(t != null, entregue, t == null ? null : Relogio.iso(t.getPrazoEm())),
-                    r.situacao() == Situacao.ENCERRADO && t != null, r.categoria()));
+                    SimuladosServico.resultadoSaiu(s, agora) && t != null, r.categoria()));
         }
         return saida;
     }
@@ -96,11 +99,21 @@ public class ProvaDoAluno {
             Integer ordem, Integer questaoId, String enunciado, Map<Letra, String> alternativas,
             Letra marcada) {}
 
+    /**
+     * {@code aguardandoResultado}: o simulado fechou, ele fez a prova, e o professor ainda não
+     * liberou o resultado. É o que separa "espere" de "você não fez esta prova".
+     */
     public record Prova(
             Integer simuladoId, String titulo, Status status, Situacao situacao, List<String> turmas,
             String abreEm, String fechaEm, Integer duracaoMinutos, int totalQuestoes, Estado estado,
             Boolean resultadoDisponivel, Boolean entregueAutomaticamente, String resultadoEm,
-            String prazoEm, Long segundosRestantes, List<QuestaoDaProva> questoes) {}
+            String prazoEm, Long segundosRestantes, List<QuestaoDaProva> questoes, Boolean aguardandoResultado) {
+
+        Prova aguardando() {
+            return new Prova(simuladoId, titulo, status, situacao, turmas, abreEm, fechaEm, duracaoMinutos, totalQuestoes,
+                    estado, resultadoDisponivel, entregueAutomaticamente, resultadoEm, prazoEm, segundosRestantes, questoes, true);
+        }
+    }
 
     /**
      * A prova para o aluno: agendado, em andamento (sem gabarito), entregue ou encerrado. Abrir pela
@@ -124,7 +137,8 @@ public class ProvaDoAluno {
             if (t != null) {
                 t.consolidar(agora);
             }
-            return prova(r, Estado.ENCERRADO, t != null, null, null, null, null, null);
+            var encerrada = prova(r, Estado.ENCERRADO, t != null && s.resultadoLiberado(), null, null, null, null, null);
+            return t != null && !s.resultadoLiberado() ? encerrada.aguardando() : encerrada;
         }
         if (t == null) {
             var limite = agora.plus(Duration.ofMinutes(s.getDuracaoMinutos() == null ? 0 : s.getDuracaoMinutos()));
@@ -157,7 +171,7 @@ public class ProvaDoAluno {
             List<QuestaoDaProva> questoes) {
         return new Prova(r.simuladoId(), r.titulo(), r.status(), r.situacao(), r.turmas(), r.abreEm(),
                 r.fechaEm(), r.duracaoMinutos(), r.totalQuestoes(), estado, resultado, automatica,
-                resultadoEm, prazoEm, segundos, questoes);
+                resultadoEm, prazoEm, segundos, questoes, null);
     }
 
     private static long restantes(Tentativa t, Instant agora) {
@@ -212,7 +226,7 @@ public class ProvaDoAluno {
             t.getRespostas().add(new Resposta(t, questaoId, letra, correta, agora));
         }
         tentativas.saveAndFlush(t);
-        // Sem `correta`: o aluno só vê o resultado quando o simulado fechar.
+        // Sem `correta`: o aluno só vê o resultado depois do fechamento, quando o professor liberar.
         return new Registrada(true, t.getRespostas().size(), s.getQuestoes().size(), restantes(t, agora));
     }
 
@@ -245,7 +259,8 @@ public class ProvaDoAluno {
         }
         return new Entregue(s.getId(), s.getTitulo(), true, t.isEntregueAutomaticamente(),
                 t.getRespostas().size(), s.getQuestoes().size(), Relogio.iso(s.getFechaEm()),
-                "Prova entregue. O resultado sai em %s.".formatted(Relogio.emBrasilia(s.getFechaEm())));
+                "Prova entregue. O simulado fecha em %s, e o resultado sai quando o professor liberar."
+                        .formatted(Relogio.emBrasilia(s.getFechaEm())));
     }
 
     // --- resultado e histórico -----------------------------------------------
@@ -255,14 +270,21 @@ public class ProvaDoAluno {
             Letra marcada, boolean emBranco, Letra gabarito, boolean correta, String resolucaoComentada,
             AcessoServico.VideoDescrito resolucao, Map<Letra, String> comentarios) {}
 
+    /**
+     * {@code porAssunto}: o acerto dele em cada assunto da prova, ao lado da média de quem fez.
+     * {@code analiseEscrita}: o texto que o Claude do professor escreveu para ele; nulo quando não
+     * há, ou o professor ocultou. {@code analise} são os vídeos recomendados, de antes.
+     */
     public record Resultado(
             Integer simuladoId, String titulo, int acertos, int total, double percentual, int emBranco,
             boolean entregueAutomaticamente, int posicao, int participantes,
-            List<QuestaoCorrigida> questoes, List<AnalyticsServico.Recomendacao> analise) {}
+            List<QuestaoCorrigida> questoes, List<AnalyticsServico.Recomendacao> analise,
+            List<AnaliseServico.AssuntoNoSimulado> porAssunto, AnaliseServico.Texto analiseEscrita) {}
 
     /**
-     * O resultado individual: nota, posição, gabarito, resolução e análise. Só depois do fechamento.
-     * O ranking completo não sai daqui — o aluno vê a própria posição e quantos participaram.
+     * O resultado individual: nota, posição, gabarito, resolução e análise. Só depois do fechamento
+     * e de o professor liberar. O ranking completo não sai daqui — o aluno vê a própria posição e
+     * quantos participaram.
      */
     @Transactional
     public Resultado resultado(Identidade ident, String referencia, Instant agora) {
@@ -273,8 +295,12 @@ public class ProvaDoAluno {
         var s = simulados.resolver(referencia);
         exigirVisivel(ident, s);
         if (SimuladosServico.situacao(s, agora) != Situacao.ENCERRADO) {
-            throw new RegraDeNegocio("O resultado de '%s' sai em %s, quando o simulado fechar."
+            throw new RegraDeNegocio("'%s' fecha em %s, e o resultado sai depois, quando o professor liberar."
                     .formatted(s.getTitulo(), Relogio.emBrasilia(s.getFechaEm())));
+        }
+        if (!s.resultadoLiberado()) {
+            throw new RegraDeNegocio("O resultado de '%s' ainda não foi liberado pelo professor."
+                    .formatted(s.getTitulo()));
         }
         var linhas = simulados.classificar(s, agora);
         var minha = linhas.stream().filter(c -> c.tentativa().getAluno().getId().equals(ident.usuarioId()))
@@ -307,7 +333,9 @@ public class ProvaDoAluno {
                 t.isEntregueAutomaticamente(), minha.posicao(), linhas.size(), questoes,
                 analytics.recomendarVideos(ident,
                         questoes.stream().filter(q -> !q.correta()).map(QuestaoCorrigida::questaoId).toList(),
-                        5, agora));
+                        5, agora),
+                analises.porAssuntoNoSimulado(s, t, linhas.stream().map(SimuladosServico.Classificado::tentativa).toList()),
+                analises.doSimuladoParaOAluno(s.getId(), ident.usuarioId()));
     }
 
     public record SimuladoFeito(
@@ -317,8 +345,8 @@ public class ProvaDoAluno {
     public record Historico(List<SimuladoFeito> simulados, List<AnalyticsServico.Recomendacao> topicos) {}
 
     /**
-     * Os simulados encerrados que o aluno fez, com nota e posição, e os tópicos em que mais errou.
-     * Só encerrados: o histórico não pode ser uma porta dos fundos para o resultado.
+     * Os simulados que o aluno fez e cujo resultado já saiu, com nota e posição, e os tópicos em
+     * que mais errou. Só os liberados: o histórico não pode ser uma porta dos fundos para o resultado.
      */
     @Transactional
     public Historico historico(Identidade ident, Instant agora) {
@@ -329,7 +357,7 @@ public class ProvaDoAluno {
         var erradas = new ArrayList<Integer>();
         for (var t : tentativas.todasDoAluno(ident.usuarioId())) {
             var s = t.getSimulado();
-            if (SimuladosServico.situacao(s, agora) != Situacao.ENCERRADO) {
+            if (!SimuladosServico.resultadoSaiu(s, agora)) {
                 continue;
             }
             var classificacao = simulados.classificar(s, agora);

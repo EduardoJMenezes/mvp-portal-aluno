@@ -1,15 +1,15 @@
 "use client";
 
 import { useRouter, useSearchParams } from "next/navigation";
-import { Suspense } from "react";
-import { AnaliseDoAluno } from "@/components/Analise";
+import { Suspense, useState } from "react";
+import { AnaliseDoSimuladoParaOProfessor, AnaliseGeral } from "@/components/Analise";
 import { CursoDoAluno } from "@/components/CursoDoAluno";
 import { PorAssunto, ResumoDaDevolutiva } from "@/components/Devolutiva";
 import { OndeRevisar } from "@/components/Resultado";
 import { Anel } from "@/components/Resultado";
-import { Aviso, Campo, Cartao, Estado, Etiqueta, Pagina, TituloDeSecao } from "@/components/ui";
-import { api, useDados } from "@/lib/api";
-import { plural } from "@/lib/formato";
+import { Aviso, BotaoLink, Campo, Cartao, Estado, Etiqueta, LinkDeTitulo, Pagina, TituloDeSecao, Vazio } from "@/components/ui";
+import { api, useDados, type AlunoNaBusca } from "@/lib/api";
+import { dataCurta, plural } from "@/lib/formato";
 
 export default function PaginaDoDesempenho() {
   return (
@@ -19,24 +19,82 @@ export default function PaginaDoDesempenho() {
   );
 }
 
+const semAcento = (texto: string) => texto.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
+
+/** A porta de entrada: o professor acha o aluno pelo nome e abre o acompanhamento dele. */
+function BuscaDeAlunos() {
+  const alunos = useDados(() => api.alunos());
+  const [busca, setBusca] = useState("");
+  const termo = semAcento(busca.trim());
+  const filtrar = (lista: AlunoNaBusca[]) => (termo ? lista.filter((a) => semAcento(a.nome).includes(termo) || semAcento(a.email).includes(termo)) : lista);
+
+  return (
+    <Pagina titulo="Desempenho por aluno" legenda="Procure um aluno para ver o que ele já fez do curso, como está em cada assunto, como foi nos simulados e a análise geral dele.">
+      <Campo rotulo="Aluno" className="max-w-md">
+        {(id) => <input id={id} type="search" autoFocus value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Nome ou e-mail" className="campo" />}
+      </Campo>
+      <Estado {...alunos} linhas={4}>
+        {(todos) => {
+          const lista = filtrar(todos);
+          if (!todos.length) return <Vazio titulo="Nenhum aluno cadastrado">Os alunos entram pelas turmas, em Turmas e alunos.</Vazio>;
+          if (!lista.length) return <Vazio titulo="Ninguém com esse nome">Confira a grafia, ou procure pelo e-mail.</Vazio>;
+          return (
+            <Cartao className="overflow-x-auto">
+              <table className="tabela min-w-[36rem]">
+                <thead>
+                  <tr>
+                    <th scope="col">Aluno</th>
+                    <th scope="col">Turmas</th>
+                    <th scope="col">Análise geral</th>
+                    <th scope="col"><span className="sr-only">Abrir</span></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {lista.map((a) => (
+                    <tr key={a.id}>
+                      <td>
+                        <LinkDeTitulo href={`/admin/alunos/?aluno=${a.id}`}>{a.nome}</LinkDeTitulo>
+                        <span className="block text-[13px] text-suave">{a.email}</span>
+                      </td>
+                      <td className="text-suave">{a.turmas.join(", ") || "Sem turma"}</td>
+                      <td>{a.analise_geral_em ? <Etiqueta tom="sucesso">Escrita em {dataCurta(a.analise_geral_em)}</Etiqueta> : <span className="text-suave">—</span>}</td>
+                      <td className="text-right">
+                        <BotaoLink tamanho="mini" href={`/admin/alunos/?aluno=${a.id}`}>Acompanhar</BotaoLink>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </Cartao>
+          );
+        }}
+      </Estado>
+    </Pagina>
+  );
+}
+
 function DesempenhoDoAluno() {
+  const aluno = useSearchParams().get("aluno") ?? "";
+  return aluno ? <Acompanhamento aluno={aluno} /> : <BuscaDeAlunos />;
+}
+
+function Acompanhamento({ aluno }: { aluno: string }) {
   const router = useRouter();
   const parametros = useSearchParams();
-  const aluno = parametros.get("aluno") ?? "";
   const simulado = parametros.get("simulado") ?? undefined;
   const desempenho = useDados(() => api.desempenho(aluno, simulado), [aluno, simulado]);
   const simulados = useDados(() => api.simuladosDoProfessor());
   const assuntos = useDados(() => (aluno ? api.devolutivaDoAluno(aluno).catch(() => null) : Promise.resolve(null)), [aluno]);
-  const analise = useDados(() => (aluno ? api.analiseDoAluno(aluno).catch(() => null) : Promise.resolve(null)), [aluno]);
+  const geral = useDados(() => api.analiseDoAluno(aluno).catch(() => null), [aluno]);
+  // A análise do simulado que está na tela: o escolhido, ou o último que ele começou.
+  const idDoSimulado = desempenho.dados?.simulado_id ?? null;
+  const doSimulado = useDados(() => (idDoSimulado ? api.analiseDoAluno(aluno, idDoSimulado).catch(() => null) : Promise.resolve(null)), [aluno, idDoSimulado]);
 
   return (
-    <Pagina titulo={desempenho.dados?.aluno ?? "Desempenho do aluno"} legenda="O que já fez do curso, como está em cada assunto e como foi em cada simulado, a qualquer momento, inclusive antes de fechar." voltar={{ href: "/admin/turmas/", rotulo: "Turmas" }}>
-      {!aluno ? (
-        <Aviso tom="atencao">Abra o desempenho a partir da lista de alunos ou do ranking.</Aviso>
-      ) : (
-        <>
+    <Pagina titulo={desempenho.dados?.aluno ?? "Desempenho do aluno"} legenda="O que já fez do curso, como está em cada assunto e como foi em cada simulado, a qualquer momento, inclusive antes de fechar." voltar={{ href: "/admin/alunos/", rotulo: "Desempenho por aluno" }}>
+      <>
+          {geral.dados && <AnaliseGeral dados={geral.dados} aoAtualizar={geral.recarregar} />}
           <CursoDoAluno aluno={aluno} />
-          {analise.dados && <AnaliseDoAluno aluno={aluno} dados={analise.dados} aoMudar={analise.setDados} />}
           {assuntos.dados && (
             <section className="flex flex-col gap-3" aria-labelledby="titulo-por-assunto">
               <TituloDeSecao>
@@ -114,6 +172,10 @@ function DesempenhoDoAluno() {
                     </table>
                   </Cartao>
 
+                  {idDoSimulado && doSimulado.dados && (
+                    <AnaliseDoSimuladoParaOProfessor aluno={aluno} simuladoId={idDoSimulado} dados={doSimulado.dados} aoMudar={doSimulado.setDados} />
+                  )}
+
                   {d.recomendacoes && d.recomendacoes.length > 0 && (
                     <OndeRevisar analise={d.recomendacoes} legenda="Os assuntos em que o aluno mais errou e os vídeos que explicam cada um." />
                   )}
@@ -121,8 +183,7 @@ function DesempenhoDoAluno() {
               )
             }
           </Estado>
-        </>
-      )}
+      </>
     </Pagina>
   );
 }

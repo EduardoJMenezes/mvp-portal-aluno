@@ -149,7 +149,7 @@ export default function PaginaDeEstilo() {
             <Etiqueta tom="atencao">Rascunho</Etiqueta>
             <Etiqueta tom="erro">Errou</Etiqueta>
           </div>
-          <Aviso tom="sucesso" titulo="Prova entregue">O resultado sai quando o simulado fechar.</Aviso>
+          <Aviso tom="sucesso" titulo="Prova entregue">O resultado sai quando o professor liberar.</Aviso>
           <Aviso tom="atencao">Faltam menos de 5 minutos de prova.</Aviso>
           <Aviso tom="erro">Não deu para carregar. Tente de novo.</Aviso>
           <Aviso tom="info">Só vale a primeira resposta: depois de confirmar, não dá para trocar.</Aviso>
