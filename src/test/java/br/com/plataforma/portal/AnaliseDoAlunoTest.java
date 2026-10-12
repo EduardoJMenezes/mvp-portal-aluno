@@ -89,6 +89,10 @@ class AnaliseDoAlunoTest extends BaseDoPortal {
                 .andExpect(jsonPath("$.alunos[0].por_assunto[0].nome").value("Estequiometria"))
                 .andExpect(jsonPath("$.alunos[0].por_assunto[0].subassuntos[0].nome").value("Mol"))
                 .andExpect(jsonPath("$.alunos[0].por_assunto[0].subassuntos[0].respostas").value(5))
+                // Na primeira análise nada é novidade: não há "antes" com que comparar.
+                .andExpect(jsonPath("$.alunos[0].novas_respostas").value(0))
+                .andExpect(jsonPath("$.alunos[0].por_assunto[0].novas_respostas").value(0))
+                .andExpect(jsonPath("$.alunos[0].por_assunto[0].subassuntos[0].novos_acertos").value(0))
                 // O erro mais recente primeiro; cada um com o que o professor escreveu para aquela alternativa.
                 .andExpect(jsonPath("$.alunos[0].erros_recentes[*].questao_id").value(contains(q2, q1)))
                 .andExpect(jsonPath("$.alunos[0].erros_recentes[1].marcada").value("B"))

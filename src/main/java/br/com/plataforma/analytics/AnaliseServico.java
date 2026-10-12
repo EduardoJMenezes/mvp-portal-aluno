@@ -1,5 +1,6 @@
 package br.com.plataforma.analytics;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import br.com.plataforma.analytics.DevolutivaServico.Nivel;
 import br.com.plataforma.analytics.DevolutivaServico.Origem;
 import br.com.plataforma.analytics.DevolutivaServico.RespostaAvaliada;
@@ -181,10 +182,13 @@ public class AnaliseServico {
 
     /**
      * Um erro do aluno. {@code marcada} nula: deixou em branco. Os comentários são os que o
-     * professor aprovou; nulo é "sem comentário", e aí só se sabe que ele errou.
+     * professor aprovou; sem comentário o campo nem sai (o resumo de uma turma é grande, e campo
+     * vazio é peso), e aí só se sabe que ele errou.
      */
     public record ErroDoAluno(Integer questaoId, String onde, String assunto, String subassunto, String enunciado,
-            Letra marcada, Letra gabarito, String comentarioDaMarcada, String comentarioDaCorreta, boolean novo) {}
+            Letra marcada, Letra gabarito,
+            @JsonInclude(JsonInclude.Include.NON_NULL) String comentarioDaMarcada,
+            @JsonInclude(JsonInclude.Include.NON_NULL) String comentarioDaCorreta, boolean novo) {}
 
     /** O que há no curso do aluno sobre um ponto fraco, pelo nome que ele vê na tela. */
     public record ParaRevisar(String topico, int erros, List<String> assistir, List<String> ler, List<String> praticar,
@@ -207,7 +211,7 @@ public class AnaliseServico {
     /** O enunciado em uma linha: sem a marca da figura e sem quebras, para caber no resumo. */
     static String emUmaLinha(String enunciado) {
         var limpo = enunciado.replaceAll("!\\[[^\\]]*\\]\\([^)]*\\)", " ").replaceAll("\\s+", " ").strip();
-        return limpo.length() > 160 ? limpo.substring(0, 160) + "…" : limpo;
+        return limpo.length() > 100 ? limpo.substring(0, 100) + "…" : limpo;
     }
 
     private AlunoPendente resumir(NaFila f, Instant agora) {
@@ -221,7 +225,8 @@ public class AnaliseServico {
         var novasDoSub = new HashMap<Integer, int[]>();
         for (var r : respostas) {
             var e = etiquetas.get(r.questaoId());
-            if (e == null || !depois(f.ultima(), r.quando())) {
+            // Na primeira análise não há "depois": tudo é a base, e nada conta como novidade.
+            if (e == null || f.ultima() == null || !depois(f.ultima(), r.quando())) {
                 continue;
             }
             var a = novasDoAssunto.computeIfAbsent(e.assuntoId(), k -> new int[2]);
