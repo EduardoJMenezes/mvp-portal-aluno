@@ -892,7 +892,16 @@ export const api = {
   /** Tira do rascunho a questão que o professor conferiu no Banco de questões. */
   publicarQuestao: (id: number) => pedir<QuestaoDetalhada>(`/admin/questoes/${id}/publicacao`, { method: "POST" }),
   removerQuestao: (id: number) => pedir(`/admin/questoes/${id}`, { method: "DELETE" }),
-  /** As questões de um .docx, lidas para a tela de montar a prova. Nada é criado no servidor além das figuras. */
+  /**
+   * Várias questões novas de uma vez no Banco de questões, num rascunho só. Com `publicar`, as que
+   * não têm imagem pendente já saem publicadas; as outras ficam em rascunho.
+   */
+  importarQuestoes: (questoes: unknown[], arquivo: string | null, publicar: boolean) =>
+    pedir<{ rascunho_id: number; questoes: number[]; publicadas: number; em_rascunho: number; com_imagem_pendente: number }>(
+      "/admin/questoes/lote",
+      { method: "POST", json: { questoes, arquivo: arquivo || undefined, publicar } },
+    ),
+  /** As questões de um .docx, lidas para conferir na tela (do simulado ou do banco). Nada é criado no servidor além das figuras. */
   lerDocxDoSimulado: (arquivo: File) => {
     const corpo = new FormData();
     corpo.append("arquivo", arquivo);

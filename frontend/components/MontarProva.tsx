@@ -81,18 +81,25 @@ export const doBanco = (q: { questao_id: number; enunciado: string; gabarito?: s
   gabarito: q.gabarito,
 });
 
+/** Para onde vai a lista: a prova de um simulado, ou direto o Banco de questões. */
+export type DestinoDaLista = "prova" | "banco";
+
 export function MontarProva({
   entradas,
   aoMudar,
   permiteNova,
   aoImportar,
+  destino = "prova",
 }: {
   entradas: EntradaDaProva[];
   aoMudar: (entradas: EntradaDaProva[]) => void;
   permiteNova: boolean;
   /** Chamado depois de um .docx ser lido: o título do documento serve ao simulado que ainda não tem um. */
-  aoImportar?: (lido: { titulo: string | null }) => void;
+  aoImportar?: (lido: { titulo: string | null; arquivo: string }) => void;
+  /** No Banco de questões a lista é só de questões novas: não há o que escolher do banco. */
+  destino?: DestinoDaLista;
 }) {
+  const noBanco = destino === "banco";
   // "nova" abre o formulário em branco; um número reabre a questão nova daquela posição.
   const [painel, setPainel] = useState<"banco" | "nova" | number | null>(null);
   const editada = typeof painel === "number" ? entradas[painel] : undefined;
@@ -114,7 +121,7 @@ export function MontarProva({
       const vez = Date.now();
       aoMudar([...entradas, ...r.questoes.map((q) => doDocx(q, vez))]);
       setLido({ arquivo: r.arquivo || docx.name, questoes: r.questoes.length, incompletas: r.questoes.filter((q) => q.incompleta).length, avisos: r.avisos });
-      aoImportar?.({ titulo: r.titulo });
+      aoImportar?.({ titulo: r.titulo, arquivo: r.arquivo || docx.name });
     } catch (ex) {
       setErroDaLeitura((ex as Error).message);
     } finally {
@@ -149,7 +156,11 @@ export function MontarProva({
           >
             <FileUp aria-hidden="true" className="size-6 text-suave" strokeWidth={1.6} />
             <p className="text-[15px] font-medium text-tinta">{lendo ? "Lendo o documento…" : "Nenhuma questão ainda"}</p>
-            <p className="max-w-md text-[15px] text-suave">Tem o simulado num .docx? Solte o arquivo aqui, ou use “Importar de um .docx”. As questões entram na lista para você conferir e editar. Ou escolha do banco, ou escreva uma nova.</p>
+            <p className="max-w-md text-[15px] text-suave">
+              {noBanco
+                ? "Solte o .docx aqui, ou use “Importar de um .docx”. As questões entram na lista para você conferir e editar antes de irem para o banco."
+                : "Tem o simulado num .docx? Solte o arquivo aqui, ou use “Importar de um .docx”. As questões entram na lista para você conferir e editar. Ou escolha do banco, ou escreva uma nova."}
+            </p>
           </div>
         ) : (
           <p className="rounded-cartao border border-dashed border-borda px-4 py-6 text-center text-[15px] text-suave">Nenhuma questão ainda. Escolha do banco.</p>
@@ -190,10 +201,12 @@ export function MontarProva({
       )}
 
       <div className="flex flex-wrap gap-2">
-        <Botao tamanho="pequeno" variante="secundario" onClick={() => setPainel("banco")}>
-          <Search aria-hidden="true" className="size-4" />
-          Escolher do banco
-        </Botao>
+        {!noBanco && (
+          <Botao tamanho="pequeno" variante="secundario" onClick={() => setPainel("banco")}>
+            <Search aria-hidden="true" className="size-4" />
+            Escolher do banco
+          </Botao>
+        )}
         {permiteNova && (
           <Botao tamanho="pequeno" onClick={() => setPainel("nova")}>
             <Plus aria-hidden="true" className="size-4" />
@@ -213,7 +226,7 @@ export function MontarProva({
       {erroDaLeitura && <Aviso tom="erro">{erroDaLeitura}</Aviso>}
       {lido && (
         <Aviso tom={lido.incompletas || lido.avisos.length ? "atencao" : "sucesso"} titulo={`${plural(lido.questoes, "questão lida", "questões lidas")} de ${lido.arquivo}`}>
-          Entraram no fim da lista, como questões novas. Confira cada uma em “Editar” antes de criar o rascunho: é lá que se acerta o texto, as figuras, o assunto e os comentários.
+          Entraram no fim da lista, como questões novas. Confira cada uma em “Editar” antes de {noBanco ? "importar" : "criar o rascunho"}: é lá que se acerta o texto, as figuras, o assunto e os comentários.
           {lido.incompletas > 0 && ` ${plural(lido.incompletas, "ficou incompleta", "ficaram incompletas")} e ${lido.incompletas === 1 ? "está marcada" : "estão marcadas"} na lista.`}
           {lido.avisos.length > 0 && ` Avisos da leitura: ${lido.avisos.join(" ")}`}
         </Aviso>
@@ -225,6 +238,7 @@ export function MontarProva({
           key={typeof painel === "number" ? `e${painel}` : "nova"}
           inicial={editada && editada.questao_id === undefined ? editada : undefined}
           posicao={typeof painel === "number" ? painel + 1 : entradas.length + 1}
+          destino={destino}
           aoGravar={(q) => {
             aoMudar(typeof painel === "number" ? entradas.map((e, j) => (j === painel ? q : e)) : [...entradas, q]);
           }}
@@ -310,8 +324,11 @@ const igual = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b
  * Fechar não perde o trabalho. A questão nova fica guardada e volta ao reabrir; na que já está na
  * prova (`inicial`), sair com mudança por guardar pede confirmação.
  */
-function EscreverQuestao({ inicial, posicao, aoGravar, aoFechar }: { inicial?: QuestaoNovaNaProva; posicao: number; aoGravar: (q: QuestaoNovaNaProva) => void; aoFechar: () => void }) {
+function EscreverQuestao({ inicial, posicao, destino, aoGravar, aoFechar }: { inicial?: QuestaoNovaNaProva; posicao: number; destino: DestinoDaLista; aoGravar: (q: QuestaoNovaNaProva) => void; aoFechar: () => void }) {
   const saida = useSaida(aoFechar);
+  // No simulado a questão nasce com a prova; no Banco, quando a lista inteira é importada.
+  const nasce = destino === "banco" ? "Entra no Banco de questões quando você importar a lista." : "Nasce em rascunho junto com o simulado e é aprovada com ele.";
+  const onde = destino === "banco" ? "lista" : "prova";
   const assuntos = useDados(() => api.assuntos());
   const [retomada] = useState(() => (inicial ? null : lerEmAndamento()));
   const [form, setForm] = useState<Formulario>(inicial?.form ?? retomada?.form ?? VAZIO);
@@ -364,8 +381,8 @@ function EscreverQuestao({ inicial, posicao, aoGravar, aoFechar }: { inicial?: Q
       aoFechar={pedirParaSair}
       tamanho="tela"
       fechaClicandoFora={false}
-      titulo={inicial ? `Questão ${posicao} da prova` : "Escrever questão nova"}
-      legenda={inicial ? "Nasce em rascunho junto com o simulado e é aprovada com ele." : "Nasce em rascunho junto com o simulado e é aprovada com ele. O que você escreve aqui fica guardado neste navegador até entrar na prova."}
+      titulo={inicial ? `Questão ${posicao} da ${onde}` : "Escrever questão nova"}
+      legenda={inicial ? nasce : `${nasce} O que você escreve aqui fica guardado neste navegador até entrar na ${onde}.`}
       rodape={
         saindo ? (
           <div className="mx-auto flex w-full max-w-6xl flex-wrap items-center justify-between gap-3">
@@ -379,7 +396,7 @@ function EscreverQuestao({ inicial, posicao, aoGravar, aoFechar }: { inicial?: Q
           <div className="mx-auto flex w-full max-w-6xl flex-wrap items-center justify-end gap-2">
             {erro && <p role="alert" className="mr-auto text-sm font-medium text-erro">{erro}</p>}
             <Botao onClick={pedirParaSair}>{inicial ? "Cancelar" : "Fechar e continuar depois"}</Botao>
-            <Botao variante="primario" onClick={gravar}>{inicial ? "Guardar a questão" : "Adicionar à prova"}</Botao>
+            <Botao variante="primario" onClick={gravar}>{inicial ? "Guardar a questão" : `Adicionar à ${onde}`}</Botao>
           </div>
         )
       }

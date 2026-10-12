@@ -23,6 +23,7 @@ import br.com.plataforma.taxonomia.TaxonomiaServico;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -90,6 +91,39 @@ public class RascunhosServico {
         rascunho.mudarResumo("1 questão de simulado%s: %s"
                 .formatted(etiqueta, QuestoesServico.resumo(questao.getEnunciado(), 60)));
         return rascunho;
+    }
+
+    /** O rascunho e as questões que nasceram nele, na ordem em que vieram. */
+    public record QuestoesPropostas(Rascunho rascunho, List<Questao> questoes) {}
+
+    /**
+     * Propõe várias questões para o acervo de uma vez — as que o professor leu de um .docx no Banco
+     * de questões — num rascunho só: vinte questões são um envio, não vinte rascunhos.
+     *
+     * <p>Ou entram todas, ou nenhuma. A que não fecha diz qual é pela posição na lista, que é como
+     * o professor a vê na tela.
+     */
+    @Transactional
+    public QuestoesPropostas criarQuestoesRascunho(Identidade ident, List<QuestoesServico.DadosDaQuestaoNova> dados,
+            String origem) {
+        ident.exigirOperador();
+        if (dados == null || dados.isEmpty()) {
+            throw new RegraDeNegocio("Informe ao menos uma questão.");
+        }
+        var rascunho = abrir(ident, TipoRascunho.QUESTOES, null, null);
+        var criadas = new ArrayList<Questao>();
+        for (int i = 0; i < dados.size(); i++) {
+            try {
+                criadas.add(questoes.criarNova(ident, rascunho.getId(), dados.get(i), null));
+            } catch (RegraDeNegocio e) {
+                throw new RegraDeNegocio("Questão %d: %s".formatted(i + 1, e.getMessage()));
+            }
+        }
+        var de = origem == null || origem.isBlank() ? "" : " de " + origem.strip();
+        rascunho.mudarResumo(criadas.size() == 1
+                ? "1 questão%s: %s".formatted(de, QuestoesServico.resumo(criadas.getFirst().getEnunciado(), 60))
+                : "%d questões%s".formatted(criadas.size(), de));
+        return new QuestoesPropostas(rascunho, List.copyOf(criadas));
     }
 
     /**

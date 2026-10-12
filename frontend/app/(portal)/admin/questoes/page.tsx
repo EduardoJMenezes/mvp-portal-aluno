@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { ComoFunciona, Passos } from "@/components/ComoFunciona";
 import { Aviso, Botao, BotaoLink, Campo, Cartao, Carregando, Etiqueta, LinkNoTexto, Pagina, Vazio } from "@/components/ui";
 import { api, useDados, type Questao } from "@/lib/api";
+import { plural } from "@/lib/formato";
 import { DIFICULDADE } from "@/lib/rotulos";
 import { TextoFormatado } from "@/lib/texto";
 
@@ -56,6 +57,17 @@ export default function BancoDeQuestoes() {
   const [temMais, setTemMais] = useState(false);
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState("");
+  // O que a tela de "Importar .docx" acabou de trazer: ela volta para cá com a contagem no endereço.
+  const [importado, setImportado] = useState<{ total: number; publicadas: number; pendentes: number } | null>(null);
+
+  useEffect(() => {
+    const p = new URLSearchParams(window.location.search);
+    const total = Number(p.get("importadas"));
+    if (!total) return;
+    setImportado({ total, publicadas: Number(p.get("publicadas")) || 0, pendentes: Number(p.get("pendentes")) || 0 });
+    // O aviso é de agora: recarregar a página não deve repeti-lo.
+    window.history.replaceState(null, "", window.location.pathname);
+  }, []);
 
   // A busca por texto espera a pessoa parar de digitar.
   useEffect(() => {
@@ -90,10 +102,22 @@ export default function BancoDeQuestoes() {
       acoes={
         <>
           <QuestoesPorPrints />
+          <BotaoLink href="/admin/questoes/importar/">Importar .docx</BotaoLink>
           <BotaoLink variante="primario" href="/admin/questoes/editar/">Nova questão</BotaoLink>
         </>
       }
     >
+      {importado && (
+        <Aviso tom={importado.pendentes ? "atencao" : "sucesso"} titulo={`${plural(importado.total, "questão importada", "questões importadas")} do .docx`}>
+          {importado.publicadas === importado.total
+            ? "Já estão publicadas, em cima da lista: podem entrar em simulado e em aula."
+            : importado.publicadas === 0
+              ? "Estão em rascunho, em cima da lista. Abra cada uma, confira e publique."
+              : `${plural(importado.publicadas, "foi publicada", "foram publicadas")}; ${plural(importado.total - importado.publicadas, "ficou em rascunho", "ficaram em rascunho")}, em cima da lista.`}
+          {importado.pendentes > 0 && ` ${plural(importado.pendentes, "está com imagem pendente", "estão com imagem pendente")}: insira a figura no texto antes de publicar.`}
+        </Aviso>
+      )}
+
       <Cartao className="grid gap-3 p-4 sm:grid-cols-2 lg:grid-cols-[2fr_1fr_1fr_1fr]">
         <Campo rotulo="Buscar no enunciado">
           {(id) => <input id={id} type="search" value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Ex.: pureza, rendimento" className="campo" />}
@@ -133,7 +157,7 @@ export default function BancoDeQuestoes() {
       {carregando && questoes.length === 0 ? (
         <Carregando linhas={4} />
       ) : questoes.length === 0 ? (
-        <Vazio titulo="Nenhuma questão encontrada">Mude os filtros ou cadastre uma nova questão.</Vazio>
+        <Vazio titulo="Nenhuma questão encontrada">Mude os filtros, cadastre uma nova questão ou importe várias de um .docx.</Vazio>
       ) : (
         <ul className="flex flex-col gap-3">
           {questoes.map((q) => (

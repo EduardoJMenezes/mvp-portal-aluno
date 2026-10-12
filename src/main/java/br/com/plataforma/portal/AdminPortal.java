@@ -459,6 +459,55 @@ public class AdminPortal {
         return rascunhos.detalhar(ident, rascunho.rascunhoId(), Instant.now());
     }
 
+    public record QuestoesEmLoteIn(
+            @NotEmpty(message = "é obrigatória: ao menos uma questão")
+            @Size(max = 200, message = "aceita até 200 questões por vez") List<@Valid QuestaoIn> questoes,
+            String arquivo, Boolean publicar) {}
+
+    /**
+     * {@code publicadas} e {@code emRascunho} somam as criadas; {@code comImagemPendente} são as que
+     * ficaram em rascunho por isso, mesmo com o pedido de publicar.
+     */
+    public record QuestoesEmLote(Integer rascunhoId, List<Integer> questoes, int publicadas, int emRascunho,
+            int comImagemPendente) {}
+
+    /**
+     * Várias questões de uma vez, como as que o professor leu de um .docx: nascem todas num rascunho
+     * só, em rascunho, e aparecem em cima no Banco de questões. Ou entram todas, ou nenhuma.
+     *
+     * <p>Com {@code publicar}, quem conferiu a lista na tela já as publica — cada uma pela mesma
+     * porta do "Publicar" do Banco, com a aprovação gravada. A que está com imagem pendente não
+     * sai: fica em rascunho, à espera da figura.
+     */
+    @PostMapping("/questoes/lote")
+    @Transactional
+    public QuestoesEmLote criarQuestoes(@AuthenticationPrincipal Identidade ident,
+            @Valid @RequestBody QuestoesEmLoteIn dados) {
+        var novas = dados.questoes().stream()
+                .map(q -> new QuestoesServico.DadosDaQuestaoNova(q.enunciado(), q.alternativas(), q.gabarito(),
+                        q.assunto(), q.subassunto(), q.dificuldade(), vimeoImportacao.resolucao(q.vimeoId()),
+                        q.imagemPendente() != null && q.imagemPendente(), q.resolucaoComentada(), null,
+                        q.comentarios()))
+                .toList();
+        var propostas = rascunhos.criarQuestoesRascunho(ident, novas, dados.arquivo());
+
+        var publicadas = 0;
+        var pendentes = (int) propostas.questoes().stream().filter(q -> q.isImagemPendente()).count();
+        if (Boolean.TRUE.equals(dados.publicar())) {
+            var agora = Instant.now();
+            for (var q : propostas.questoes()) {
+                if (!q.isImagemPendente()) {
+                    publicacao.publicarQuestao(ident, String.valueOf(q.getId()), agora);
+                    publicadas++;
+                }
+            }
+        }
+        return new QuestoesEmLote(propostas.rascunho().getId(),
+                propostas.questoes().stream().map(q -> q.getId()).toList(), publicadas,
+                propostas.questoes().size() - publicadas,
+                Boolean.TRUE.equals(dados.publicar()) ? pendentes : 0);
+    }
+
     @GetMapping("/questoes/{questaoId}")
     public QuestoesServico.QuestaoDetalhada detalharQuestao(@AuthenticationPrincipal Identidade ident,
             @PathVariable String questaoId) {

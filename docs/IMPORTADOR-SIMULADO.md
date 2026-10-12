@@ -163,9 +163,23 @@ posição do número dela.
 
 Questão de apostila pode parar na D: de A a D são obrigatórias, a E é opcional.
 
+## O Banco de questões: o mesmo .docx, sem prova nem aula
+
+Em **Banco de questões › Importar .docx** o portal lê o documento pelas mesmas
+regras (`POST /api/admin/simulados/docx`, que não grava nada além das figuras) e
+mostra a lista para conferir — a mesma do "Novo simulado", com "Editar" em cada
+questão. Só ao importar é que elas nascem, todas num rascunho só
+(`POST /api/admin/questoes/lote`): vinte questões são um envio, não vinte
+rascunhos, e ou entram todas ou nenhuma.
+
+Entram **em rascunho**, em cima da lista do banco, para abrir, conferir e
+publicar uma a uma. "Importar e publicar" é para quando a conferência já foi
+feita na lista: cada questão sai pela mesma porta do "Publicar" do banco, com a
+aprovação gravada, e a que estiver com figura pendente fica em rascunho.
+Assunto e comentário por alternativa não vêm do documento.
+
 ## Fora desta etapa
 
-* Tela de importação no portal — fica para o Next, com a API já pronta.
 * Documento que é uma imagem só (questão colada como print dentro do Word): não
   há texto para ler; vai pelos prints.
 * PDF inteiro no link, cortado em páginas pelo servidor: por ora, o professor
