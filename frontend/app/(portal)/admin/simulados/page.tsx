@@ -73,7 +73,10 @@ export default function SimuladosDoProfessor() {
                         <td>
                           <EditarCategoria valor={s.categoria} sugestoes={categoriasDe(simulados)} aoSalvar={(c) => mudarCategoria(s.simulado_id, c)} />
                         </td>
-                        <td><Etiqueta tom={tom}>{rotulo}</Etiqueta></td>
+                        <td>
+                          <Etiqueta tom={tom}>{rotulo}</Etiqueta>
+                          {s.situacao === "ENCERRADO" && !s.resultado_liberado_em && <Etiqueta tom="atencao" className="ml-1.5">Resultado a liberar</Etiqueta>}
+                        </td>
                         <td className="whitespace-nowrap tabular-nums">{emBrasilia(s.abre_em)}</td>
                         <td className="whitespace-nowrap tabular-nums">{emBrasilia(s.fecha_em)}</td>
                         <td className="text-right tabular-nums">{s.tentativas ?? 0}</td>

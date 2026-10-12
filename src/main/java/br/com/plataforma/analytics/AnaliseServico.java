@@ -396,6 +396,15 @@ public class AnaliseServico {
                 .filter(a -> !a.oculta()).map(AnaliseServico::texto).orElse(null);
     }
 
+    /** A análise de um aluno num simulado como o professor a vê: a que vale, mesmo oculta. */
+    public record AnaliseNoResultado(Texto analise, boolean oculta) {}
+
+    @Transactional(readOnly = true)
+    public AnaliseNoResultado doSimuladoParaOProfessor(Integer simuladoId, Integer alunoId) {
+        return analises.findByAlunoIdAndSimuladoIdOrderByIdDesc(alunoId, simuladoId).stream().findFirst()
+                .map(a -> new AnaliseNoResultado(texto(a), a.oculta())).orElse(null);
+    }
+
     /** {@code mediaDaTurma}: o acerto, naquele assunto, de todos os que fizeram a prova. */
     public record AssuntoNoSimulado(String assunto, int questoes, int acertos, double percentual, double mediaDaTurma) {}
 
@@ -428,6 +437,107 @@ public class AnaliseServico {
 
     private static Set<Integer> certas(Tentativa t) {
         return t.getRespostas().stream().filter(Resposta::isCorreta).map(Resposta::getQuestaoId).collect(Collectors.toSet());
+    }
+
+    // --- o simulado, para o professor ----------------------------------------------
+
+    /** Uma linha do ranking, com o que o professor precisa para abrir o resultado daquele aluno. */
+    public record AlunoNoSimulado(Integer alunoId, String aluno, int posicao, int acertos, int emBranco, double percentual,
+            boolean entregueAutomaticamente, boolean temAnalise, boolean analiseOculta) {}
+
+    public record AssuntoDaTurma(String assunto, int questoes, double percentual) {}
+
+    /**
+     * Uma questão em que a turma tropeçou. {@code erroMaisComum} é a alternativa errada mais
+     * marcada, e {@code comentarioDoErro} o que o professor escreveu para ela: é o engano que mais
+     * gente cometeu, dito com as palavras dele.
+     */
+    public record QuestaoMaisErrada(Integer ordem, Integer questaoId, String enunciado, String assunto, String subassunto,
+            Letra gabarito, double percentualAcerto, int emBranco, Letra erroMaisComum, Integer quantosMarcaram,
+            String comentarioDoErro) {}
+
+    /**
+     * O simulado depois da prova, para o professor: quantos fizeram, como a turma foi por assunto,
+     * onde mais errou e o ranking, de onde ele abre o resultado de cada aluno. {@code media} nula:
+     * ninguém fez.
+     */
+    public record VisaoDoSimulado(Integer simuladoId, String titulo, Situacao situacao, Instant resultadoLiberadoEm,
+            int matriculados, int participantes, Double media, int comAnalise, int questoes, int questoesSemComentario,
+            List<AssuntoDaTurma> porAssunto, List<QuestaoMaisErrada> maisErradas, List<AlunoNoSimulado> alunos) {}
+
+    /** Quantas das mais erradas vão para a tela: é um destaque, a tabela inteira está nas questões. */
+    static final int MAIS_ERRADAS = 5;
+
+    @Transactional
+    public VisaoDoSimulado visaoDoSimulado(Identidade ident, String simuladoRef, Instant agora) {
+        ident.exigirOperador();
+        var s = simulados.resolver(simuladoRef);
+        var linhas = simulados.classificar(s, agora);
+        var total = s.getQuestoes().size();
+        var participantes = linhas.size();
+        var escritas = analisesDoSimulado(s);
+        var matriculados = s.getTurmas().isEmpty() ? 0 : em.createQuery(
+                "select count(distinct m.usuarioId) from Matricula m where m.turma in :turmas", Long.class)
+                .setParameter("turmas", s.getTurmas()).getSingleResult().intValue();
+
+        var alunos = linhas.stream().map(c -> {
+            var t = c.tentativa();
+            var analise = escritas.get(t.getAluno().getId());
+            return new AlunoNoSimulado(t.getAluno().getId(), t.getAluno().getNome(), c.posicao(), c.acertos(),
+                    total - t.getRespostas().size(), AnalyticsServico.percentual(c.acertos(), total),
+                    t.isEntregueAutomaticamente(), analise != null, analise != null && analise.oculta());
+        }).toList();
+
+        // De cada questão: quantos acertaram e o que marcaram os que erraram.
+        var ids = s.getQuestoes().stream().map(sq -> sq.getQuestao().getId()).toList();
+        var etiquetas = devolutiva.etiquetasDas(ids);
+        var certas = new HashMap<Integer, Integer>();
+        var marcadasErradas = new HashMap<Integer, Map<Letra, Integer>>();
+        var respondidas = new HashMap<Integer, Integer>();
+        for (var c : linhas) {
+            for (var r : c.tentativa().getRespostas()) {
+                respondidas.merge(r.getQuestaoId(), 1, Integer::sum);
+                if (r.isCorreta()) {
+                    certas.merge(r.getQuestaoId(), 1, Integer::sum);
+                } else {
+                    marcadasErradas.computeIfAbsent(r.getQuestaoId(), k -> new java.util.TreeMap<>())
+                            .merge(r.getAlternativaMarcada(), 1, Integer::sum);
+                }
+            }
+        }
+
+        var porAssunto = new LinkedHashMap<String, int[]>();
+        var maisErradas = new ArrayList<QuestaoMaisErrada>();
+        for (var sq : s.getQuestoes()) {
+            var q = sq.getQuestao();
+            var e = etiquetas.get(q.getId());
+            var acertaram = certas.getOrDefault(q.getId(), 0);
+            var c = porAssunto.computeIfAbsent(e == null ? "Sem assunto" : e.assunto(), k -> new int[2]);
+            c[0]++;
+            c[1] += acertaram;
+            if (participantes == 0 || acertaram == participantes) {
+                continue;
+            }
+            var erro = marcadasErradas.getOrDefault(q.getId(), Map.of()).entrySet().stream()
+                    .max(Map.Entry.<Letra, Integer>comparingByValue().thenComparing(Map.Entry.comparingByKey(Comparator.reverseOrder())))
+                    .orElse(null);
+            maisErradas.add(new QuestaoMaisErrada(sq.getOrdem(), q.getId(), emUmaLinha(q.getEnunciado()),
+                    e == null ? null : e.assunto(), e == null ? null : e.subassunto(), q.getGabarito(),
+                    AnalyticsServico.percentual(acertaram, participantes), participantes - respondidas.getOrDefault(q.getId(), 0),
+                    erro == null ? null : erro.getKey(), erro == null ? null : erro.getValue(),
+                    erro == null ? null : q.comentarios().get(erro.getKey())));
+        }
+        maisErradas.sort(Comparator.comparingDouble(QuestaoMaisErrada::percentualAcerto).thenComparing(QuestaoMaisErrada::ordem));
+
+        return new VisaoDoSimulado(s.getId(), s.getTitulo(), SimuladosServico.situacao(s, agora), s.getResultadoLiberadoEm(),
+                matriculados, participantes,
+                participantes == 0 ? null : AnalyticsServico.arredondar(alunos.stream().mapToDouble(AlunoNoSimulado::percentual).sum() / participantes),
+                (int) alunos.stream().filter(AlunoNoSimulado::temAnalise).count(), total,
+                (int) s.getQuestoes().stream().filter(sq -> sq.getQuestao().comentarios().isEmpty()).count(),
+                porAssunto.entrySet().stream().map(par -> new AssuntoDaTurma(par.getKey(), par.getValue()[0],
+                        AnalyticsServico.percentual(par.getValue()[1], par.getValue()[0] * Math.max(participantes, 1))))
+                        .sorted(Comparator.comparingDouble(AssuntoDaTurma::percentual).thenComparing(AssuntoDaTurma::assunto)).toList(),
+                maisErradas.stream().limit(MAIS_ERRADAS).toList(), alunos);
     }
 
     // --- o professor ---------------------------------------------------------------

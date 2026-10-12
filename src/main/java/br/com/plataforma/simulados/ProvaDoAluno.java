@@ -275,11 +275,16 @@ public class ProvaDoAluno {
      * {@code analiseEscrita}: o texto que o Claude do professor escreveu para ele; nulo quando não
      * há, ou o professor ocultou. {@code analise} são os vídeos recomendados, de antes.
      */
+    /**
+     * {@code aluno} e {@code analiseOculta} só vêm quando é o professor olhando o resultado de um
+     * aluno: aí a análise vem mesmo oculta, com a marca de que o aluno não a está vendo.
+     */
     public record Resultado(
             Integer simuladoId, String titulo, int acertos, int total, double percentual, int emBranco,
             boolean entregueAutomaticamente, int posicao, int participantes,
             List<QuestaoCorrigida> questoes, List<AnalyticsServico.Recomendacao> analise,
-            List<AnaliseServico.AssuntoNoSimulado> porAssunto, AnaliseServico.Texto analiseEscrita) {}
+            List<AnaliseServico.AssuntoNoSimulado> porAssunto, AnaliseServico.Texto analiseEscrita,
+            Integer alunoId, String aluno, Boolean analiseOculta) {}
 
     /**
      * O resultado individual: nota, posição, gabarito, resolução e análise. Só depois do fechamento
@@ -302,9 +307,28 @@ public class ProvaDoAluno {
             throw new RegraDeNegocio("O resultado de '%s' ainda não foi liberado pelo professor."
                     .formatted(s.getTitulo()));
         }
+        return montar(s, ident, false, "Você não fez '%s'.".formatted(s.getTitulo()), agora);
+    }
+
+    /**
+     * O resultado de um aluno como ele o vê, para o professor: a mesma tela, a qualquer momento —
+     * antes de liberar, é a prévia do que vai sair. Os vídeos vêm liberados ou bloqueados como
+     * estão para o aluno, e a análise vem mesmo que o professor a tenha ocultado.
+     */
+    @Transactional
+    public Resultado resultadoParaOProfessor(Identidade ident, String simuladoRef, String alunoRef, Instant agora) {
+        ident.exigirOperador();
+        var s = simulados.resolver(simuladoRef);
+        var aluno = contas.resolverAluno(alunoRef);
+        var comoAluno = new Identidade(aluno.getId(), aluno.getNome(), aluno.getEmail(),
+                br.com.plataforma.comum.Papel.ALUNO, br.com.plataforma.comum.Canal.PORTAL);
+        return montar(s, comoAluno, true, "%s não fez '%s'.".formatted(aluno.getNome(), s.getTitulo()), agora);
+    }
+
+    private Resultado montar(Simulado s, Identidade ident, boolean paraOProfessor, String semProva, Instant agora) {
         var linhas = simulados.classificar(s, agora);
         var minha = linhas.stream().filter(c -> c.tentativa().getAluno().getId().equals(ident.usuarioId()))
-                .findFirst().orElseThrow(() -> new RegraDeNegocio("Você não fez '%s'.".formatted(s.getTitulo())));
+                .findFirst().orElseThrow(() -> new RegraDeNegocio(semProva));
 
         var t = minha.tentativa();
         var respostas = new LinkedHashMap<Integer, Resposta>();
@@ -327,6 +351,7 @@ public class ProvaDoAluno {
                     q.comentarios()));
         }
         var total = s.getQuestoes().size();
+        var doProfessor = paraOProfessor ? analises.doSimuladoParaOProfessor(s.getId(), ident.usuarioId()) : null;
         return new Resultado(s.getId(), s.getTitulo(), minha.acertos(), total,
                 SimuladosServico.percentual(minha.acertos(), total),
                 (int) questoes.stream().filter(QuestaoCorrigida::emBranco).count(),
@@ -335,7 +360,10 @@ public class ProvaDoAluno {
                         questoes.stream().filter(q -> !q.correta()).map(QuestaoCorrigida::questaoId).toList(),
                         5, agora),
                 analises.porAssuntoNoSimulado(s, t, linhas.stream().map(SimuladosServico.Classificado::tentativa).toList()),
-                analises.doSimuladoParaOAluno(s.getId(), ident.usuarioId()));
+                paraOProfessor ? (doProfessor == null ? null : doProfessor.analise())
+                        : analises.doSimuladoParaOAluno(s.getId(), ident.usuarioId()),
+                paraOProfessor ? ident.usuarioId() : null, paraOProfessor ? ident.nome() : null,
+                paraOProfessor ? Boolean.valueOf(doProfessor != null && doProfessor.oculta()) : null);
     }
 
     public record SimuladoFeito(

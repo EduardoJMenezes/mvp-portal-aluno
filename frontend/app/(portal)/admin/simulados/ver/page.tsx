@@ -3,6 +3,8 @@
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState, type FormEvent } from "react";
 import { MontarProva, doBanco, faltaNaProva, paraApi, type EntradaDaProva } from "@/components/MontarProva";
+import { abaDoResultado } from "@/components/ResultadoDoSimulado";
+import { AlunosDoSimulado, ResultadoDaTurma, ResultadoDeUmAluno } from "@/components/SimuladoDepoisDaProva";
 import { Abas, Aviso, Botao, BotaoLink, Campo, Cartao, Estado, Etiqueta, Pagina, TituloDeSecao, Vazio, useConfirmar } from "@/components/ui";
 import { api, useDados, type SimuladoDoProfessor } from "@/lib/api";
 import { emBrasilia, paraCampoDataHora, plural, porcento } from "@/lib/formato";
@@ -17,13 +19,38 @@ export default function PaginaDoSimulado() {
   );
 }
 
-type Aba = "prova" | "estatisticas" | "ranking";
+// Antes e durante a prova, o que importa é a prova: questões, agenda, quem já entregou. Depois que
+// ela fecha, o que importa é o resultado: a turma, e cada aluno. Por isso as abas mudam com a situação,
+// e o simulado encerrado abre no resultado da turma; a prova e a agenda continuam lá, por último.
+type Aba = "resultado" | "alunos" | "questoes" | "prova" | "estatisticas" | "ranking";
+const ANTES: { valor: Aba; rotulo: string }[] = [
+  { valor: "prova", rotulo: "Prova" },
+  { valor: "estatisticas", rotulo: "Estatísticas" },
+  { valor: "ranking", rotulo: "Ranking" },
+];
+const DEPOIS: { valor: Aba; rotulo: string }[] = [
+  { valor: "resultado", rotulo: "Resultado da turma" },
+  { valor: "alunos", rotulo: "Alunos" },
+  { valor: "questoes", rotulo: "Questões" },
+  { valor: "prova", rotulo: "Prova e agenda" },
+];
 
 function Simulado() {
-  const id = Number(useSearchParams().get("id"));
+  const router = useRouter();
+  const parametros = useSearchParams();
+  const id = Number(parametros.get("id"));
   const simulado = useDados(() => api.simulado(id), [id]);
-  const [aba, setAba] = useState<Aba>("prova");
   const s = simulado.dados;
+  const encerrado = s?.situacao === "ENCERRADO";
+  const abas = encerrado ? DEPOIS : ANTES;
+  const alunoId = encerrado ? Number(parametros.get("aluno")) || null : null;
+  const pedida = parametros.get("aba");
+  // Quem chega com um aluno no endereço quer ver o aluno.
+  const aba: Aba = abas.find((a) => a.valor === pedida)?.valor ?? (alunoId ? "alunos" : abas[0].valor);
+  // A aba e o aluno moram no endereço: voltar no navegador funciona, e dá para mandar o link.
+  const ir = (nova: Aba, aluno?: number | null, ver?: string) =>
+    router.replace(`/admin/simulados/ver/?id=${id}&aba=${nova}${aluno ? `&aluno=${aluno}` : ""}${ver && ver !== "geral" ? `&ver=${ver}` : ""}`, { scroll: false });
+  const visao = useDados(() => (encerrado ? api.visaoDoSimulado(id) : Promise.resolve(null)), [id, encerrado]);
   const [dialogo, confirmar] = useConfirmar();
   const [aviso, setAviso] = useState<{ tom: "sucesso" | "erro"; texto: string } | null>(null);
 
@@ -45,7 +72,7 @@ function Simulado() {
     try {
       const r = await api.liberarResultado(s.simulado_id);
       setAviso({ tom: "sucesso", texto: `Resultado liberado para ${plural(r.participantes, "aluno", "alunos")}: ${r.com_analise} com análise escrita e ${r.sem_analise} sem.` });
-      await simulado.recarregar();
+      await Promise.all([simulado.recarregar(), visao.recarregar()]);
     } catch (ex) {
       setAviso({ tom: "erro", texto: (ex as Error).message });
     }
@@ -60,10 +87,7 @@ function Simulado() {
     >
       {dialogo}
       {aviso && <Aviso tom={aviso.tom}>{aviso.texto}</Aviso>}
-      {s?.situacao === "ENCERRADO" &&
-        (s.resultado_liberado_em ? (
-          <p className="text-[15px] text-suave">Resultado liberado aos alunos em {emBrasilia(s.resultado_liberado_em)}.</p>
-        ) : (
+      {s?.situacao === "ENCERRADO" && !s.resultado_liberado_em && (
           <Aviso tom="atencao" titulo="O resultado ainda não foi liberado">
             <p>
               A prova fechou, mas os alunos só veem nota, gabarito e análise quando você liberar. Peça ao Claude: &ldquo;Gere o resultado do {s.titulo}&rdquo;. Ele escreve a análise de cada aluno e libera com o seu ok.
@@ -72,16 +96,30 @@ function Simulado() {
               <Botao tamanho="pequeno" onClick={liberar}>Liberar sem gerar as análises</Botao>
             </div>
           </Aviso>
-        ))}
-      <Abas
-        abas={[
-          { valor: "prova", rotulo: "Prova" },
-          { valor: "estatisticas", rotulo: "Estatísticas" },
-          { valor: "ranking", rotulo: "Ranking" },
-        ]}
-        atual={aba}
-        aoTrocar={setAba}
-      />
+      )}
+      {s && <Abas abas={abas} atual={aba} aoTrocar={(nova) => ir(nova)} />}
+      {encerrado && (aba === "resultado" || aba === "alunos") && (
+        <Estado {...visao} linhas={4}>
+          {(v) =>
+            !v ? null : aba === "resultado" ? (
+              <ResultadoDaTurma v={v} aoVerAlunos={() => ir("alunos")} aoVerQuestoes={() => ir("questoes")} />
+            ) : alunoId ? (
+              <ResultadoDeUmAluno
+                v={v}
+                alunoId={alunoId}
+                aba={abaDoResultado(parametros.get("ver"))}
+                aoTrocarAba={(ver) => ir("alunos", alunoId, ver)}
+                aoAbrir={(outro) => ir("alunos", outro, parametros.get("ver") ?? undefined)}
+                aoVoltar={() => ir("alunos")}
+                aoMudarAnalise={() => void visao.recarregar()}
+              />
+            ) : (
+              <AlunosDoSimulado v={v} aoAbrir={(outro) => ir("alunos", outro)} />
+            )
+          }
+        </Estado>
+      )}
+      {aba === "questoes" && <Estatisticas id={id} />}
       {aba === "prova" && (
         <Estado {...simulado} linhas={4}>
           {(dados) => <Prova simulado={dados} aoSalvar={() => void simulado.recarregar()} />}

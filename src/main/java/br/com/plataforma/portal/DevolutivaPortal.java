@@ -26,11 +26,14 @@ public class DevolutivaPortal {
     private final DevolutivaServico devolutiva;
     private final CatalogoServico catalogo;
     private final AnaliseServico analises;
+    private final br.com.plataforma.simulados.ProvaDoAluno prova;
 
-    public DevolutivaPortal(DevolutivaServico devolutiva, CatalogoServico catalogo, AnaliseServico analises) {
+    public DevolutivaPortal(DevolutivaServico devolutiva, CatalogoServico catalogo, AnaliseServico analises,
+            br.com.plataforma.simulados.ProvaDoAluno prova) {
         this.devolutiva = devolutiva;
         this.catalogo = catalogo;
         this.analises = analises;
+        this.prova = prova;
     }
 
     @GetMapping("/aluno/desempenho/assuntos")
@@ -73,6 +76,19 @@ public class DevolutivaPortal {
     public AnaliseServico.DoAluno visibilidade(@AuthenticationPrincipal Identidade ident, @PathVariable String aluno,
             @RequestBody Visibilidade pedido) {
         return analises.ocultar(ident, aluno, pedido.simulado(), pedido.oculta(), Instant.now());
+    }
+
+    /** O simulado depois da prova: a turma por assunto, onde mais errou e o ranking com as análises. */
+    @GetMapping("/admin/simulados/{simulado}/analise")
+    public AnaliseServico.VisaoDoSimulado visaoDoSimulado(@AuthenticationPrincipal Identidade ident, @PathVariable String simulado) {
+        return analises.visaoDoSimulado(ident, simulado, Instant.now());
+    }
+
+    /** O resultado de um aluno como ele o vê: é a tela dele, aberta pelo professor. */
+    @GetMapping("/admin/simulados/{simulado}/alunos/{aluno}/resultado")
+    public br.com.plataforma.simulados.ProvaDoAluno.Resultado resultadoDoAluno(@AuthenticationPrincipal Identidade ident,
+            @PathVariable String simulado, @PathVariable String aluno) {
+        return prova.resultadoParaOProfessor(ident, simulado, aluno, Instant.now());
     }
 
     /**

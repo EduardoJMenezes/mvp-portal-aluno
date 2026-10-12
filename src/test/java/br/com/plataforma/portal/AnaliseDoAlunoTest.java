@@ -406,6 +406,101 @@ class AnaliseDoAlunoTest extends BaseDoPortal {
         get("/api/admin/alunos?busca=ninguem", ADMIN).andExpect(jsonPath("$").isEmpty());
     }
 
+    // --- o simulado depois da prova, para o professor ------------------------------
+
+    @Test
+    void oProfessorVeComoATurmaFoiEOndeMaisErrou() throws Exception {
+        get("/api/admin/simulados/" + simulado + "/analise", ADMIN)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.titulo").value("Simulado 02"))
+                .andExpect(jsonPath("$.situacao").value("ENCERRADO"))
+                .andExpect(jsonPath("$.resultado_liberado_em").doesNotExist())
+                .andExpect(jsonPath("$.matriculados").value(2))
+                .andExpect(jsonPath("$.participantes").value(2))
+                // Maria fez 3 de 4 e Bruno 2 de 4.
+                .andExpect(jsonPath("$.media").value(62.5))
+                .andExpect(jsonPath("$.com_analise").value(0))
+                .andExpect(jsonPath("$.questoes").value(4))
+                .andExpect(jsonPath("$.questoes_sem_comentario").value(3))
+                // Do assunto em que a turma foi pior para o melhor.
+                .andExpect(jsonPath("$.por_assunto[*].assunto").value(contains("Atomística", "Estequiometria")))
+                .andExpect(jsonPath("$.por_assunto[0].percentual").value(50.0))
+                .andExpect(jsonPath("$.por_assunto[1].percentual").value(75.0))
+                // As questões em que alguém errou, com a alternativa errada mais marcada e o que o professor disse dela.
+                .andExpect(jsonPath("$.mais_erradas[*].ordem").value(contains(1, 3, 4)))
+                .andExpect(jsonPath("$.mais_erradas[0].percentual_acerto").value(50.0))
+                .andExpect(jsonPath("$.mais_erradas[0].gabarito").value("A"))
+                .andExpect(jsonPath("$.mais_erradas[0].erro_mais_comum").value("B"))
+                .andExpect(jsonPath("$.mais_erradas[0].quantos_marcaram").value(1))
+                .andExpect(jsonPath("$.mais_erradas[0].comentario_do_erro").value(containsString("massa molar com massa atômica")))
+                .andExpect(jsonPath("$.mais_erradas[0].subassunto").value("Mol"))
+                .andExpect(jsonPath("$.mais_erradas[1].erro_mais_comum").value("C"))
+                .andExpect(jsonPath("$.mais_erradas[1].comentario_do_erro").doesNotExist())
+                // Na 4 ninguém marcou errado: quem não acertou deixou em branco.
+                .andExpect(jsonPath("$.mais_erradas[2].em_branco").value(1))
+                .andExpect(jsonPath("$.mais_erradas[2].erro_mais_comum").doesNotExist())
+                // O ranking, de onde o professor abre o resultado de cada um.
+                .andExpect(jsonPath("$.alunos[*].aluno").value(contains("Maria", "Aluno Bruno")))
+                .andExpect(jsonPath("$.alunos[0].posicao").value(1))
+                .andExpect(jsonPath("$.alunos[0].acertos").value(3))
+                .andExpect(jsonPath("$.alunos[1].aluno_id").value(ALUNO))
+                .andExpect(jsonPath("$.alunos[1].posicao").value(2))
+                .andExpect(jsonPath("$.alunos[1].em_branco").value(1))
+                .andExpect(jsonPath("$.alunos[1].percentual").value(50.0))
+                .andExpect(jsonPath("$.alunos[1].tem_analise").value(false));
+
+        gravarDoSimulado(ALUNO, "Do Bruno.");
+        liberar();
+        get("/api/admin/simulados/" + simulado + "/analise", ADMIN)
+                .andExpect(jsonPath("$.resultado_liberado_em").exists())
+                .andExpect(jsonPath("$.com_analise").value(1))
+                .andExpect(jsonPath("$.alunos[1].tem_analise").value(true))
+                .andExpect(jsonPath("$.alunos[1].analise_oculta").value(false))
+                .andExpect(jsonPath("$.alunos[0].tem_analise").value(false));
+    }
+
+    @Test
+    void oProfessorAbreOResultadoDeUmAlunoComoEleOVe() throws Exception {
+        // Antes de liberar, o aluno não vê; o professor vê a prévia do que vai sair.
+        get("/api/aluno/simulados/" + simulado + "/resultado", ALUNO).andExpect(status().isBadRequest());
+        get("/api/admin/simulados/" + simulado + "/alunos/" + ALUNO + "/resultado", ADMIN)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.aluno_id").value(ALUNO))
+                .andExpect(jsonPath("$.aluno").value("Aluno Bruno"))
+                .andExpect(jsonPath("$.titulo").value("Simulado 02"))
+                .andExpect(jsonPath("$.acertos").value(2))
+                .andExpect(jsonPath("$.em_branco").value(1))
+                .andExpect(jsonPath("$.posicao").value(2))
+                .andExpect(jsonPath("$.questoes.length()").value(4))
+                .andExpect(jsonPath("$.questoes[0].marcada").value("B"))
+                .andExpect(jsonPath("$.questoes[0].comentarios.B").value(containsString("massa molar")))
+                .andExpect(jsonPath("$.por_assunto.length()").value(2))
+                .andExpect(jsonPath("$.analise_escrita").doesNotExist())
+                .andExpect(jsonPath("$.analise_oculta").value(false));
+
+        // A análise aparece para o professor mesmo oculta, com a marca de que o aluno não a vê.
+        gravarDoSimulado(ALUNO, "Do Bruno.");
+        liberar();
+        post("/api/admin/alunos/" + ALUNO + "/analise/visibilidade", "{\"simulado\": \"%d\", \"oculta\": true}".formatted(simulado), ADMIN)
+                .andExpect(status().isOk());
+        get("/api/admin/simulados/" + simulado + "/alunos/" + ALUNO + "/resultado", ADMIN)
+                .andExpect(jsonPath("$.analise_escrita.ponto_principal").value("Do Bruno."))
+                .andExpect(jsonPath("$.analise_oculta").value(true));
+        get("/api/aluno/simulados/" + simulado + "/resultado", ALUNO)
+                .andExpect(jsonPath("$.analise_escrita").doesNotExist())
+                // Para o aluno, esses campos nem existem.
+                .andExpect(jsonPath("$.analise_oculta").doesNotExist())
+                .andExpect(jsonPath("$.aluno").doesNotExist());
+
+        var jose = criarUsuario("José", "jose@teste.invalid", SENHA, "ALUNO", false);
+        get("/api/admin/simulados/" + simulado + "/alunos/" + jose + "/resultado", ADMIN)
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.detail").value(containsString("José não fez 'Simulado 02'")));
+        // Aluno não abre o resultado de ninguém por esta porta, nem o próprio.
+        get("/api/admin/simulados/" + simulado + "/alunos/" + ALUNO + "/resultado", ALUNO).andExpect(status().isForbidden());
+        get("/api/admin/simulados/" + simulado + "/analise", ALUNO).andExpect(status().isForbidden());
+    }
+
     // --- quem pode -----------------------------------------------------------------
 
     @Test

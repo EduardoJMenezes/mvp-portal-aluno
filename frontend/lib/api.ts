@@ -365,6 +365,47 @@ export type AnaliseParaOProfessor = {
   escrita_por: string | null;
   anteriores: TextoDaAnalise[];
 };
+export type AlunoNoSimulado = {
+  aluno_id: number;
+  aluno: string;
+  posicao: number;
+  acertos: number;
+  em_branco: number;
+  percentual: number;
+  entregue_automaticamente: boolean;
+  tem_analise: boolean;
+  analise_oculta: boolean;
+};
+/** `erro_mais_comum`: a alternativa errada mais marcada, com o que o professor comentou nela. */
+export type QuestaoMaisErrada = {
+  ordem: number;
+  questao_id: number;
+  enunciado: string;
+  assunto: string | null;
+  subassunto: string | null;
+  gabarito: string;
+  percentual_acerto: number;
+  em_branco: number;
+  erro_mais_comum: string | null;
+  quantos_marcaram: number | null;
+  comentario_do_erro: string | null;
+};
+/** O simulado depois da prova, para o professor. */
+export type VisaoDoSimulado = {
+  simulado_id: number;
+  titulo: string;
+  situacao: Situacao;
+  resultado_liberado_em: string | null;
+  matriculados: number;
+  participantes: number;
+  media: number | null;
+  com_analise: number;
+  questoes: number;
+  questoes_sem_comentario: number;
+  por_assunto: { assunto: string; questoes: number; percentual: number }[];
+  mais_erradas: QuestaoMaisErrada[];
+  alunos: AlunoNoSimulado[];
+};
 export type AlunoNaBusca = { id: number; nome: string; email: string; turmas: string[]; analise_geral_em: string | null };
 export type ResultadoLiberado = { simulado: string; liberado_agora: boolean; liberado_em: string; participantes: number; com_analise: number; sem_analise: number };
 export type QuestaoDaAulaNaTurma = {
@@ -406,6 +447,10 @@ export type Resultado = {
   por_assunto: AssuntoNoSimulado[];
   /** A análise que o Claude do professor escreveu para ele; nula se não há. */
   analise_escrita: TextoDaAnalise | null;
+  /** Só quando é o professor abrindo o resultado de um aluno: de quem é, e se a análise está oculta para ele. */
+  aluno_id?: number | null;
+  aluno?: string | null;
+  analise_oculta?: boolean | null;
 };
 export type AssuntoNoSimulado = { assunto: string; questoes: number; acertos: number; percentual: number; media_da_turma: number };
 
@@ -846,6 +891,8 @@ export const api = {
     pedir<AnaliseParaOProfessor>(`/admin/alunos/${seg(String(aluno))}/analise${q({ simulado })}`),
   ocultarAnalise: (aluno: string | number, simulado: number, oculta: boolean) =>
     pedir<AnaliseParaOProfessor>(`/admin/alunos/${seg(String(aluno))}/analise/visibilidade`, { method: "POST", json: { simulado: String(simulado), oculta } }),
+  visaoDoSimulado: (simulado: number) => pedir<VisaoDoSimulado>(`/admin/simulados/${simulado}/analise`),
+  resultadoDoAluno: (simulado: number, aluno: number) => pedir<Resultado>(`/admin/simulados/${simulado}/alunos/${aluno}/resultado`),
   liberarResultado: (simulado: number) => pedir<ResultadoLiberado>(`/admin/simulados/${simulado}/resultado/liberar`, { method: "POST" }),
 
   // turmas e alunos

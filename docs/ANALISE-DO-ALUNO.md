@@ -50,6 +50,21 @@ desfaz. Análise gravada depois da liberação aparece para o aluno na hora.
 
 Os simulados que já tinham fechado quando esta regra entrou (V17) continuam liberados.
 
+## O simulado depois da prova, para o professor
+
+Antes e durante a prova, a página do simulado é sobre a prova: questões, agenda, quem já entregou.
+Depois que ela fecha, é sobre o resultado, e as abas mudam:
+
+- **Resultado da turma** (é onde a página abre): quantos fizeram, a média, quantas análises estão
+  escritas, o acerto da turma por assunto e as questões em que mais se errou, cada uma com a
+  alternativa errada mais marcada e o comentário do professor para ela;
+- **Alunos**: o ranking, com busca por nome e a situação da análise de cada um. Abrir um aluno
+  mostra **a tela que ele vê** — nota, análise, gráficos, prova corrigida e onde revisar —, com a
+  análise mesmo quando oculta, o botão de ocultar e os vizinhos do ranking a um clique. Antes de
+  liberar, é a prévia do que vai sair;
+- **Questões**: o acerto e a distribuição das alternativas em cada questão;
+- **Prova e agenda**: o que era a primeira tela — questões, datas, turmas.
+
 ## A análise geral, do professor
 
 "Faça a análise geral do João", no Claude, é `listar_analises_pendentes` só com o aluno (tudo o que
@@ -98,10 +113,13 @@ rascunho e por `drafts.aprovado_por_id`.
 - `analytics/AnaliseServico.java`: o resumo, gravar, liberar, o gráfico por assunto e a busca.
 - `/comandos/listar_analises_pendentes`, `/comandos/gravar_analises` e
   `/comandos/liberar_resultado_simulado` (`AnalyticsComandos`).
-- `/api/admin/alunos`, `/api/admin/alunos/{aluno}/analise`, `.../analise/visibilidade` e
-  `/api/admin/simulados/{simulado}/resultado/liberar` (`DevolutivaPortal`).
+- `/api/admin/alunos`, `/api/admin/alunos/{aluno}/analise`, `.../analise/visibilidade`,
+  `/api/admin/simulados/{simulado}/resultado/liberar`, `/api/admin/simulados/{simulado}/analise`
+  (a turma) e `/api/admin/simulados/{simulado}/alunos/{aluno}/resultado` (a tela de um aluno), em
+  `DevolutivaPortal`.
 - O aluno recebe a análise e o gráfico dentro de `/api/aluno/simulados/{simulado}/resultado`.
-- `frontend/components/Analise.tsx` e `GraficosDoSimulado.tsx`.
+- `frontend/components/Analise.tsx`, `GraficosDoSimulado.tsx`, `ResultadoDoSimulado.tsx` (a tela
+  do resultado, do aluno e do professor) e `SimuladoDepoisDaProva.tsx`.
 - `AnaliseDoAlunoTest` trava a espera pelo professor, o resumo, quem lê o quê e a busca.
 
 ## Limites conhecidos
