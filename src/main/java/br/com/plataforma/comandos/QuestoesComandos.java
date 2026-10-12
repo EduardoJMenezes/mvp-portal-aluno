@@ -103,6 +103,35 @@ public class QuestoesComandos {
         return questoes.detalhar(ident, String.valueOf(alterada.getId()), agora);
     }
 
+    // --- classificar várias de uma vez ---------------------------------------
+
+    public record ListarQuestoesSemAssunto(
+            @Min(value = 1, message = "vai de 1 a 100") @Max(value = 100, message = "vai de 1 a 100") Integer limite,
+            @Min(value = 0, message = "não pode ser negativo") Integer deslocamento) {}
+
+    @PostMapping("/listar_questoes_sem_assunto")
+    @Transactional(readOnly = true)
+    public QuestoesServico.SemAssunto listarQuestoesSemAssunto(
+            @AuthenticationPrincipal Identidade ident,
+            @Valid @RequestBody(required = false) ListarQuestoesSemAssunto pedido) {
+        return questoes.semAssunto(ident,
+                pedido == null || pedido.limite() == null ? 20 : pedido.limite(),
+                pedido == null || pedido.deslocamento() == null ? 0 : pedido.deslocamento());
+    }
+
+    public record ClassificarQuestoes(
+            @jakarta.validation.constraints.NotEmpty(message = "é obrigatória: ao menos uma questão com o assunto dela")
+            @jakarta.validation.constraints.Size(max = 200, message = "aceita até 200 questões por vez")
+            List<QuestoesServico.ClassificacaoPedida> classificacoes,
+            Boolean criarNovos) {}
+
+    @PostMapping("/classificar_questoes")
+    @Transactional
+    public QuestoesServico.QuestoesClassificadas classificarQuestoes(
+            @AuthenticationPrincipal Identidade ident, @Valid @RequestBody ClassificarQuestoes pedido) {
+        return questoes.classificarEmLote(ident, pedido.classificacoes(), Boolean.TRUE.equals(pedido.criarNovos()));
+    }
+
     // --- a figura recortada do print ------------------------------------------
 
     public record AnexarFigura(

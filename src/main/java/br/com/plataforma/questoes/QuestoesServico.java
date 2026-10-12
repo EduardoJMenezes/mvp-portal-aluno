@@ -791,6 +791,146 @@ public class QuestoesServico {
         q.tocar(ident);
     }
 
+    // --- classificar várias de uma vez ---------------------------------------
+
+    /**
+     * A questão como o Claude precisa dela para dizer o assunto: o texto enxuto, sem a figura, e de
+     * onde ela veio ({@code origem}: o resumo do envio, "20 questões de SIMULADO 02.docx").
+     */
+    public record QuestaoSemAssunto(Integer questaoId, Status status, String enunciado,
+            Map<Letra, String> alternativas, Letra gabarito, String resolucao, String origem) {}
+
+    /** {@code restam}: as que ficaram para a próxima página. {@code assuntos}: a taxonomia de hoje. */
+    public record SemAssunto(int total, List<QuestaoSemAssunto> questoes, int restam,
+            List<TaxonomiaServico.AssuntoNaLista> assuntos) {}
+
+    private static final String SEM_ASSUNTO =
+            " from Questao q where not exists (select 1 from QuestaoAssunto qa join qa.assunto a where qa.questao = q)";
+
+    /**
+     * As questões que ainda não têm assunto, na ordem em que entraram, com a taxonomia junto: é
+     * tudo o que se precisa para propor a classificação de um lote numa leitura só. Quem importa
+     * um .docx costuma não saber o assunto de cada questão; quem sabe vem depois.
+     */
+    @Transactional(readOnly = true)
+    public SemAssunto semAssunto(Identidade ident, int limite, int deslocamento) {
+        ident.exigirOperador();
+        var total = em.createQuery("select count(q)" + SEM_ASSUNTO, Long.class).getSingleResult().intValue();
+        var pagina = em.createQuery("select q" + SEM_ASSUNTO + " order by q.id", Questao.class)
+                .setFirstResult(Math.max(0, deslocamento)).setMaxResults(limite).getResultList();
+
+        var rascunhos = pagina.stream().map(Questao::getRascunhoId).filter(java.util.Objects::nonNull).distinct().toList();
+        var origens = new LinkedHashMap<Integer, String>();
+        if (!rascunhos.isEmpty()) {
+            em.createQuery("select r.id, r.resumo from Rascunho r where r.id in :ids", Object[].class)
+                    .setParameter("ids", rascunhos).getResultList()
+                    .forEach(l -> origens.put((Integer) l[0], (String) l[1]));
+        }
+
+        var questoesDaPagina = pagina.stream().map(q -> {
+            var alternativas = new LinkedHashMap<Letra, String>();
+            q.getAlternativas().forEach(a -> alternativas.put(a.getLetra(), enxuto(a.getTexto(), 220)));
+            return new QuestaoSemAssunto(q.getId(), q.getStatus(), enxuto(q.getEnunciado(), 1200), alternativas,
+                    q.getGabarito(), enxuto(q.getResolucaoComentada(), 400),
+                    q.getRascunhoId() == null ? null : origens.get(q.getRascunhoId()));
+        }).toList();
+        return new SemAssunto(total, questoesDaPagina,
+                Math.max(0, total - Math.max(0, deslocamento) - pagina.size()), taxonomia.listarAssuntos());
+    }
+
+    /** O texto sem a figura e cortado: para classificar, o começo basta e a imagem não ajuda. */
+    private static String enxuto(String texto, int tamanho) {
+        if (texto == null || texto.isBlank()) {
+            return null;
+        }
+        var limpo = texto.replaceAll("!\\[[^\\]]*\\]\\(figura:[^)]*\\)", "[figura]").strip();
+        return limpo.length() > tamanho ? limpo.substring(0, tamanho) + "…" : limpo;
+    }
+
+    public record ClassificacaoPedida(Integer questao, String assunto, String subassunto) {}
+
+    public record QuestoesClassificadas(int classificadas, List<String> assuntosCriados,
+            List<String> subassuntosCriados, int restamSemAssunto) {}
+
+    /**
+     * Classifica várias questões de uma vez: cada uma fica com o assunto (e o sub-assunto) pedido
+     * no lugar do que tinha. Ou valem todas, ou nenhuma.
+     *
+     * <p>O nome tem de bater por inteiro com um assunto que existe — aqui não vale pedaço de nome,
+     * que num lote viraria classificação errada em silêncio. O que não existe é erro que lista o
+     * que falta; só com {@code criarNovos}, que é o "sim" do professor ao que foi mostrado, o
+     * assunto e o sub-assunto que faltam nascem junto.
+     */
+    @Transactional
+    public QuestoesClassificadas classificarEmLote(Identidade ident, List<ClassificacaoPedida> pedidos,
+            boolean criarNovos) {
+        ident.exigirOperador();
+        if (pedidos == null || pedidos.isEmpty()) {
+            throw new RegraDeNegocio("Informe ao menos uma questão para classificar.");
+        }
+        var vistas = new java.util.HashSet<Integer>();
+        for (var p : pedidos) {
+            if (p.questao() == null || vazio(p.assunto())) {
+                throw new RegraDeNegocio("Cada linha precisa da questão e do assunto dela.");
+            }
+            if (!vistas.add(p.questao())) {
+                throw new RegraDeNegocio("A questão %d aparece mais de uma vez na lista.".formatted(p.questao()));
+            }
+        }
+        var alvos = new LinkedHashMap<Integer, Questao>();
+        pedidos.forEach(p -> alvos.put(p.questao(), resolver(String.valueOf(p.questao()))));
+
+        // O que o lote pede e a taxonomia ainda não tem, sem repetir e na ordem em que aparece.
+        var existentes = taxonomia.listarAssuntos();
+        var assuntosQueFaltam = new java.util.LinkedHashSet<String>();
+        var subassuntosQueFaltam = new java.util.LinkedHashSet<String>();
+        for (var p : pedidos) {
+            var assunto = p.assunto().strip();
+            var achado = existentes.stream().filter(a -> a.nome().equalsIgnoreCase(assunto)).findFirst();
+            if (achado.isEmpty()) {
+                assuntosQueFaltam.add(assunto);
+            }
+            if (!vazio(p.subassunto())) {
+                var sub = p.subassunto().strip();
+                var tem = achado.isPresent()
+                        && achado.get().subassuntos().stream().anyMatch(x -> x.nome().equalsIgnoreCase(sub));
+                if (!tem) {
+                    subassuntosQueFaltam.add("%s › %s".formatted(achado.map(a -> a.nome()).orElse(assunto), sub));
+                }
+            }
+        }
+        if (!criarNovos && !(assuntosQueFaltam.isEmpty() && subassuntosQueFaltam.isEmpty())) {
+            var faltas = new ArrayList<String>();
+            if (!assuntosQueFaltam.isEmpty()) {
+                faltas.add("assuntos " + String.join(", ", assuntosQueFaltam.stream().map(n -> "'" + n + "'").toList()));
+            }
+            if (!subassuntosQueFaltam.isEmpty()) {
+                faltas.add("sub-assuntos " + String.join(", ", subassuntosQueFaltam.stream().map(n -> "'" + n + "'").toList()));
+            }
+            throw new RegraDeNegocio(
+                    ("Nada foi classificado: ainda não existem %s. Se era para usar um que já existe, corrija o "
+                            + "nome (assuntos de hoje: %s). Se são novos, mostre ao professor o que vai ser criado e, "
+                            + "com o ok dele, chame de novo com criar_novos=true.")
+                            .formatted(String.join("; ", faltas),
+                                    existentes.isEmpty() ? "nenhum" : String.join(", ", existentes.stream().map(a -> a.nome()).toList())));
+        }
+
+        for (var p : pedidos) {
+            var assunto = criarNovos ? taxonomia.criarAssunto(ident, p.assunto()) : taxonomia.resolverAssunto(p.assunto().strip());
+            var sub = vazio(p.subassunto()) ? null
+                    : criarNovos ? taxonomia.criarSubassunto(ident, assunto, p.subassunto()).getNome() : p.subassunto().strip();
+            var q = alvos.get(p.questao());
+            // Vínculo é ligação: trocar a etiqueta não deixa entulho.
+            q.getAssuntos().clear();
+            em.flush();
+            classificar(ident, q, assunto, sub);
+        }
+        em.flush();
+        var restam = em.createQuery("select count(q)" + SEM_ASSUNTO, Long.class).getSingleResult().intValue();
+        return new QuestoesClassificadas(pedidos.size(), List.copyOf(assuntosQueFaltam),
+                List.copyOf(subassuntosQueFaltam), restam);
+    }
+
     Video videoDe(Identidade ident, DadosDoVideo dados) {
         if (dados.vimeoId() == null || dados.vimeoId().isBlank()) {
             return null;

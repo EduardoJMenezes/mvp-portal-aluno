@@ -171,6 +171,24 @@ Quem está usando o MCP diz quais módulos e sub-módulos pertencem a cada assun
 ("K01 e K02 são Atomística, K03 é Estequiometria"), e `classificar_videos`
 aplica em lote. A etiqueta fica no vídeo e vale para todas as turmas.
 
+## Classificação das questões, em lote
+
+Quem importa um .docx no Banco de questões costuma não saber o assunto de cada
+questão; quem sabe vem depois (12/10/2026). Pelo MCP são duas chamadas:
+
+* `listar_questoes_sem_assunto` devolve as questões sem assunto, enxutas
+  (enunciado, alternativas, gabarito e o começo da resolução, sem a figura),
+  com o envio de onde vieram e a taxonomia de hoje — tudo o que o Claude
+  precisa para propor a classificação de um lote numa leitura só;
+* `classificar_questoes` aplica a tabela inteira numa transação: cada questão
+  fica com o assunto e o sub-assunto da linha dela, no lugar do que tinha.
+
+O nome tem de ser o de um assunto que existe, **por inteiro** — num lote, pedaço
+de nome viraria classificação errada em silêncio. O que não existe é erro que
+lista o que falta, e só com `criar_novos` (o "sim" do professor ao que o Claude
+mostrou) o assunto e o sub-assunto que faltam nascem junto. Sem assunto, a
+questão não entra no desempenho por assunto do aluno.
+
 ## O modelo, em mudanças
 
 | onde | mudança |
