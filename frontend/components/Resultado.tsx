@@ -30,13 +30,16 @@ const GRUPOS: { tipo: LinhaParaRevisar["tipo"]; titulo: string; Icone: LucideIco
   { tipo: "ERRO", titulo: "Reveja a resolução das que errou", Icone: RotateCcw },
 ];
 
-export function OndeRevisar({ analise, legenda = "Os assuntos em que você mais errou e os vídeos que explicam cada um." }: { analise: Recomendacao[]; legenda?: string }) {
+/** `semTitulo`: quando a aba em que ele está já se chama "Onde revisar". */
+export function OndeRevisar({ analise, legenda = "Os assuntos em que você mais errou e os vídeos que explicam cada um.", semTitulo = false }: { analise: Recomendacao[]; legenda?: string; semTitulo?: boolean }) {
   return (
-    <section className="flex flex-col gap-3" aria-labelledby="titulo-revisar">
-      <TituloDeSecao>
-        <span id="titulo-revisar">Onde revisar</span>
-      </TituloDeSecao>
-      <p className="-mt-1 text-[15px] text-suave">{legenda}</p>
+    <section className="flex flex-col gap-3" aria-label={semTitulo ? "Onde revisar" : undefined} aria-labelledby={semTitulo ? undefined : "titulo-revisar"}>
+      {!semTitulo && (
+        <TituloDeSecao>
+          <span id="titulo-revisar">Onde revisar</span>
+        </TituloDeSecao>
+      )}
+      <p className={`${semTitulo ? "" : "-mt-1 "}text-[15px] text-suave`}>{legenda}</p>
       <ul className="grid gap-3 md:grid-cols-2">
         {analise.map((t) => (
           <Cartao key={t.topico} como="li" className="flex flex-col gap-3 p-5">

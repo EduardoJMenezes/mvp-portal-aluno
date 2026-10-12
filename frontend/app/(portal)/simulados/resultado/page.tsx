@@ -1,14 +1,16 @@
 "use client";
 
-import { useSearchParams } from "next/navigation";
+import { ClipboardCheck, SquarePlay, type LucideIcon } from "lucide-react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
 import { AnaliseDoSimulado } from "@/components/Analise";
 import { GradeQuestoes } from "@/components/GradeQuestoes";
 import { GraficosDoSimulado } from "@/components/GraficosDoSimulado";
 import { VideoSobDemanda } from "@/components/Player";
 import { Anel, OndeRevisar } from "@/components/Resultado";
-import { Botao, Cartao, Estado, Etiqueta, Pagina } from "@/components/ui";
+import { Abas, Botao, Cartao, Estado, Etiqueta, Pagina, Vazio } from "@/components/ui";
 import { api, useDados, type Resultado } from "@/lib/api";
+import { plural } from "@/lib/formato";
 import { TextoFormatado } from "@/lib/texto";
 
 export default function PaginaDoResultado() {
@@ -31,7 +33,17 @@ function ResultadoDoAluno() {
   );
 }
 
+// O resultado tinha tudo numa coluna só, e o aluno rolava muito para achar a prova e o que revisar.
+// Agora são três perguntas, cada uma numa aba: como fui, o que errei, o que estudar.
+type Aba = "geral" | "prova" | "revisar";
+const ABAS: Aba[] = ["geral", "prova", "revisar"];
+
 function Painel({ r }: { r: Resultado }) {
+  const router = useRouter();
+  const pedida = useSearchParams().get("aba") as Aba | null;
+  const aba: Aba = pedida && ABAS.includes(pedida) ? pedida : "geral";
+  const trocar = (nova: Aba) => router.replace(`/simulados/resultado/?id=${r.simulado_id}${nova === "geral" ? "" : `&aba=${nova}`}`, { scroll: false });
+  const erradas = r.total - r.acertos;
   const [indice, setIndice] = useState(() => Math.max(0, r.questoes.findIndex((q) => !q.correta)));
   const questao = r.questoes[indice];
   const mensagem = r.percentual >= 80 ? "Ótimo resultado." : r.percentual >= 60 ? "Bom resultado." : "Veja abaixo onde vale revisar.";
@@ -51,9 +63,40 @@ function Painel({ r }: { r: Resultado }) {
         </div>
       </Cartao>
 
-      {r.analise_escrita && <AnaliseDoSimulado analise={r.analise_escrita} />}
-      <GraficosDoSimulado r={r} />
+      <Abas
+        abas={[
+          { valor: "geral", rotulo: "Visão geral" },
+          { valor: "prova", rotulo: "Prova corrigida" },
+          { valor: "revisar", rotulo: r.analise.length ? `Onde revisar (${r.analise.length})` : "Onde revisar" },
+        ]}
+        atual={aba}
+        aoTrocar={trocar}
+      />
 
+      {aba === "geral" && (
+        <>
+          {r.analise_escrita && <AnaliseDoSimulado analise={r.analise_escrita} />}
+          <GraficosDoSimulado r={r} />
+          <div className="grid gap-3 md:grid-cols-2">
+            <Atalho
+              Icone={ClipboardCheck}
+              titulo="Prova corrigida"
+              texto={erradas ? `Veja ${plural(erradas, "questão que você não acertou", "questões que você não acertou")}, com o gabarito, a resolução e o comentário da alternativa que você marcou.` : "Reveja as questões, com o gabarito e a resolução de cada uma."}
+              acao="Ver a prova"
+              aoClicar={() => trocar("prova")}
+            />
+            <Atalho
+              Icone={SquarePlay}
+              titulo="Onde revisar"
+              texto={r.analise.length ? `${plural(r.analise.length, "tema", "temas")} em que você errou, com as aulas e os vídeos que explicam cada um.` : "As aulas e os vídeos que explicam o que você errou aparecem aqui."}
+              acao="Ver onde revisar"
+              aoClicar={() => trocar("revisar")}
+            />
+          </div>
+        </>
+      )}
+
+      {aba === "prova" && (
       <div className="grid gap-5 lg:grid-cols-[17rem_minmax(0,1fr)]">
         <aside className="lg:sticky lg:top-20 lg:self-start">
           <Cartao className="p-4">
@@ -74,9 +117,33 @@ function Painel({ r }: { r: Resultado }) {
 
         {questao && <QuestaoCorrigida q={questao} indice={indice} total={r.questoes.length} aoTrocar={setIndice} />}
       </div>
+      )}
 
-      {r.analise.length > 0 && <OndeRevisar analise={r.analise} />}
+      {aba === "revisar" &&
+        (r.analise.length > 0 ? (
+          <OndeRevisar analise={r.analise} semTitulo legenda="Os temas em que você errou nesta prova, do que mais pesou para o que menos pesou, com as aulas e os vídeos que explicam cada um." />
+        ) : (
+          <Vazio titulo={erradas ? "Ainda sem material ligado ao que você errou" : "Nada a revisar nesta prova"}>
+            {erradas ? "Quando houver aula ou vídeo sobre os temas desta prova, eles aparecem aqui." : "Você acertou todas as questões."}
+          </Vazio>
+        ))}
     </>
+  );
+}
+
+/** A porta para as outras abas, no fim da visão geral: o aluno não precisa descobrir que elas existem. */
+function Atalho({ Icone, titulo, texto, acao, aoClicar }: { Icone: LucideIcon; titulo: string; texto: string; acao: string; aoClicar: () => void }) {
+  return (
+    <Cartao como="div" className="flex flex-col gap-3 p-5">
+      <div className="flex items-center gap-2">
+        <Icone aria-hidden="true" className="size-5 text-acento" strokeWidth={2} />
+        <h3 className="font-semibold text-tinta">{titulo}</h3>
+      </div>
+      <p className="text-[15px] text-suave">{texto}</p>
+      <div>
+        <Botao variante="secundario" tamanho="pequeno" onClick={aoClicar}>{acao}</Botao>
+      </div>
+    </Cartao>
   );
 }
 

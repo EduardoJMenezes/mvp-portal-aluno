@@ -7,7 +7,7 @@ import { CursoDoAluno } from "@/components/CursoDoAluno";
 import { PorAssunto, ResumoDaDevolutiva } from "@/components/Devolutiva";
 import { OndeRevisar } from "@/components/Resultado";
 import { Anel } from "@/components/Resultado";
-import { Aviso, BotaoLink, Campo, Cartao, Estado, Etiqueta, LinkDeTitulo, Pagina, TituloDeSecao, Vazio } from "@/components/ui";
+import { Abas, Aviso, BotaoLink, Campo, Cartao, Estado, Etiqueta, LinkDeTitulo, Pagina, TituloDeSecao, Vazio } from "@/components/ui";
 import { api, useDados, type AlunoNaBusca } from "@/lib/api";
 import { dataCurta, plural } from "@/lib/formato";
 
@@ -78,10 +78,23 @@ function DesempenhoDoAluno() {
   return aluno ? <Acompanhamento aluno={aluno} /> : <BuscaDeAlunos />;
 }
 
+// O acompanhamento cabia numa página só e pedia rolagem demais: cada pergunta do professor tem a sua aba.
+type Aba = "geral" | "curso" | "simulados";
+const ABAS: { valor: Aba; rotulo: string }[] = [
+  { valor: "geral", rotulo: "Visão geral" },
+  { valor: "curso", rotulo: "No curso" },
+  { valor: "simulados", rotulo: "Simulados" },
+];
+
 function Acompanhamento({ aluno }: { aluno: string }) {
   const router = useRouter();
   const parametros = useSearchParams();
   const simulado = parametros.get("simulado") ?? undefined;
+  const pedida = parametros.get("aba") as Aba | null;
+  // Quem chega com um simulado escolhido quer ver o simulado.
+  const aba: Aba = pedida && ABAS.some((a) => a.valor === pedida) ? pedida : simulado ? "simulados" : "geral";
+  const endereco = (nova: Aba, prova?: string) =>
+    `/admin/alunos/?aluno=${encodeURIComponent(aluno)}${nova === "geral" ? "" : `&aba=${nova}`}${prova ? `&simulado=${prova}` : ""}`;
   const desempenho = useDados(() => api.desempenho(aluno, simulado), [aluno, simulado]);
   const simulados = useDados(() => api.simuladosDoProfessor());
   const assuntos = useDados(() => (aluno ? api.devolutivaDoAluno(aluno).catch(() => null) : Promise.resolve(null)), [aluno]);
@@ -92,9 +105,11 @@ function Acompanhamento({ aluno }: { aluno: string }) {
 
   return (
     <Pagina titulo={desempenho.dados?.aluno ?? "Desempenho do aluno"} legenda="O que já fez do curso, como está em cada assunto e como foi em cada simulado, a qualquer momento, inclusive antes de fechar." voltar={{ href: "/admin/alunos/", rotulo: "Desempenho por aluno" }}>
-      <>
+      <Abas abas={ABAS} atual={aba} aoTrocar={(nova) => router.replace(endereco(nova, nova === "simulados" ? simulado : undefined), { scroll: false })} />
+      {aba === "curso" && <CursoDoAluno aluno={aluno} />}
+      {aba === "geral" && (
+        <>
           {geral.dados && <AnaliseGeral dados={geral.dados} aoAtualizar={geral.recarregar} />}
-          <CursoDoAluno aluno={aluno} />
           {assuntos.dados && (
             <section className="flex flex-col gap-3" aria-labelledby="titulo-por-assunto">
               <TituloDeSecao>
@@ -111,14 +126,17 @@ function Acompanhamento({ aluno }: { aluno: string }) {
               )}
             </section>
           )}
-          <TituloDeSecao>Nos simulados</TituloDeSecao>
+        </>
+      )}
+      {aba === "simulados" && (
+        <>
           <Campo rotulo="Simulado" className="max-w-md">
             {(id) => (
               <select
                 id={id}
                 className="campo"
                 value={simulado ?? ""}
-                onChange={(e) => router.replace(`/admin/alunos/?aluno=${encodeURIComponent(aluno)}${e.target.value ? `&simulado=${e.target.value}` : ""}`)}
+                onChange={(e) => router.replace(endereco("simulados", e.target.value || undefined), { scroll: false })}
               >
                 <option value="">O último que ele começou</option>
                 {simulados.dados?.map((s) => (
@@ -146,6 +164,10 @@ function Acompanhamento({ aluno }: { aluno: string }) {
                     </div>
                   </Cartao>
 
+                  {idDoSimulado && doSimulado.dados && (
+                    <AnaliseDoSimuladoParaOProfessor aluno={aluno} simuladoId={idDoSimulado} dados={doSimulado.dados} aoMudar={doSimulado.setDados} />
+                  )}
+
                   <TituloDeSecao>Questão a questão</TituloDeSecao>
                   <Cartao className="overflow-x-auto">
                     <table className="tabela min-w-[36rem]">
@@ -172,10 +194,6 @@ function Acompanhamento({ aluno }: { aluno: string }) {
                     </table>
                   </Cartao>
 
-                  {idDoSimulado && doSimulado.dados && (
-                    <AnaliseDoSimuladoParaOProfessor aluno={aluno} simuladoId={idDoSimulado} dados={doSimulado.dados} aoMudar={doSimulado.setDados} />
-                  )}
-
                   {d.recomendacoes && d.recomendacoes.length > 0 && (
                     <OndeRevisar analise={d.recomendacoes} legenda="Os assuntos em que o aluno mais errou e os vídeos que explicam cada um." />
                   )}
@@ -183,7 +201,8 @@ function Acompanhamento({ aluno }: { aluno: string }) {
               )
             }
           </Estado>
-      </>
+        </>
+      )}
     </Pagina>
   );
 }
