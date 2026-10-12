@@ -324,7 +324,8 @@ export type Prova = SimuladoResumo & {
  */
 export type LinhaParaRevisar = { tipo: "VIDEO" | "PDF" | "QUESTAO" | "ERRO"; item_id: number; modulo_id: number; modulo: string; nome: string };
 /** `no_curso`: o que há sobre o tópico no curso do aluno; `videos`: os demais vídeos do acervo. */
-export type Recomendacao = { topico: string; erros: number; videos: Video[]; no_curso?: LinhaParaRevisar[] };
+/** `assunto_id` e `subassunto_id` (nulo: é do assunto) só vêm na devolutiva do aluno, para a tela ligar o material ao assunto. */
+export type Recomendacao = { topico: string; erros: number; videos: Video[]; no_curso?: LinhaParaRevisar[]; assunto_id?: number | null; subassunto_id?: number | null };
 
 /**
  * A devolutiva por assunto, juntando questão de aula e de simulado. `percentual` é o acerto cru;

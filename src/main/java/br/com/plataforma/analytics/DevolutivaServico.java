@@ -245,7 +245,7 @@ public class DevolutivaServico {
 
         return new Devolutiva(total, acertos, total == 0 ? null : AnalyticsServico.percentual(acertos, total),
                 semAssunto, questoesSemAssunto.size(), assuntos,
-                paraQuem == null ? List.of() : ondeRevisar(paraQuem, assuntos, agora));
+                paraQuem == null ? List.of() : ondeRevisar(paraQuem, assuntos, geral, agora));
     }
 
     private static Linha linha(Integer id, String nome, Conta c, double geral) {
@@ -266,30 +266,41 @@ public class DevolutivaServico {
                 && (subassuntoId == null || (exato ? subassuntoId.equals(e.subassuntoId()) : e.subassuntoId() == null)));
     }
 
+    /** Quantos pontos levam material: a tela mostra um assunto por vez, então cabe quase tudo. */
+    static final int PONTOS_PARA_REVISAR = 20;
+
     /**
-     * Os pontos mais fracos, do pior para o melhor. Vai no sub-assunto quando o assunto tem; senão,
-     * no assunto. O que está indo bem não entra.
+     * Todo ponto em que o aluno errou, do pior para o melhor, com o que há para estudar nele. Vai
+     * no sub-assunto quando o assunto tem; os erros em questão que só tem o assunto ficam num ponto
+     * do próprio assunto. Onde não há erro, não há o que revisar.
      *
      * <p>Para cada ponto, primeiro o que há no curso do próprio aluno, com o endereço da linha:
      * os vídeos e os PDFs daquele assunto, as questões dele que ainda não respondeu e as que
      * respondeu e errou. O assunto de cada um é o do conteúdo (ver {@code AssuntoDasLinhas}). Depois,
      * os outros vídeos do acervo sobre o ponto, que podem aparecer bloqueados.
      */
-    private List<AnalyticsServico.Recomendacao> ondeRevisar(Identidade ident, List<AssuntoNaDevolutiva> assuntos, Instant agora) {
-        record Ponto(Integer assuntoId, Integer subassuntoId, String rotulo, int erros, double ajustado, Nivel nivel) {}
+    private List<AnalyticsServico.Recomendacao> ondeRevisar(Identidade ident, List<AssuntoNaDevolutiva> assuntos, double geral, Instant agora) {
+        record Ponto(Integer assuntoId, Integer subassuntoId, String rotulo, int erros, double ajustado) {}
         var pontos = new ArrayList<Ponto>();
         for (var a : assuntos) {
             if (a.subassuntos().isEmpty()) {
-                pontos.add(new Ponto(a.id(), null, a.nome(), a.respostas() - a.acertos(), a.ajustado(), a.nivel()));
+                pontos.add(new Ponto(a.id(), null, a.nome(), a.respostas() - a.acertos(), a.ajustado()));
+                continue;
             }
             for (var s : a.subassuntos()) {
-                pontos.add(new Ponto(a.id(), s.id(), s.nome(), s.respostas() - s.acertos(), s.ajustado(), s.nivel()));
+                pontos.add(new Ponto(a.id(), s.id(), s.nome(), s.respostas() - s.acertos(), s.ajustado()));
+            }
+            // O que sobra do assunto depois dos sub-assuntos: as questões que só têm o assunto.
+            var respostas = a.respostas() - a.subassuntos().stream().mapToInt(Linha::respostas).sum();
+            var acertos = a.acertos() - a.subassuntos().stream().mapToInt(Linha::acertos).sum();
+            if (respostas > 0) {
+                pontos.add(new Ponto(a.id(), null, a.nome(), respostas - acertos, ajustar(acertos, respostas, geral)));
             }
         }
         var fracos = pontos.stream()
-                .filter(p -> p.nivel() != Nivel.BEM && p.erros() > 0)
+                .filter(p -> p.erros() > 0)
                 .sorted(Comparator.comparingDouble(Ponto::ajustado))
-                .limit(4)
+                .limit(PONTOS_PARA_REVISAR)
                 .toList();
         if (fracos.isEmpty()) {
             return List.of();
@@ -351,7 +362,8 @@ public class DevolutivaServico {
                     .filter(v -> !jaNoCurso.contains(v.getId())).limit(3).toList();
             var liberados = acesso.videosLiberados(ident, videos.stream().map(Video::getId).toList(), agora);
             return new AnalyticsServico.Recomendacao(p.rotulo(), p.erros(),
-                    videos.stream().map(v -> AcessoServico.descrever(v, liberados.contains(v.getId()))).toList(), noCurso);
+                    videos.stream().map(v -> AcessoServico.descrever(v, liberados.contains(v.getId()))).toList(), noCurso,
+                    p.assuntoId(), p.subassuntoId());
         }).toList();
     }
 

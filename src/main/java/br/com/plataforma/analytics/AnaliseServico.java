@@ -60,6 +60,8 @@ public class AnaliseServico {
 
     /** Os erros mais recentes que vão no resumo, com o comentário de cada um. */
     static final int ERROS_NO_RESUMO = 30;
+    /** Em quantos pontos fracos o resumo diz o que há no curso para estudar. */
+    static final int PONTOS_NO_RESUMO = 8;
     public static final int LOTE_PADRAO = 5;
     public static final int LOTE_MAXIMO = 10;
     static final int TAMANHO_DO_PONTO = 700;
@@ -192,7 +194,8 @@ public class AnaliseServico {
                     r.marcada() == null ? null : comentarios.get(r.marcada()), comentarios.get(q.getGabarito())));
         }
 
-        var noCurso = d.ondeRevisar().stream().map(p -> new ParaRevisar(p.topico(), p.erros(),
+        // Só os pontos mais fracos: é material para até três próximos passos, não o curso inteiro.
+        var noCurso = d.ondeRevisar().stream().limit(PONTOS_NO_RESUMO).map(p -> new ParaRevisar(p.topico(), p.erros(),
                 Stream.concat(nomes(p, "VIDEO").stream(),
                         p.videos().stream().filter(v -> !v.bloqueado()).map(v -> v.titulo())).toList(),
                 nomes(p, "PDF"), nomes(p, "QUESTAO"), nomes(p, "ERRO"))).toList();

@@ -30,6 +30,46 @@ const GRUPOS: { tipo: LinhaParaRevisar["tipo"]; titulo: string; Icone: LucideIco
   { tipo: "ERRO", titulo: "Reveja a resolução das que errou", Icone: RotateCcw },
 ];
 
+/** O material de um ponto: o que há no curso do aluno (assistir, ler, praticar, rever) e os outros vídeos do acervo. */
+export function MaterialParaRevisar({ t }: { t: Recomendacao }) {
+  return (
+    <>
+      {GRUPOS.map((grupo) => {
+        const linhas = (t.no_curso ?? []).filter((l) => l.tipo === grupo.tipo);
+        if (!linhas.length) return null;
+        const Icone = grupo.Icone;
+        return (
+          <div key={grupo.tipo} className="flex flex-col gap-1">
+            <p className="text-[13px] font-semibold text-tinta-2">{grupo.titulo}</p>
+            <ul className="flex flex-col">
+              {linhas.map((l) => (
+                <li key={l.item_id}>
+                  <Link href={`/curso/aula/?modulo=${l.modulo_id}&item=${l.item_id}`} className="group flex items-center gap-2.5 rounded-campo px-2 py-1.5 text-[15px] hover:bg-canvas">
+                    <Icone aria-hidden="true" className="size-4 shrink-0 text-acento" strokeWidth={2} />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate font-medium text-tinta group-hover:text-acento-forte">{l.nome}</span>
+                      <span className="block truncate text-[13px] text-suave">{l.modulo}</span>
+                    </span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </div>
+        );
+      })}
+      {t.videos.length > 0 && (
+        <div className="flex flex-col gap-2">
+          {(t.no_curso?.length ?? 0) > 0 && <p className="text-[13px] font-semibold text-tinta-2">Outros vídeos sobre isso</p>}
+          {t.videos.map((v) => (
+            <VideoSobDemanda key={v.id} video={v} />
+          ))}
+        </div>
+      )}
+      {t.videos.length === 0 && !t.no_curso?.length && <p className="text-sm text-suave">Ainda sem material sobre este assunto.</p>}
+    </>
+  );
+}
+
 /** `semTitulo`: quando a aba em que ele está já se chama "Onde revisar". */
 export function OndeRevisar({ analise, legenda = "Os assuntos em que você mais errou e os vídeos que explicam cada um.", semTitulo = false }: { analise: Recomendacao[]; legenda?: string; semTitulo?: boolean }) {
   return (
@@ -47,38 +87,7 @@ export function OndeRevisar({ analise, legenda = "Os assuntos em que você mais 
               <h3 className="font-semibold text-tinta">{t.topico}</h3>
               <Etiqueta tom="erro">{plural(t.erros, "erro")}</Etiqueta>
             </div>
-            {GRUPOS.map((grupo) => {
-              const linhas = (t.no_curso ?? []).filter((l) => l.tipo === grupo.tipo);
-              if (!linhas.length) return null;
-              const Icone = grupo.Icone;
-              return (
-                <div key={grupo.tipo} className="flex flex-col gap-1">
-                  <p className="text-[13px] font-semibold text-tinta-2">{grupo.titulo}</p>
-                  <ul className="flex flex-col">
-                    {linhas.map((l) => (
-                      <li key={l.item_id}>
-                        <Link href={`/curso/aula/?modulo=${l.modulo_id}&item=${l.item_id}`} className="group flex items-center gap-2.5 rounded-campo px-2 py-1.5 text-[15px] hover:bg-canvas">
-                          <Icone aria-hidden="true" className="size-4 shrink-0 text-acento" strokeWidth={2} />
-                          <span className="min-w-0 flex-1">
-                            <span className="block truncate font-medium text-tinta group-hover:text-acento-forte">{l.nome}</span>
-                            <span className="block truncate text-[13px] text-suave">{l.modulo}</span>
-                          </span>
-                        </Link>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              );
-            })}
-            {t.videos.length > 0 && (
-              <div className="flex flex-col gap-2">
-                {(t.no_curso?.length ?? 0) > 0 && <p className="text-[13px] font-semibold text-tinta-2">Outros vídeos sobre isso</p>}
-                {t.videos.map((v) => (
-                  <VideoSobDemanda key={v.id} video={v} />
-                ))}
-              </div>
-            )}
-            {t.videos.length === 0 && !t.no_curso?.length && <p className="text-sm text-suave">Ainda sem material sobre este assunto.</p>}
+            <MaterialParaRevisar t={t} />
           </Cartao>
         ))}
       </ul>

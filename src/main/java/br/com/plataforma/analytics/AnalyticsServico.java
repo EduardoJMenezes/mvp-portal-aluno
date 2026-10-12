@@ -66,12 +66,14 @@ public class AnalyticsServico {
     /**
      * {@code noCurso}: o que há sobre o tópico no curso do aluno, com o endereço da linha; só a
      * devolutiva dele preenche. {@code videos}: os demais vídeos do acervo sobre o tópico.
+     * {@code assuntoId} e {@code subassuntoId} dizem de que ponto da devolutiva é a recomendação
+     * (sub-assunto nulo: é do assunto); só a devolutiva os preenche.
      */
     public record Recomendacao(String topico, int erros, List<AcessoServico.VideoDescrito> videos,
-            List<LinhaParaRevisar> noCurso) {
+            List<LinhaParaRevisar> noCurso, Integer assuntoId, Integer subassuntoId) {
 
         public Recomendacao(String topico, int erros, List<AcessoServico.VideoDescrito> videos) {
-            this(topico, erros, videos, List.of());
+            this(topico, erros, videos, List.of(), null, null);
         }
     }
 

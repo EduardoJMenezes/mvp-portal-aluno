@@ -203,6 +203,14 @@ seção "Em aberto", no fim.
 >   abrem a resolução. Primeiro o que é exatamente do sub-assunto, depois o
 >   que é só do assunto. Os demais vídeos do acervo continuam em `videos`.
 >   Vídeo de resolução não recebe assunto: ele é da questão.
+> * **"Meu desempenho" é por assunto, com o que estudar em cada um** (12/10/2026).
+>   A devolutiva deixou de trazer só os quatro pontos mais fracos: traz todo
+>   ponto em que o aluno errou (até 20), cada um com `assunto_id` e
+>   `subassunto_id`, e os erros em questão que só tem o assunto ficam num ponto
+>   do próprio assunto. A tela mostra os assuntos de um lado e, do outro, o
+>   assunto escolhido: cada sub-assunto com o acerto e, onde houve erro, as
+>   aulas, os PDFs e as questões do curso dele. Não há IA nessa tela; a análise
+>   escrita fica no resultado do simulado.
 >
 > **Mudou em 10/10/2026: a questão entra na aula por um painel feito para quem
 > está com a apostila ao lado.** O off-canvas de "Adicionar › Questão"

@@ -119,11 +119,22 @@ class DevolutivaTest extends BaseDoPortal {
     }
 
     @Test
-    void ondeRevisarApontaOPontoMaisFracoENaoOQueNaoTemErro() throws Exception {
+    void ondeRevisarApontaCadaPontoComErroENaoOQueNaoTem() throws Exception {
+        var estequiometria = jdbc.queryForObject("SELECT id FROM subjects WHERE nome = 'Estequiometria'", Integer.class);
+        var mol = jdbc.queryForObject("SELECT id FROM subtopics WHERE nome = 'Mol'", Integer.class);
         get("/api/aluno/desempenho/assuntos", ALUNO)
-                .andExpect(jsonPath("$.onde_revisar.length()").value(1))
+                // Atomística não entra: ele acertou as duas.
+                .andExpect(jsonPath("$.onde_revisar.length()").value(2))
+                // O pior primeiro, e cada ponto diz de onde é, para a tela ligar ao assunto certo.
                 .andExpect(jsonPath("$.onde_revisar[0].topico").value("Mol"))
-                .andExpect(jsonPath("$.onde_revisar[0].erros").value(2));
+                .andExpect(jsonPath("$.onde_revisar[0].erros").value(2))
+                .andExpect(jsonPath("$.onde_revisar[0].assunto_id").value(estequiometria))
+                .andExpect(jsonPath("$.onde_revisar[0].subassunto_id").value(mol))
+                // O erro na questão que só tem o assunto fica num ponto do próprio assunto.
+                .andExpect(jsonPath("$.onde_revisar[1].topico").value("Estequiometria"))
+                .andExpect(jsonPath("$.onde_revisar[1].erros").value(1))
+                .andExpect(jsonPath("$.onde_revisar[1].assunto_id").value(estequiometria))
+                .andExpect(jsonPath("$.onde_revisar[1].subassunto_id").doesNotExist());
     }
 
     @Test

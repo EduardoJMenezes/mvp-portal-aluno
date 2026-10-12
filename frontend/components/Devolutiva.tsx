@@ -8,19 +8,19 @@ import { Cartao, Etiqueta, type Tom } from "@/components/ui";
 import type { AssuntoNaDevolutiva, Devolutiva, LinhaDaDevolutiva, NivelNoAssunto } from "@/lib/api";
 import { plural, porcento } from "@/lib/formato";
 
-const NIVEL: Record<NivelNoAssunto, { rotulo: string; tom: Tom; barra: string }> = {
+export const NIVEL: Record<NivelNoAssunto, { rotulo: string; tom: Tom; barra: string }> = {
   ATENCAO: { rotulo: "Precisa de atenção", tom: "erro", barra: "bg-erro-vivo" },
   DESENVOLVENDO: { rotulo: "Em desenvolvimento", tom: "atencao", barra: "bg-atencao-vivo" },
   BEM: { rotulo: "Indo bem", tom: "sucesso", barra: "bg-sucesso-vivo" },
 };
 
 /** "2 da aula e 1 de simulado": de onde vieram as respostas. */
-function origem(l: LinhaDaDevolutiva): string {
+export function origem(l: LinhaDaDevolutiva): string {
   const partes = [l.da_aula && `${l.da_aula} da aula`, l.de_simulado && `${l.de_simulado} de simulado`].filter((p): p is string => !!p);
   return partes.join(" e ");
 }
 
-function Barra({ linha }: { linha: LinhaDaDevolutiva }) {
+export function Barra({ linha }: { linha: LinhaDaDevolutiva }) {
   return (
     <span aria-hidden="true" className="block h-2 overflow-hidden rounded-full bg-gelo">
       <span className={`block h-full rounded-full ${NIVEL[linha.nivel].barra}`} style={{ width: `${Math.max(linha.percentual, 2)}%` }} />
