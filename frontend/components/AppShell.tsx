@@ -1,12 +1,13 @@
 "use client";
 
-import { BookOpen, CalendarDays, ChartNoAxesColumn, ChevronDown, FileText, Folder, House, Menu, Radio, type LucideIcon } from "lucide-react";
+import { BookOpen, CalendarDays, ChartNoAxesColumn, ChevronDown, Eye, FileText, Folder, House, Menu, Radio, type LucideIcon } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, type MouseEvent, type ReactNode } from "react";
 import { api, useDados, type BotaoDoAluno, type Funcionalidade } from "@/lib/api";
 import { ehOperador, useSessao, useUsuario } from "@/lib/sessao";
+import { Botao } from "./ui";
 import logo from "@/marca/logo.png";
 import marca from "@/marca/q.png";
 
@@ -158,6 +159,38 @@ function NavDoOperador({ caminho, gaveta, classe }: { caminho: string; gaveta?: 
   });
 }
 
+/**
+ * A faixa da prévia do aluno: está sempre à vista enquanto o professor anda pelo portal como aluno
+ * de uma turma, e é dela a volta ao modo professor. A volta recarrega a página para a sessão ser
+ * relida, e cai na montagem do curso já filtrada pela turma que ele estava conferindo.
+ */
+function FaixaDaPrevia({ turma }: { turma: string }) {
+  async function voltar() {
+    await api.sairDaPrevia();
+    window.location.assign(`/admin/biblioteca/?turma=${encodeURIComponent(turma)}`);
+  }
+  return (
+    <div role="status" className="border-b border-atencao-borda bg-atencao-fundo">
+      <div className="mx-auto flex max-w-6xl flex items-center gap-x-4 gap-y-2 px-4 py-2 sm:px-6">
+        <p className="flex min-w-0 flex-1 items-start gap-2 text-sm text-atencao">
+          <Eye aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
+          {/* No celular a faixa mora no cabeçalho fixo: a frase encolhe para não comer a tela. */}
+          <span className="sm:hidden">
+            <strong className="font-semibold">Prévia</strong> como aluno de <strong className="font-semibold">{turma}</strong>. Nada é gravado.
+          </span>
+          <span className="hidden sm:inline">
+            <strong className="font-semibold">Prévia do aluno:</strong> você está vendo o portal como um aluno de <strong className="font-semibold">{turma}</strong>. Nada do que fizer aqui é gravado.
+          </span>
+        </p>
+        <Botao variante="neutro" tamanho="pequeno" onClick={voltar}>
+          <span className="sm:hidden">Sair da prévia</span>
+          <span className="hidden sm:inline">Voltar ao modo professor</span>
+        </Botao>
+      </div>
+    </div>
+  );
+}
+
 // Link dentro de <details> fecha o menu ao navegar.
 const fecharMenu = (e: MouseEvent<HTMLElement>) => {
   const menu = e.currentTarget.closest("details");
@@ -211,6 +244,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         Pular para o conteúdo
       </a>
       <header className="sticky top-0 z-30 border-b border-borda/70 bg-papel print:hidden">
+        {usuario.previa && <FaixaDaPrevia turma={usuario.previa.turma} />}
         <div className="mx-auto flex h-16 max-w-6xl items-center gap-2 px-4 sm:px-6">
           <details className="relative md:hidden">
             <summary className="flex size-10 cursor-pointer list-none items-center justify-center rounded-campo border border-borda text-tinta [&::-webkit-details-marker]:hidden" aria-label="Menu">

@@ -75,10 +75,10 @@ public class MateriaisServico {
         if (m.getStatus() != Status.PUBLICADO) {
             return false;
         }
-        if (m.getAlunos().stream().anyMatch(a -> a.getId().equals(ident.usuarioId()))) {
+        if (!ident.emPrevia() && m.getAlunos().stream().anyMatch(a -> a.getId().equals(ident.usuarioId()))) {
             return true;
         }
-        var minhas = contas.turmasDoAluno(ident.usuarioId());
+        var minhas = contas.turmasDe(ident);
         return m.getTurmas().stream().anyMatch(t -> minhas.contains(t.getId()));
     }
 
@@ -89,7 +89,7 @@ public class MateriaisServico {
      */
     private java.util.Set<Integer> pelasAulas(Identidade ident, Instant agora) {
         var ids = new java.util.HashSet<Integer>();
-        var minhas = contas.turmasDoAluno(ident.usuarioId());
+        var minhas = contas.turmasDe(ident);
         em.createQuery("select a from Aula a where a.material is not null", Aula.class).getResultList().stream()
                 .filter(a -> a.getMaterial() != null && AulasServico.materialLiberado(ident, a, minhas, agora))
                 .forEach(a -> ids.add(a.getMaterial().getId()));
@@ -149,7 +149,8 @@ public class MateriaisServico {
     @Transactional(readOnly = true)
     public List<Resumo> listar(Identidade ident) {
         var anotadas = new LinkedHashMap<Integer, Integer>();
-        anotacoes.paginasPorMaterial(ident.usuarioId())
+        // As marcações são de quem as fez: na prévia, o professor vê o material limpo, como um aluno novo.
+        (ident.emPrevia() ? List.<Object[]>of() : anotacoes.paginasPorMaterial(ident.usuarioId()))
                 .forEach(l -> anotadas.put((Integer) l[0], ((Number) l[1]).intValue()));
         var pelasAulas = ident.eOperador() ? java.util.Set.<Integer>of() : pelasAulas(ident, Instant.now());
         var usos = ident.eOperador() ? usos() : Map.<Integer, List<String>>of();
@@ -311,6 +312,9 @@ public class MateriaisServico {
         var m = exigir(referencia);
         exigirAcesso(ident, m);
         var paginas = new LinkedHashMap<String, Object>();
+        if (ident.emPrevia()) {
+            return new Anotacoes(m.getId(), paginas);
+        }
         for (var linha : anotacoes.findByMaterialIdAndUsuarioIdOrderByPaginaAsc(m.getId(), ident.usuarioId())) {
             var tracos = linha.getDados() == null ? null : linha.getDados().get("tracos");
             if (tracos instanceof List<?> lista && !lista.isEmpty()) {
@@ -326,6 +330,7 @@ public class MateriaisServico {
     @Transactional
     public AnotacaoGravada salvarAnotacao(Identidade ident, String referencia, int pagina,
             Map<String, Object> dados, Instant agora) {
+        ident.exigirQueGrave("marcar o PDF");
         var m = exigir(referencia);
         exigirAcesso(ident, m);
         if (pagina < 1) {

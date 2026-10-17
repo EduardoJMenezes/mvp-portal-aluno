@@ -132,6 +132,19 @@ public class FiltroDaSessao extends OncePerRequestFilter {
             return;
         }
 
+        // A prévia do aluno (PreviaPortal): nas rotas do aluno, o operador do portal passa a ser um
+        // aluno da turma escolhida. Para aluno e para o token do MCP, o cookie não vale nada.
+        var previa = ident.canal() == Canal.PORTAL && ident.eOperador() && caminho(pedido).startsWith("/api/aluno/")
+                ? PreviaPortal.turmaDoCookie(pedido) : java.util.Optional.<Integer>empty();
+        if (previa.isPresent()) {
+            // Segunda tranca, além da de cada serviço: na prévia, só leitura.
+            if (!METODOS_SEGUROS.contains(pedido.getMethod())) {
+                Respostas.erro(resposta, 403, "Na prévia do aluno nada é gravado. Volte ao modo professor para editar.");
+                return;
+            }
+            ident = ident.emPreviaDa(previa.get());
+        }
+
         var contexto = SecurityContextHolder.createEmptyContext();
         contexto.setAuthentication(UsernamePasswordAuthenticationToken.authenticated(ident, null,
                 ident.eOperador() ? List.of(new SimpleGrantedAuthority(OPERADOR)) : List.of()));

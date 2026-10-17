@@ -7,6 +7,7 @@ import { GradeQuestoes } from "@/components/GradeQuestoes";
 import { Aviso, Botao, BotaoLink, Cartao, Carregando, Pagina, useConfirmar } from "@/components/ui";
 import { api, ErroApi, type Prova } from "@/lib/api";
 import { emBrasilia, plural, relogio } from "@/lib/formato";
+import { AVISO_DA_PREVIA, useNaPrevia } from "@/lib/sessao";
 import { TextoFormatado } from "@/lib/texto";
 
 export default function PaginaDaProva() {
@@ -101,6 +102,8 @@ function EmAndamento({ prova, aoAcabar }: { prova: Prova; aoAcabar: () => Promis
   const [erro, setErro] = useState("");
   const [entregando, setEntregando] = useState(false);
   const [dialogo, confirmar] = useConfirmar();
+  // Na prévia o professor marca só na tela, para ver a prova andar: nada vai ao servidor.
+  const previa = useNaPrevia();
   const primeiraVez = useRef(true);
 
   // O relógio daqui só mostra o prazo que o backend deu. Zerou, recarrega: é
@@ -123,6 +126,7 @@ function EmAndamento({ prova, aoAcabar }: { prova: Prova; aoAcabar: () => Promis
    * (celular, tablet), ele segue com a versão que já tinha, sem erro na tela.
    */
   const reler = useCallback(async () => {
+    if (previa) return;
     try {
       // Primeiro o que ele acabou de marcar chega ao servidor; só então vale o que o servidor diz.
       await Promise.allSettled([...salvando.current]);
@@ -135,7 +139,7 @@ function EmAndamento({ prova, aoAcabar }: { prova: Prova; aoAcabar: () => Promis
     } catch {
       // Sem rede, fica como está.
     }
-  }, [prova.simulado_id, aoAcabar]);
+  }, [prova.simulado_id, aoAcabar, previa]);
 
   useEffect(() => {
     if (primeiraVez.current) {
@@ -156,6 +160,7 @@ function EmAndamento({ prova, aoAcabar }: { prova: Prova; aoAcabar: () => Promis
     if (antes === letra) return;
     setMarcadas((m) => ({ ...m, [questaoId]: letra }));
     setErro("");
+    if (previa) return;
     marcacoes.current++;
     const envio = api.responder(prova.simulado_id, questaoId, letra);
     salvando.current.add(envio);
@@ -290,7 +295,7 @@ function EmAndamento({ prova, aoAcabar }: { prova: Prova; aoAcabar: () => Promis
                 Próxima →
               </Botao>
             ) : (
-              <Botao variante="primario" onClick={() => entregar()} ocupado={entregando}>
+              <Botao variante="primario" onClick={() => entregar()} ocupado={entregando} disabled={previa} title={previa ? AVISO_DA_PREVIA : undefined}>
                 {entregando ? "Entregando…" : "Entregar prova"}
               </Botao>
             )}
@@ -308,9 +313,10 @@ function EmAndamento({ prova, aoAcabar }: { prova: Prova; aoAcabar: () => Promis
             />
             <p className="mt-3 text-[13px] text-suave">{plural(total - respondidas, "em branco", "em branco")}</p>
           </Cartao>
-          <Botao variante="secundario" onClick={() => entregar()} ocupado={entregando} className="w-full">
+          <Botao variante="secundario" onClick={() => entregar()} ocupado={entregando} disabled={previa} className="w-full">
             {entregando ? "Entregando…" : "Entregar prova"}
           </Botao>
+          {previa && <p className="text-center text-[13px] text-suave">{AVISO_DA_PREVIA} As marcações ficam só nesta tela.</p>}
           <Link href="/simulados/" className="text-center text-sm text-suave hover:text-acento">
             Sair sem entregar (o tempo continua)
           </Link>

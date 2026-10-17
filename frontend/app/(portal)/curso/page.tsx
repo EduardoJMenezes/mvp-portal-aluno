@@ -6,7 +6,7 @@ import { useCategoria } from "@/components/Categoria";
 import { Estado, Pagina, Vazio } from "@/components/ui";
 import { api, casaCategoria, useDados } from "@/lib/api";
 import { plural } from "@/lib/formato";
-import { useUsuario } from "@/lib/sessao";
+import { ehOperador, useUsuario } from "@/lib/sessao";
 
 export default function PaginaDoCurso() {
   return (
@@ -22,7 +22,7 @@ const COR_DA_TURMA = ["bg-acento", "bg-violeta", "bg-ceu"];
 function MeuCurso() {
   const categoria = useCategoria();
   const conteudo = useDados(() => api.conteudo(), [], 60);
-  const aluno = useUsuario().papel === "ALUNO";
+  const aluno = !ehOperador(useUsuario());
 
   return (
     <Pagina titulo={categoria ?? "Meu curso"} legenda="Aulas e resoluções das turmas em que você está matriculado.">

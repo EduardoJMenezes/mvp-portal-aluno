@@ -47,9 +47,11 @@ public class AutenticacaoPortal {
     private final ConfigDoPortal config;
     private final JdbcTemplate jdbc;
     private final Vimeo vimeo;
+    private final PreviaPortal previa;
 
     public AutenticacaoPortal(ContasServico contas, Sessoes sessoes, ConfigDoPortal config, JdbcTemplate jdbc,
-            Vimeo vimeo) {
+            Vimeo vimeo, PreviaPortal previa) {
+        this.previa = previa;
         this.contas = contas;
         this.sessoes = sessoes;
         this.config = config;
@@ -66,6 +68,7 @@ public class AutenticacaoPortal {
     void abrirSessao(HttpServletResponse resposta, Usuario usuario) {
         resposta.addHeader(HttpHeaders.SET_COOKIE, cookie(sessoes.criar(usuario, Instant.now()),
                 sessoes.validade().toSeconds()).toString());
+        PreviaPortal.apagar(resposta, config);
     }
 
     private ResponseCookie cookie(String valor, long maxAge) {
@@ -136,14 +139,21 @@ public class AutenticacaoPortal {
     @PostMapping("/logout")
     public Map<String, Object> logout(HttpServletResponse resposta) {
         resposta.addHeader(HttpHeaders.SET_COOKIE, cookie("", 0).toString());
+        PreviaPortal.apagar(resposta, config);
         return Map.of("saiu", true);
     }
 
+    /** O perfil, e a prévia do aluno se o professor estiver nela: é o que liga a faixa na tela. */
+    public record Eu(Integer id, String nome, String email, br.com.plataforma.comum.Papel papel, List<String> turmas,
+            boolean trocarSenha, PreviaPortal.Previa previa) {}
+
     @GetMapping("/eu")
     @Transactional(readOnly = true)
-    public ContasServico.Perfil eu(@AuthenticationPrincipal Identidade ident) {
-        return contas.perfil(contas.buscar(ident.usuarioId())
+    public Eu eu(@AuthenticationPrincipal Identidade ident, HttpServletRequest pedido) {
+        var p = contas.perfil(contas.buscar(ident.usuarioId())
                 .orElseThrow(() -> new NaoEncontrado("Esta conta não existe mais.")));
+        return new Eu(p.id(), p.nome(), p.email(), p.papel(), p.turmas(), p.trocarSenha(),
+                previa.ativa(ident, pedido).orElse(null));
     }
 
     /** Troca a senha e renova a sessão: as outras sessões desta conta caem. */

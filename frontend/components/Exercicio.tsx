@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { api, type Exercicio as Dados } from "@/lib/api";
+import { AVISO_DA_PREVIA, useNaPrevia } from "@/lib/sessao";
 import { TextoFormatado } from "@/lib/texto";
 import { VideoSobDemanda } from "./Player";
 import { Aviso, Botao, Carregamento, Esqueleto, Etiqueta } from "./ui";
@@ -15,6 +16,7 @@ export function Exercicio({ item, aoResponder }: { item: number; aoResponder?: (
   const [marcada, setMarcada] = useState("");
   const [erro, setErro] = useState("");
   const [enviando, setEnviando] = useState(false);
+  const previa = useNaPrevia();
 
   useEffect(() => {
     let vivo = true;
@@ -129,10 +131,12 @@ export function Exercicio({ item, aoResponder }: { item: number; aoResponder?: (
             })}
           </fieldset>
           <div className="mt-5 flex flex-wrap items-center gap-3 border-t border-borda pt-4">
-            <Botao variante="primario" disabled={!marcada} ocupado={enviando} onClick={() => confirmar()}>
+            <Botao variante="primario" disabled={!marcada || previa} ocupado={enviando} onClick={() => confirmar()}>
               {enviando ? "Enviando…" : "Confirmar resposta"}
             </Botao>
-            <p className="text-[13px] text-suave">Só vale a primeira resposta: depois de confirmar, não dá para trocar.</p>
+            <p className="text-[13px] text-suave">
+              {previa ? `${AVISO_DA_PREVIA} O aluno confirma e vê o gabarito e a resolução na hora.` : "Só vale a primeira resposta: depois de confirmar, não dá para trocar."}
+            </p>
           </div>
         </>
       )}

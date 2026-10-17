@@ -7,6 +7,7 @@ import { Player } from "@/components/Player";
 import { Aviso, Botao, BotaoLink, Cartao, Estado, Etiqueta, Pagina, TituloDeSecao, Vazio } from "@/components/ui";
 import { abrirEmNovaAba, api, casaCategoria, useDados, type Aula } from "@/lib/api";
 import { emBrasilia } from "@/lib/formato";
+import { AVISO_DA_PREVIA, useNaPrevia } from "@/lib/sessao";
 
 export default function AulasDoAluno() {
   return (
@@ -26,6 +27,7 @@ function Lives() {
   const lista = useDados(() => api.aulas(), [], 60);
   const [erro, setErro] = useState("");
   const [entrando, setEntrando] = useState(0);
+  const previa = useNaPrevia();
   const [tocando, setTocando] = useState(0);
 
   const entrar = async (aula: Aula) => {
@@ -81,7 +83,7 @@ function Lives() {
                           {aula.descricao && <p className="mt-1 text-sm text-suave">{aula.descricao}</p>}
                           {aula.material && <LinkDoPdf material={aula.material} className="mt-2" />}
                         </div>
-                        <Botao variante="primario" onClick={() => entrar(aula)} ocupado={entrando === aula.aula_id}>
+                        <Botao variante="primario" onClick={() => entrar(aula)} ocupado={entrando === aula.aula_id} disabled={previa} title={previa ? AVISO_DA_PREVIA : undefined}>
                           {entrando === aula.aula_id ? "Abrindo…" : "Entrar na aula"}
                         </Botao>
                       </div>

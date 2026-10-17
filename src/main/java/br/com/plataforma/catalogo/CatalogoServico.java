@@ -45,8 +45,14 @@ public class CatalogoServico {
         if (ident.eOperador()) {
             return turmas.findAllByOrderByNomeAsc();
         }
-        var ids = contas.turmasDoAluno(ident.usuarioId());
+        var ids = contas.turmasDe(ident);
         return ids.isEmpty() ? List.of() : turmas.findByIdInOrderByNomeAsc(ids);
+    }
+
+    /** A turma viva com este id, se houver. */
+    @Transactional(readOnly = true)
+    public java.util.Optional<Turma> turma(Integer id) {
+        return turmas.findById(id);
     }
 
     /**

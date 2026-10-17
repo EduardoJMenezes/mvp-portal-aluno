@@ -707,6 +707,14 @@ public class QuestoesServico {
             if (liberadaPelaAula(ident, f, agora)) {
                 return new Imagem(f.getTipo(), figuras.bytesDe(figuraId));
             }
+            if (ident.emPrevia()) {
+                // A prévia abre a prova sem tentativa: vale o que o aluno da turma vê ao abrir —
+                // o enunciado de um simulado já aberto, nunca a resolução.
+                if (ParteDaQuestao.RESOLUCAO.name().equals(f.getParte()) || !emProvaAbertaDaTurma(ident, f, agora)) {
+                    throw new NaoAutorizado("Esta figura não aparece para a turma agora.");
+                }
+                return new Imagem(f.getTipo(), figuras.bytesDe(figuraId));
+            }
             var fechamentos = em.createQuery("""
                     select s.fechaEm from Tentativa t join t.simulado s, SimuladoQuestao sq
                      where sq.simulado = s and t.aluno.id = :aluno and sq.questao.id = :questao
@@ -724,6 +732,19 @@ public class QuestoesServico {
             }
         }
         return new Imagem(f.getTipo(), figuras.bytesDe(figuraId));
+    }
+
+    private boolean emProvaAbertaDaTurma(Identidade ident, Figura f, Instant agora) {
+        return em.createQuery("""
+                select count(s) from SimuladoQuestao sq join sq.simulado s join s.turmas t
+                 where sq.questao.id = :questao and t.id = :turma
+                   and s.status = br.com.plataforma.comum.Status.PUBLICADO
+                   and s.removidoEm is null
+                   and (s.abreEm is null or s.abreEm <= :agora)""", Long.class)
+                .setParameter("questao", f.getQuestao().getId())
+                .setParameter("turma", ident.turmaDaPrevia())
+                .setParameter("agora", agora)
+                .getSingleResult() > 0;
     }
 
     private boolean liberadaPelaAula(Identidade ident, Figura f, Instant agora) {

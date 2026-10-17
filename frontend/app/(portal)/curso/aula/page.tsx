@@ -11,7 +11,7 @@ import { LinkDoPdf } from "@/components/Pdf";
 import { Aviso, Botao, Estado, Pagina, Progresso, botao } from "@/components/ui";
 import { abrirEmNovaAba, api, useDados, type AulaNoCurso, type ConteudoDaTurma, type ItemCurso } from "@/lib/api";
 import { duracao, emBrasilia } from "@/lib/formato";
-import { useUsuario } from "@/lib/sessao";
+import { AVISO_DA_PREVIA, useNaPrevia, useUsuario } from "@/lib/sessao";
 
 export default function PaginaDaAula() {
   return (
@@ -241,6 +241,7 @@ function AulaAoVivo({ aula }: { aula: AulaNoCurso }) {
   const [erro, setErro] = useState("");
   const [abrindo, setAbrindo] = useState(false);
   const salaAberta = aula.estado === "ABERTA" || aula.estado === "AGUARDANDO";
+  const previa = useNaPrevia();
 
   const entrar = async () => {
     setErro("");
@@ -279,10 +280,11 @@ function AulaAoVivo({ aula }: { aula: AulaNoCurso }) {
       </span>
       {aula.material && <LinkDoPdf material={aula.material} className="ml-6" />}
       {salaAberta && (
-        <Botao tamanho="pequeno" variante="primario" className="ml-6 w-fit" ocupado={abrindo} onClick={() => entrar()}>
+        <Botao tamanho="pequeno" variante="primario" className="ml-6 w-fit" ocupado={abrindo} disabled={previa} onClick={() => entrar()}>
           {abrindo ? "Abrindo…" : "Entrar na aula"}
         </Botao>
       )}
+      {salaAberta && previa && <p className="pl-6 text-[13px] text-suave">{AVISO_DA_PREVIA} O aluno entra na sala por aqui.</p>}
       {erro && <p role="alert" className="pl-6 text-[13px] text-erro">{erro}</p>}
     </li>
   );

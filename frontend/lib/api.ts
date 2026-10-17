@@ -144,6 +144,8 @@ export type Usuario = {
   papel: Papel;
   turmas: string[];
   trocar_senha: boolean;
+  /** O professor vendo o portal como um aluno desta turma (a prévia do aluno). */
+  previa?: { turma_id: number; turma: string } | null;
 };
 
 export type Video = {
@@ -852,6 +854,8 @@ export const api = {
   entrarDemo: (email: string) => pedir<{ usuario: Usuario }>("/demo/entrar", { method: "POST", json: { email } }),
   sair: () => pedir<{ saiu: boolean }>("/logout", { method: "POST" }),
   eu: () => pedir<Usuario>("/eu"),
+  entrarNaPrevia: (turma: string) => pedir<{ turma_id: number; turma: string }>("/admin/previa", { method: "POST", json: { turma } }),
+  sairDaPrevia: () => pedir<{ turma_id: null }>("/admin/previa", { method: "DELETE" }),
   trocarSenha: (senha_atual: string, nova_senha: string) =>
     pedir<{ usuario: Usuario }>("/conta/senha", { method: "POST", json: { senha_atual, nova_senha } }),
 

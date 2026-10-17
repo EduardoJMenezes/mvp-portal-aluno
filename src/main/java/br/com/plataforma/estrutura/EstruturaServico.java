@@ -24,9 +24,11 @@ public class EstruturaServico {
     private final SubModuloRepositorio submodulos;
     private final ItemRepositorio itens;
     private final br.com.plataforma.agenda.LiberacaoServico liberacao;
+    private final br.com.plataforma.contas.ContasServico contas;
 
     public EstruturaServico(ModuloRepositorio modulos, SubModuloRepositorio submodulos, ItemRepositorio itens,
-            br.com.plataforma.agenda.LiberacaoServico liberacao) {
+            br.com.plataforma.agenda.LiberacaoServico liberacao, br.com.plataforma.contas.ContasServico contas) {
+        this.contas = contas;
         this.modulos = modulos;
         this.submodulos = submodulos;
         this.itens = itens;
@@ -384,11 +386,15 @@ public class EstruturaServico {
     @Transactional(readOnly = true)
     public Foto foto(Identidade ident, Integer moduloId) {
         var modulo = modulos.findById(moduloId).filter(m -> m.getFotoVersao() != null).orElse(null);
-        var visivel = modulo != null && (ident.eOperador() || modulos.alcancadoPor(moduloId, ident.usuarioId()));
+        var visivel = modulo != null && (ident.eOperador() || alcancavel(moduloId, contas.turmasDe(ident)));
         if (!visivel) {
             throw new br.com.plataforma.comum.NaoEncontrado("Este módulo não tem foto.");
         }
         return new Foto(modulo.getFotoTipo(), modulos.lerFoto(moduloId));
+    }
+
+    private boolean alcancavel(Integer moduloId, List<Integer> turmas) {
+        return !turmas.isEmpty() && modulos.alcancadoPor(moduloId, turmas);
     }
 
     /** Duas pastas com o mesmo nome na mesma turma confundiriam aluno e professor. */

@@ -5,7 +5,7 @@ import { BotaoLink, Cartao, Estado, Etiqueta, LinkDeSecao, Pagina, TituloDeSecao
 import { LinhaDoEvento } from "@/components/Agenda";
 import { api, useDados, type ConteudoDaTurma, type EventoDaAgenda, type SimuladoResumo } from "@/lib/api";
 import { emBrasilia, plural } from "@/lib/formato";
-import { useUsuario } from "@/lib/sessao";
+import { ehOperador, useUsuario } from "@/lib/sessao";
 
 export default function Inicio() {
   const usuario = useUsuario();
@@ -14,9 +14,11 @@ export default function Inicio() {
     return { simulados, conteudo, agenda };
   });
   const primeiroNome = usuario.nome.split(" ")[0];
+  // Na prévia, a turma é a que o professor escolheu: ele não tem matrícula.
+  const turmas = usuario.previa ? [usuario.previa.turma] : usuario.turmas;
 
   return (
-    <Pagina titulo={`Olá, ${primeiroNome}`} legenda={usuario.turmas.length ? `Sua turma: ${usuario.turmas.join(", ")}` : undefined}>
+    <Pagina titulo={`Olá, ${primeiroNome}`} legenda={turmas.length ? `Sua turma: ${turmas.join(", ")}` : undefined}>
       <Estado {...dados} linhas={4}>
         {({ simulados, conteudo, agenda }) => (
           <>
@@ -88,7 +90,7 @@ function Simulados({ simulados }: { simulados: SimuladoResumo[] }) {
 }
 
 function Curso({ conteudo }: { conteudo: ConteudoDaTurma[] }) {
-  const aluno = useUsuario().papel === "ALUNO";
+  const aluno = !ehOperador(useUsuario());
   const modulos = conteudo.flatMap((t) => t.modulos);
   return (
     <section className="mt-4 flex flex-col gap-3" aria-labelledby="titulo-curso">

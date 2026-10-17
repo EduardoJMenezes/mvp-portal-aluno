@@ -21,7 +21,10 @@ const normalizar = (caminho: string) => (caminho.length > 1 ? caminho.replace(/\
 // dos componentes, para quem revisa o design sem ter conta no portal.
 const PUBLICAS = ["/entrar", "/enviar", "/assinar", "/estilo"];
 const ehPublica = (caminho: string) => PUBLICAS.some((p) => caminho === p || caminho.startsWith(`${p}/`));
-export const ehOperador = (usuario: Usuario) => usuario.papel !== "ALUNO";
+// Na prévia do aluno o professor anda pelo portal como aluno: as rotas e o menu são os do aluno,
+// e o backend responde como para um aluno da turma escolhida.
+export const ehOperador = (usuario: Usuario) => usuario.papel !== "ALUNO" && !usuario.previa;
+export const naPrevia = (usuario: Usuario | null) => !!usuario?.previa;
 const DO_ALUNO = ["/curso", "/simulados", "/desempenho"];
 const ehDoAluno = (caminho: string) => caminho === "/" || DO_ALUNO.some((p) => caminho === p || caminho.startsWith(`${p}/`));
 
@@ -83,6 +86,13 @@ function TelaDeEspera() {
       </p>
     </div>
   );
+}
+
+/** O que a tela diz onde o aluno gravaria algo e o professor, na prévia, não grava. */
+export const AVISO_DA_PREVIA = "Prévia do aluno: aqui nada é gravado.";
+
+export function useNaPrevia() {
+  return naPrevia(useSessao().usuario);
 }
 
 export function useSessao() {

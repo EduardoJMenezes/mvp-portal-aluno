@@ -22,6 +22,7 @@ import {
 } from "react";
 import { Aviso } from "@/components/ui";
 import { api, type PaginaAnotada, type Traco } from "@/lib/api";
+import { AVISO_DA_PREVIA, useNaPrevia } from "@/lib/sessao";
 
 type Ferramenta = "mao" | "caneta" | "marcatexto" | "texto" | "borracha" | "selecao";
 type Tracos = Record<number, Traco[]>;
@@ -328,6 +329,7 @@ export function LeitorPdf({ materialId }: { materialId: number }) {
   const [dimensoes, setDimensoes] = useState<DimensoesDaPagina | null>(null);
 
   const [ferramenta, ferramentaEscolhida] = useState<Ferramenta>("caneta");
+  const previa = useNaPrevia();
   const [cor, setCor] = useState(CORES[0]);
   const [corMarcatexto, setCorMarcatexto] = useState(CORES_MARCATEXTO[0]);
   const [espessura, setEspessura] = useState(ESPESSURAS[2]);
@@ -426,6 +428,8 @@ export function LeitorPdf({ materialId }: { materialId: number }) {
     const pendentes = [...sujas.current];
     if (!pendentes.length) return;
     sujas.current.clear();
+    // Na prévia do aluno o professor risca para experimentar, e o risco fica só nesta tela.
+    if (previa) return;
     setSalvando(true);
     try {
       for (const numero of pendentes) {
@@ -438,7 +442,7 @@ export function LeitorPdf({ materialId }: { materialId: number }) {
     } finally {
       setSalvando(false);
     }
-  }, [materialId]);
+  }, [materialId, previa]);
 
   const marcarSuja = useCallback(
     (numero: number) => {
@@ -917,6 +921,11 @@ export function LeitorPdf({ materialId }: { materialId: number }) {
           <Aviso tom="erro">{erro}</Aviso>
         </div>
       )}
+      {previa && (
+        <div className="px-4 pt-3">
+          <Aviso tom="info">{AVISO_DA_PREVIA} O que você riscar some ao sair; o aluno tem as marcações salvas.</Aviso>
+        </div>
+      )}
 
       <div
         ref={rolagem}
@@ -1118,6 +1127,7 @@ function Barra({
   salvoEm: Date | null;
 }) {
   const risca = ferramenta === "caneta" || ferramenta === "marcatexto" || ferramenta === "texto";
+  const previa = useNaPrevia();
   return (
     <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-borda bg-papel px-3 py-2">
       <div role="radiogroup" aria-label="Ferramenta" className="flex gap-1">
@@ -1217,7 +1227,7 @@ function Barra({
           {total ? ` de ${total}` : ""}
         </span>
         <span aria-live="polite">
-          {salvando ? "Salvando…" : salvoEm ? `Salvo ${salvoEm.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}` : "Tudo salvo"}
+          {previa ? "Não é gravado" : salvando ? "Salvando…" : salvoEm ? `Salvo ${salvoEm.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}` : "Tudo salvo"}
         </span>
       </p>
     </div>

@@ -27,11 +27,11 @@ interface ModuloRepositorio extends JpaRepository<Modulo, Integer> {
     @Query("""
             select count(m) > 0 from Modulo m
              where m.id = :modulo
-               and (exists (select 1 from Matricula x where x.usuarioId = :usuario and x.turma member of m.turmas)
-                    or exists (select 1 from Item i, Matricula x
-                                where i.submodulo.modulo = m and x.usuarioId = :usuario
-                                  and x.turma member of i.turmas))""")
-    boolean alcancadoPor(Integer modulo, Integer usuario);
+               and (exists (select 1 from Turma x where x.id in :turmas and x member of m.turmas)
+                    or exists (select 1 from Item i, Turma x
+                                where i.submodulo.modulo = m and x.id in :turmas
+                                  and x member of i.turmas))""")
+    boolean alcancadoPor(Integer modulo, java.util.Collection<Integer> turmas);
 
     // A foto entra e sai por consulta nativa: a entidade não a conhece.
     @Modifying

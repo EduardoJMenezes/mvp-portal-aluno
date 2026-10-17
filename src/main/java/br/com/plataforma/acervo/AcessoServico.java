@@ -103,21 +103,28 @@ public class AcessoServico {
     /** Os itens publicados que a turma do aluno vê (decisão 0011) e a agenda já liberou (0012). */
     private java.util.List<br.com.plataforma.estrutura.Item> doCurso(Identidade ident, String campo,
             Collection<Integer> ids, Instant agora) {
-        var turmas = em.createQuery("select m.turma from Matricula m where m.usuarioId = :usuario",
-                br.com.plataforma.catalogo.Turma.class).setParameter("usuario", ident.usuarioId()).getResultList();
+        // Na prévia do professor, a turma é a escolhida, não as matrículas dele (que não existem).
+        var turmas = ident.emPrevia()
+                ? em.createQuery("select t from Turma t where t.id = :turma", br.com.plataforma.catalogo.Turma.class)
+                        .setParameter("turma", ident.turmaDaPrevia()).getResultList()
+                : em.createQuery("select m.turma from Matricula m where m.usuarioId = :usuario",
+                        br.com.plataforma.catalogo.Turma.class).setParameter("usuario", ident.usuarioId()).getResultList();
+        if (turmas.isEmpty()) {
+            return java.util.List.of();
+        }
         var agenda = liberacao.das(turmas.stream().map(br.com.plataforma.catalogo.Turma::getId).toList());
         return em.createQuery("""
                 select i from Item i
                  where %s in :ids
                    and i.status = br.com.plataforma.comum.Status.PUBLICADO
-                   and exists (select 1 from Matricula m
-                                where m.usuarioId = :usuario
-                                  and (m.turma member of i.turmas
+                   and exists (select 1 from Turma t
+                                where t in :turmas
+                                  and (t member of i.turmas
                                        or (i.turmas is empty
-                                           and m.turma member of i.submodulo.modulo.turmas)))""".formatted(campo),
+                                           and t member of i.submodulo.modulo.turmas)))""".formatted(campo),
                         br.com.plataforma.estrutura.Item.class)
                 .setParameter("ids", ids)
-                .setParameter("usuario", ident.usuarioId())
+                .setParameter("turmas", turmas)
                 .getResultList().stream()
                 .filter(i -> turmas.stream().anyMatch(t -> i.visivelPara(t) && agenda.liberado(t.getId(),
                         i.getSubmodulo().getModulo() == null ? null : i.getSubmodulo().getModulo().getId(), i.getId(), agora)))

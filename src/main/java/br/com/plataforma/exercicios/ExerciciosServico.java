@@ -69,6 +69,7 @@ public class ExerciciosServico {
         if (!ident.eAluno()) {
             throw new NaoAutorizado("Somente alunos respondem as questões da aula.");
         }
+        ident.exigirQueGrave("responder a questão");
         var item = exigirLinha(ident, itemId, agora);
         var questao = item.getQuestao();
 

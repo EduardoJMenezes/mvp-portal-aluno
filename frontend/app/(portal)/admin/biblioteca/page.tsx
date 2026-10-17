@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Eye } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
@@ -75,6 +75,20 @@ function Curso() {
     if (!(await executar(noServidor))) await dados.recarregar();
   };
 
+  /**
+   * A prévia do aluno: o portal inteiro como um aluno da turma o vê, sem gravar nada. A página
+   * recarrega para a sessão ser relida com a prévia ligada.
+   */
+  const verComoAluno = async (turma: string) => {
+    recados.limpar();
+    try {
+      await api.entrarNaPrevia(turma);
+      window.location.assign("/curso/");
+    } catch (e) {
+      recados.erro((e as Error).message);
+    }
+  };
+
   // O filtro aceita o id (vindo do link do painel) ou o nome da turma.
   const turmaDoFiltro = dados.dados?.turmas.find((t) => String(t.id) === filtro || t.nome === filtro);
 
@@ -123,6 +137,13 @@ function Curso() {
                       <option key={t.id} value={t.nome}>{t.nome}</option>
                     ))}
                   </select>
+                  {turmaDoFiltro ? (
+                    <Botao variante="secundario" tamanho="pequeno" className="mt-1 w-fit" onClick={() => verComoAluno(turmaDoFiltro.nome)}>
+                      <Eye aria-hidden="true" className="size-4" /> Ver o portal como aluno
+                    </Botao>
+                  ) : (
+                    <p className="px-2 text-[13px] text-suave">Escolha uma turma para ver o portal como o aluno dela vê.</p>
+                  )}
                 </div>
                 {modulos.length === 0 && (
                   <p className="mb-4 px-2 text-[15px] text-suave">

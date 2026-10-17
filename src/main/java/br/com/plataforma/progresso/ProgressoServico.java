@@ -77,6 +77,7 @@ public class ProgressoServico {
     /** O aviso do player: onde o aluno está. Perto do fim, o vídeo se conclui sozinho. */
     @Transactional
     public Estado registrar(Identidade ident, Integer itemId, Integer posicao, Integer duracao, Instant agora) {
+        ident.exigirQueGrave("guardar onde o vídeo parou");
         var item = exigirItem(ident, itemId, agora);
         if (item.getVideo() == null) {
             throw new RegraDeNegocio("'%s' não é um vídeo: não tem posição para guardar.".formatted(item.getNome()));
@@ -92,6 +93,7 @@ public class ProgressoServico {
     /** O aluno marca ou desmarca à mão. Questão não: ela se conclui respondendo. */
     @Transactional
     public Estado marcar(Identidade ident, Integer itemId, boolean concluido, Instant agora) {
+        ident.exigirQueGrave("marcar como concluído");
         var item = exigirItem(ident, itemId, agora);
         if (item.getQuestao() != null) {
             throw new RegraDeNegocio("'%s' é uma questão: ela fica concluída quando você responde.".formatted(item.getNome()));

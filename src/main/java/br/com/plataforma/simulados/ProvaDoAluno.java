@@ -58,7 +58,7 @@ public class ProvaDoAluno {
         if (s.getStatus() != Status.PUBLICADO) {
             throw new NaoAutorizado("Este simulado ainda não foi publicado.");
         }
-        var minhas = contas.turmasDoAluno(ident.usuarioId());
+        var minhas = contas.turmasDe(ident);
         if (s.getTurmas().stream().map(Turma::getId).noneMatch(minhas::contains)) {
             throw new NaoAutorizado("%s não está em nenhuma turma deste simulado.".formatted(ident.nome()));
         }
@@ -75,7 +75,7 @@ public class ProvaDoAluno {
 
     @Transactional
     public List<SimuladoDoAluno> listar(Identidade ident, Instant agora) {
-        var minhas = contas.turmasDoAluno(ident.usuarioId());
+        var minhas = contas.turmasDe(ident);
         var saida = new ArrayList<SimuladoDoAluno>();
         for (var r : simulados.listar(ident, null, agora)) {
             var s = simulados.resolver(String.valueOf(r.simuladoId()));
@@ -143,6 +143,11 @@ public class ProvaDoAluno {
         if (t == null) {
             var limite = agora.plus(Duration.ofMinutes(s.getDuracaoMinutos() == null ? 0 : s.getDuracaoMinutos()));
             var prazo = s.getFechaEm() != null && s.getFechaEm().isBefore(limite) ? s.getFechaEm() : limite;
+            if (ident.emPrevia()) {
+                // A prévia mostra a prova como o aluno a encontra ao abrir, sem começar tentativa nenhuma.
+                return prova(r, Estado.EM_ANDAMENTO, null, null, null, Relogio.iso(prazo),
+                        Math.max(0, Duration.between(agora, prazo).toSeconds()), questoesDaProva(s, Map.of()));
+            }
             var aluno = contas.buscar(ident.usuarioId()).orElseThrow();
             t = tentativas.saveAndFlush(new Tentativa(s, aluno, agora, prazo));
         }
@@ -152,7 +157,12 @@ public class ProvaDoAluno {
         }
         var marcadas = new LinkedHashMap<Integer, Letra>();
         t.getRespostas().forEach(x -> marcadas.put(x.getQuestaoId(), x.getAlternativaMarcada()));
-        var questoes = s.getQuestoes().stream().map(sq -> {
+        return prova(r, Estado.EM_ANDAMENTO, null, null, null, Relogio.iso(t.getPrazoEm()),
+                restantes(t, agora), questoesDaProva(s, marcadas));
+    }
+
+    private static List<QuestaoDaProva> questoesDaProva(Simulado s, Map<Integer, Letra> marcadas) {
+        return s.getQuestoes().stream().map(sq -> {
             var q = sq.getQuestao();
             var alternativas = new LinkedHashMap<Letra, String>();
             q.getAlternativas().forEach(a -> alternativas.put(a.getLetra(), a.getTexto()));
@@ -162,8 +172,6 @@ public class ProvaDoAluno {
             return new QuestaoDaProva(sq.getOrdem(), q.getId(), q.getEnunciado(), alternativas,
                     marcada != null && q.tem(marcada) ? marcada : null);
         }).toList();
-        return prova(r, Estado.EM_ANDAMENTO, null, null, null, Relogio.iso(t.getPrazoEm()),
-                restantes(t, agora), questoes);
     }
 
     private static Prova prova(SimuladosServico.ResumoDoSimulado r, Estado estado, Boolean resultado,
@@ -189,6 +197,7 @@ public class ProvaDoAluno {
         if (!ident.eAluno()) {
             throw new NaoAutorizado("Somente alunos respondem simulados.");
         }
+        ident.exigirQueGrave("responder o simulado");
         var texto = alternativa == null ? "" : alternativa.strip().toUpperCase(Locale.ROOT);
         Letra letra;
         try {
@@ -240,6 +249,7 @@ public class ProvaDoAluno {
         if (!ident.eAluno()) {
             throw new NaoAutorizado("Somente alunos entregam uma prova.");
         }
+        ident.exigirQueGrave("entregar a prova");
         var s = simulados.resolver(referencia);
         exigirVisivel(ident, s);
         var t = tentativas.doAluno(s, ident.usuarioId())

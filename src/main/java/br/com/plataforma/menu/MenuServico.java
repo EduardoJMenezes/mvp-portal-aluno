@@ -109,7 +109,7 @@ public class MenuServico {
     /** Os botões das turmas do aluno, com o aviso de ao vivo de cada um. */
     @Transactional(readOnly = true)
     public List<BotaoDoAluno> doAluno(Identidade ident, Instant agora) {
-        var turmas = ident.eOperador() ? List.<Integer>of() : contas.turmasDoAluno(ident.usuarioId());
+        var turmas = ident.eOperador() ? List.<Integer>of() : contas.turmasDe(ident);
         var montados = turmas.isEmpty() ? List.<Botao>of()
                 : botoes.findByTurmaIdInOrderByTurmaIdAscOrdemAsc(turmas).stream().map(MenuServico::botao)
                         .distinct().toList();

@@ -75,14 +75,14 @@ public class AulasServico {
     }
 
     private boolean alcanca(Identidade ident, Aula a) {
-        return alcanca(ident, a, contas.turmasDoAluno(ident.usuarioId()));
+        return alcanca(ident, a, contas.turmasDe(ident));
     }
 
     private static boolean alcanca(Identidade ident, Aula a, Collection<Integer> minhasTurmas) {
         if (a.getStatus() != Status.PUBLICADO) {
             return false;
         }
-        if (a.getAlunos().stream().anyMatch(x -> x.getId().equals(ident.usuarioId()))) {
+        if (!ident.emPrevia() && a.getAlunos().stream().anyMatch(x -> x.getId().equals(ident.usuarioId()))) {
             return true;
         }
         return a.getTurmas().stream().anyMatch(t -> minhasTurmas.contains(t.getId()));
@@ -220,7 +220,7 @@ public class AulasServico {
      */
     @Transactional(readOnly = true)
     public Map<Integer, List<NoCurso>> noCurso(Identidade ident, Instant agora) {
-        var minhas = ident.eOperador() ? List.<Integer>of() : contas.turmasDoAluno(ident.usuarioId());
+        var minhas = ident.eOperador() ? List.<Integer>of() : contas.turmasDe(ident);
         return aulas.findByStatusAndSubmoduloIdIsNotNullOrderByInicioEmAsc(Status.PUBLICADO).stream()
                 .filter(a -> ident.eOperador() || alcanca(ident, a, minhas))
                 .filter(a -> a.getGravacaoItemId() == null || assistir(a) == null)
@@ -239,7 +239,7 @@ public class AulasServico {
 
     @Transactional(readOnly = true)
     public List<NoAr> noAr(Identidade ident, Instant agora) {
-        var minhas = ident.eOperador() ? List.<Integer>of() : contas.turmasDoAluno(ident.usuarioId());
+        var minhas = ident.eOperador() ? List.<Integer>of() : contas.turmasDe(ident);
         // Só pode estar no ar quem começa em até 15 min ou começou há menos que a aula mais longa.
         var desde = agora.minus(Duration.ofMinutes(DURACAO_MAXIMA)).minus(FECHA_DEPOIS);
         return aulas.findByStatusAndInicioEmBetween(Status.PUBLICADO, desde, agora.plus(ABRE_ANTES)).stream()
@@ -263,6 +263,7 @@ public class AulasServico {
      */
     @Transactional
     public Entrada entrar(Identidade ident, String referencia, Instant agora) {
+        ident.exigirQueGrave("entrar na aula ao vivo");
         var a = exigir(referencia);
         exigirAcesso(ident, a);
         if (a.getStatus() != Status.PUBLICADO || a.getZoomMeetingId() == null) {

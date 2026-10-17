@@ -72,7 +72,7 @@ public class AgendaServico {
     /** Os eventos das turmas do aluno, até o fim de hoje (horário de Brasília). */
     @Transactional(readOnly = true)
     public List<Resumo> doAluno(Identidade ident, Instant agora) {
-        var turmas = contas.turmasDoAluno(ident.usuarioId());
+        var turmas = contas.turmasDe(ident);
         if (turmas.isEmpty()) {
             return List.of();
         }

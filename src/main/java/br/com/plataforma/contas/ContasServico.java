@@ -116,13 +116,19 @@ public class ContasServico {
         return matriculas.turmasDe(usuarioId);
     }
 
+    /** As turmas de quem pede, como aluno: as matrículas, ou só a turma da prévia do professor. */
+    @Transactional(readOnly = true)
+    public List<Integer> turmasDe(Identidade ident) {
+        return ident.emPrevia() ? List.of(ident.turmaDaPrevia()) : turmasDoAluno(ident.usuarioId());
+    }
+
     /** Operador vê qualquer turma; aluno só as suas. É a única porta para conteúdo de turma. */
     @Transactional(readOnly = true)
     public void exigirAcessoATurma(Identidade ident, Turma turma) {
         if (ident.eOperador()) {
             return;
         }
-        if (!turmasDoAluno(ident.usuarioId()).contains(turma.getId())) {
+        if (!turmasDe(ident).contains(turma.getId())) {
             throw new NaoAutorizado("%s não está matriculado em %s e não pode ver este conteúdo."
                     .formatted(ident.nome(), turma.getNome()));
         }
