@@ -114,9 +114,12 @@ seção "Em aberto", no fim.
 > conseguiria assistir vem com aviso e fica fora do "marcar todos"; o que já
 > está no sub-módulo não entra de novo. A gravação continua sendo a rota de
 > sempre (`POST .../submodulos/{sub}/itens`). A importação por faixa de
-> números, que distribui uma pasta por vários módulos e gera rascunho,
-> continua em "Importar" (desde 11/10/2026, em "Importar pasta do Vimeo", no
-> alto de Montar o curso: `/admin/biblioteca/vimeo/`).
+> números, que distribui uma pasta por vários módulos e gera rascunho, é só
+> pelo Claude (`importar_pasta_vimeo_como_rascunho`): a tela "Importar pasta
+> do Vimeo", no alto de Montar o curso, saiu do portal em 17/10/2026, porque
+> o "Adicionar" já leva a pasta inteira a um sub-módulo, publicada. As rotas
+> dela (`/api/admin/vimeo/importacoes` e `.../simulacao`) continuam na API,
+> sem uso pelo portal.
 >
 > **Mudou em 09/10/2026: modal e off-canvas são componentes da casa**
 > (`frontend/components/Camadas.tsx`). `<Modal tamanho>` abre no meio da tela;

@@ -11,7 +11,7 @@ import { EditorDoModulo } from "@/components/curso/EditorDoModulo";
 import { Indice } from "@/components/curso/Indice";
 import { NovoModulo } from "@/components/curso/NovoModulo";
 import { useRecado } from "@/components/Recado";
-import { Botao, BotaoLink, Carregamento, Esqueleto, Estado, Pagina, Vazio, useConfirmar } from "@/components/ui";
+import { Botao, Carregamento, Esqueleto, Estado, Pagina, Vazio, useConfirmar } from "@/components/ui";
 import { api, useDados, type Modulo } from "@/lib/api";
 
 export default function PaginaDoCurso() {
@@ -82,12 +82,7 @@ function Curso() {
     <Pagina
       titulo="Montar o curso"
       legenda="Monte cada módulo com vídeos, PDFs e questões. O que você põe aqui já entra publicado; o que chega pelo Claude passa antes por Rascunhos."
-      acoes={
-        <>
-          <BotaoLink href="/admin/biblioteca/vimeo/">Importar pasta do Vimeo</BotaoLink>
-          <Botao onClick={() => setCopiar(true)} aria-haspopup="dialog">Copiar entre turmas</Botao>
-        </>
-      }
+      acoes={<Botao onClick={() => setCopiar(true)} aria-haspopup="dialog">Copiar entre turmas</Botao>}
     >
       {dialogo}
       {recado}

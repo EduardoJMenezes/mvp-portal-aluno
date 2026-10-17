@@ -753,28 +753,6 @@ export type VideoDaPasta = { vimeo_id: string; titulo: string; duracao_segundos:
 /** `pasta_id`: a pasta em que o vídeo mora no Vimeo, quando ele está em alguma. */
 export type VideoVimeo = { id: string; titulo: string; url?: string | null; thumbnail_url?: string | null; duracao_segundos?: number | null; embed_url?: string | null; pasta?: string | null; pasta_id?: string | null };
 
-export type ItemDoPlano = { numero: number | null; titulo: string; vimeo_id: string; duracao_segundos: number | null; confianca_do_numero: string; avisos: string[] };
-export type Destino = { faixa: string; modulo: string; submodulo: string; assunto?: string; subassunto?: string };
-export type SimulacaoVimeo = {
-  pasta: { id: string; nome: string };
-  turma: string;
-  videos_na_pasta: number;
-  videos_ja_no_acervo: string[];
-  destinos: {
-    modulo: string;
-    submodulo: string;
-    faixa: string;
-    assunto: string | null;
-    subassunto: string | null;
-    itens_que_serao_criados: number;
-    ja_neste_submodulo: string[];
-    numeros_da_faixa_sem_video: number[];
-    itens: ItemDoPlano[];
-  }[];
-  sem_destino: ItemDoPlano[];
-  observacao: string;
-};
-
 
 
 const q = (parametros: Record<string, string | number | undefined | null>) => {
@@ -1085,10 +1063,6 @@ export const api = {
   pastasVimeo: (busca?: string, limite?: number) => pedir<{ total_no_vimeo: number; mostrando: number; pastas: PastaVimeo[] }>(`/admin/vimeo/pastas${q({ busca, limite })}`),
   videosDaPasta: (pasta: string) => pedir<{ pasta: { id: string; nome: string }; videos: VideoDaPasta[] }>(`/admin/vimeo/pastas/${encodeURIComponent(pasta)}/videos`),
   videosVimeo: (filtro: { pasta?: string; busca?: string; limite?: number }) => pedir<VideoVimeo[]>(`/admin/vimeo/videos${q(filtro)}`),
-  simularImportacao: (pasta: string, turma: string, destinos: Destino[]) =>
-    pedir<SimulacaoVimeo>("/admin/vimeo/importacoes/simulacao", { method: "POST", json: { pasta, turma, destinos } }),
-  importarPasta: (pasta: string, turma: string, destinos: Destino[]) =>
-    pedir<{ rascunhos: Rascunho[]; aviso: string }>("/admin/vimeo/importacoes", { method: "POST", json: { pasta, turma, destinos } }),
 
   // importações
 

@@ -388,8 +388,10 @@ não tem mais botão de importar: a entrada é só "Novo simulado".
   documento do simulado: entram à mão, em cada questão, por enquanto.
 
 O menu "Importar" acabou em 11/10/2026: cada importação mora onde se usa. A
-pasta do Vimeo por faixa de números está em Montar o curso
-(`/admin/biblioteca/vimeo/`).
+pasta do Vimeo por faixa de números ficou em Montar o curso até 17/10/2026,
+quando saiu do portal: agora é só pelo Claude
+(`importar_pasta_vimeo_como_rascunho`), e no portal a pasta entra num
+sub-módulo pelo "Adicionar" (ver [MODELO-CONTEUDO.md](MODELO-CONTEUDO.md)).
 
 **Prints: só pelo Claude.** Print virar questão é trabalho dele (gera o link
 de envio, lê a imagem, escreve a questão em rascunho e recorta a figura). No
