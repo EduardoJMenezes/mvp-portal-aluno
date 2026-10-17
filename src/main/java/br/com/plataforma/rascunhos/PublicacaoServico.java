@@ -3,6 +3,7 @@ package br.com.plataforma.rascunhos;
 import static java.util.stream.Collectors.joining;
 
 import br.com.plataforma.comum.AprovacaoNecessaria;
+import br.com.plataforma.comum.Canal;
 import br.com.plataforma.comum.Identidade;
 import br.com.plataforma.comum.NaoEncontrado;
 import br.com.plataforma.comum.RegraDeNegocio;
@@ -21,9 +22,14 @@ import org.springframework.transaction.annotation.Transactional;
 /**
  * A regra que sustenta a POC: <b>a IA propõe, o humano aprova, o backend publica.</b>
  *
- * <p>Nenhum caminho daqui leva conteúdo ao aluno sem aprovação humana gravada em
+ * <p>Questão e simulado não chegam ao aluno sem aprovação humana gravada em
  * {@code drafts.aprovado_por_id}. Não é checagem no cliente: é estado no banco, conferido a cada
  * publicação.
+ *
+ * <p><b>A exceção é a montagem do curso</b> (17/10/2026): vídeo e linha de aula que o Claude põe
+ * num sub-módulo saem publicados na hora, e o professor confere pelo link do módulo, com a conta
+ * de administrador. A linha que não pode ir para a aula fica em rascunho, com o motivo. Ver
+ * {@link #publicarLinhas}.
  */
 @Service
 public class PublicacaoServico {
@@ -170,6 +176,105 @@ public class PublicacaoServico {
         }
     }
 
+    /** A linha que ficou em rascunho, e por quê. */
+    public record LinhaRetida(Integer itemId, String nome, String motivo) {}
+
+    public record Montagem(int publicadas, List<LinhaRetida> retidas) {}
+
+    /**
+     * Publica as linhas de aula pendentes deste rascunho, sem pedir aprovação: é a montagem do
+     * curso. Só rascunho de vídeos e linhas de aula passa por aqui.
+     */
+    @Transactional
+    public Montagem publicarMontagem(Identidade ident, Integer rascunhoId, Instant agora) {
+        var r = rascunhos.exigir(rascunhoId);
+        if (r.getTipo() != TipoRascunho.ITENS) {
+            throw new RegraDeNegocio(
+                    "O rascunho %d não é de vídeos ou linhas de aula: ele é publicado onde mora.".formatted(rascunhoId));
+        }
+        return publicarLinhas(ident, estrutura.itensDoRascunho(r.getId(), true), agora);
+    }
+
+    /**
+     * Publica linhas de aula em rascunho. É a porta da montagem do curso — o Claude pondo vídeos e
+     * questões num sub-módulo, ou o professor clicando "Publicar" no editor do curso.
+     *
+     * <p>A linha de questão sem as alternativas A-D ou com figura pendente não vai para a aula:
+     * fica em rascunho e volta em {@code retidas}, sem segurar as outras. A questão nova que nasceu
+     * no rascunho da linha sai junto com ela. Quando o rascunho não tem mais nada pendente, ele é
+     * fechado, com quem estava operando gravado.
+     */
+    @Transactional
+    public Montagem publicarLinhas(Identidade ident, List<Item> linhas, Instant agora) {
+        ident.exigirOperador();
+        var publicadas = 0;
+        var retidas = new java.util.ArrayList<LinhaRetida>();
+        var tocados = new java.util.LinkedHashSet<Integer>();
+        for (var item : linhas) {
+            if (item.getStatus() == Status.PUBLICADO) {
+                continue;
+            }
+            // Conferido antes, e não pela exceção de publicarItem: exceção que atravessa um
+            // @Transactional marca a transação inteira para desfazer, e as outras linhas iriam junto.
+            var motivo = porQueNaoVaiParaAAula(item);
+            if (motivo != null) {
+                retidas.add(new LinhaRetida(item.getId(), item.getNome(), motivo));
+                continue;
+            }
+            estrutura.publicarItem(ident, item);
+            var questao = item.getQuestao();
+            if (questao != null && questao.getStatus() == Status.RASCUNHO
+                    && item.getRascunhoId() != null && item.getRascunhoId().equals(questao.getRascunhoId())) {
+                questoes.publicar(questao);
+            }
+            if (item.getRascunhoId() != null) {
+                tocados.add(item.getRascunhoId());
+            }
+            publicadas++;
+        }
+        tocados.forEach(id -> fecharSeAcabou(ident, rascunhos.exigir(id), agora));
+        return new Montagem(publicadas, retidas);
+    }
+
+    private static String porQueNaoVaiParaAAula(Item item) {
+        var questao = item.getQuestao();
+        if (questao == null) {
+            return null;
+        }
+        if (!questao.completa()) {
+            return "a questão está sem as alternativas A-D ou sem o gabarito";
+        }
+        if (questao.isImagemPendente()) {
+            return "a questão está com figura pendente";
+        }
+        return null;
+    }
+
+    private void fecharSeAcabou(Identidade ident, Rascunho r, Instant agora) {
+        if (r.getStatus() == Status.PUBLICADO || !estrutura.itensDoRascunho(r.getId(), true).isEmpty()
+                || rascunhos.questoesDoRascunho(r.getId()).stream().anyMatch(q -> q.getStatus() != Status.PUBLICADO)) {
+            return;
+        }
+        if (!r.temAprovacaoHumana()) {
+            marcarAprovado(ident, r, ident.canal() == Canal.PORTAL ? ViaAprovacao.PORTAL : ViaAprovacao.MONTAGEM_DO_CURSO);
+        }
+        r.publicar(agora);
+    }
+
+    /** O recado da montagem para quem chamou: o que saiu e o que ficou, linha por linha. */
+    public static String recado(Montagem m, String turma) {
+        var texto = m.publicadas() == 0
+                ? "Nada foi publicado."
+                : "Publicado: %d linha(s) já aparecem para os alunos%s.".formatted(m.publicadas(),
+                        turma == null ? " das turmas do módulo" : " de " + turma);
+        if (!m.retidas().isEmpty()) {
+            texto += " Ficaram em rascunho: " + m.retidas().stream()
+                    .map(l -> "'%s' (%s)".formatted(l.nome(), l.motivo())).collect(joining("; "))
+                    + ". Acerte a questão e publique de novo.";
+        }
+        return texto;
+    }
+
     private void marcarAprovado(Identidade ident, Rascunho r, ViaAprovacao via) {
         var quem = contas.buscar(ident.usuarioId())
                 .orElseThrow(() -> new NaoEncontrado("Esta conta não existe mais."));
@@ -256,7 +361,8 @@ public class PublicacaoServico {
             String simuladoPublicado, String aprovadoPor, String aprovadoVia, String mensagem) {}
 
     /**
-     * Publica um rascunho <b>já aprovado</b> por um humano.
+     * Publica um rascunho <b>já aprovado</b> por um humano — ou de vídeos e linhas de aula, que é
+     * montagem do curso e não espera aprovação ({@link #publicarLinhas}).
      *
      * <p>Com {@code itensIds}, libera só aqueles itens e deixa o rascunho aberto para o resto.
      * Sem, publica tudo que está pendente nele.
@@ -274,11 +380,11 @@ public class PublicacaoServico {
             throw new RegraDeNegocio(
                     "Rascunho %d já foi publicado por inteiro.".formatted(rascunhoId));
         }
-        if (!r.temAprovacaoHumana()) {
+        if (r.getTipo() != TipoRascunho.ITENS && !r.temAprovacaoHumana()) {
             throw new AprovacaoNecessaria(
                     ("O rascunho %d não tem aprovação humana registrada e não pode ser publicado. "
-                            + "Peça a confirmação do professor, ou aprove pelo portal em "
-                            + "Admin > Rascunhos > #%d.").formatted(rascunhoId, rascunhoId));
+                            + "Peça a confirmação do professor, ou que ele publique pelo portal: o "
+                            + "simulado na página dele, a questão no Banco de questões.").formatted(rascunhoId));
         }
 
         var pendentes = estrutura.itensDoRascunho(r.getId(), true);
@@ -305,6 +411,15 @@ public class PublicacaoServico {
             }
         } else {
             escolhidos = pendentes;
+        }
+
+        if (r.getTipo() == TipoRascunho.ITENS) {
+            var m = publicarLinhas(ident, escolhidos, agora);
+            var turma = r.getTurma() == null ? null : r.getTurma().getNome();
+            return new Publicacao(r.getId(), r.getStatus() == Status.PUBLICADO, turma, m.publicadas(),
+                    estrutura.itensDoRascunho(r.getId(), true).size(), 0, 0, null,
+                    r.getAprovadoPor() == null ? null : r.getAprovadoPor().getNome(),
+                    r.getAprovadoVia() == null ? null : r.getAprovadoVia().name(), recado(m, turma));
         }
 
         var publicouResto = itensIds == null;

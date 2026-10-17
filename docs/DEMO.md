@@ -51,8 +51,8 @@ Ele chama `importar_questoes_vimeo`. Cada vídeo vira uma questão numerada,
 ligada à resolução.
 
 **3 — Mostre que nada foi publicado.** A resposta diz "Nenhuma questão foi
-publicada". Abra **Rascunhos** no portal: a proposta está lá, parada, com o
-carimbo de quem criou e por qual canal.
+publicada". Abra o **Banco de questões** no portal: a proposta está lá, no alto
+da lista, em rascunho, com o carimbo de quem criou e por qual canal.
 
 Ponto a verbalizar: *isto não é o modelo sendo educado. O backend recusa
 publicar sem aprovação — e o teste `test_publicacao.py` prova.*

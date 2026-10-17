@@ -161,6 +161,12 @@ e `pendencias_para_publicar` lista as linhas sem alternativas ou com figura
 pendente. A questão completada depois (`completar_questao_importada`) entra na
 posição do número dela.
 
+O rascunho aqui é para o Claude revisar o que o leitor entendeu, não para pedir
+aprovação (17/10/2026): montar o curso não pede. Revisado, ele chama
+`publicar_rascunho`, que publica as linhas sem pedir confirmação — a de figura
+pendente fica, com o motivo — e passa ao professor o link do módulo
+(`conferir_em`) para conferir.
+
 Questão de apostila pode parar na D: de A a D são obrigatórias, a E é opcional.
 
 ## O Banco de questões: o mesmo .docx, sem prova nem aula

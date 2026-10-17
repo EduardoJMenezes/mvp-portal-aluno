@@ -2,29 +2,27 @@
 
 import Link from "next/link";
 import { BotaoLink, Cartao, Estado, Etiqueta, LinkDeSecao, Pagina, TituloDeSecao, Vazio } from "@/components/ui";
-import { api, useDados, type RascunhoResumo, type SimuladoResumo, type Turma } from "@/lib/api";
+import { api, useDados, type SimuladoResumo, type Turma } from "@/lib/api";
 import { emBrasilia, plural } from "@/lib/formato";
 import { useUsuario } from "@/lib/sessao";
-import { ORIGEM, TIPO_DE_RASCUNHO } from "@/lib/rotulos";
 
 export default function Painel() {
   const usuario = useUsuario();
   const dados = useDados(async () => {
-    const [rascunhos, simulados, turmas] = await Promise.all([api.rascunhos("RASCUNHO"), api.simuladosDoProfessor(), api.turmas()]);
-    return { rascunhos, simulados, turmas };
+    const [simulados, turmas] = await Promise.all([api.simuladosDoProfessor(), api.turmas()]);
+    return { simulados, turmas };
   });
 
   return (
     <Pagina
       titulo={`Olá, ${usuario.nome.split(" ")[0]}`}
-      legenda="O que espera por você, os simulados da semana e as turmas."
+      legenda="Os simulados da semana e as turmas."
       acoes={<BotaoLink variante="primario" href="/admin/simulados/novo/">Montar simulado</BotaoLink>}
     >
       <Estado {...dados} linhas={4}>
-        {({ rascunhos, simulados, turmas }) => (
+        {({ simulados, turmas }) => (
           <div className="grid gap-5 lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)]">
             <div className="flex flex-col gap-5">
-              <Rascunhos rascunhos={rascunhos} />
               <Simulados simulados={simulados} />
             </div>
             <Turmas turmas={turmas} />
@@ -32,38 +30,6 @@ export default function Painel() {
         )}
       </Estado>
     </Pagina>
-  );
-}
-
-function Rascunhos({ rascunhos }: { rascunhos: RascunhoResumo[] }) {
-  return (
-    <section className="flex flex-col gap-3" aria-labelledby="titulo-rascunhos">
-      <TituloDeSecao acao={<LinkDeSecao href="/admin/rascunhos/">Ver todos</LinkDeSecao>}>
-        <span id="titulo-rascunhos">Esperando aprovação</span>
-        {rascunhos.length > 0 && <Etiqueta tom="atencao" className="ml-2 align-middle">{rascunhos.length}</Etiqueta>}
-      </TituloDeSecao>
-      {rascunhos.length === 0 ? (
-        <Vazio titulo="Nada esperando aprovação">O que o Claude propuser pelo MCP aparece aqui antes de chegar aos alunos.</Vazio>
-      ) : (
-        <Cartao>
-          <ul className="divide-y divide-borda">
-            {rascunhos.slice(0, 5).map((r) => (
-              <li key={r.rascunho_id}>
-                <Link href={`/admin/rascunhos/revisar/?id=${r.rascunho_id}`} className="flex items-center justify-between gap-3 px-4 py-3 hover:bg-canvas">
-                  <span className="min-w-0">
-                    <span className="block truncate font-medium text-tinta">{r.resumo || `Rascunho #${r.rascunho_id}`}</span>
-                    <span className="block truncate text-[13px] text-suave">
-                      {TIPO_DE_RASCUNHO[r.tipo]} · {r.criado_por} via {ORIGEM[r.origem] ?? r.origem} · {emBrasilia(r.criado_em)}
-                    </span>
-                  </span>
-                  <span className="shrink-0 text-sm font-semibold text-acento">Revisar</span>
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </Cartao>
-      )}
-    </section>
   );
 }
 

@@ -374,9 +374,10 @@ public class RascunhosServico {
             Integer duracaoMinutos, List<QuestaoNaProva> questoes,
             List<String> pendenciasParaPublicar, List<String> avisos) {}
 
+    /** {@code moduloId}: o módulo do sub-módulo, para o link do curso. Só em rascunho de linhas de aula. */
     public record RascunhoDetalhado(
             Integer rascunhoId, TipoRascunho tipo, Status status, String resumo, String turma,
-            String modulo, String submodulo, String criadoPor, String origem, String criadoEm,
+            String modulo, Integer moduloId, String submodulo, String criadoPor, String origem, String criadoEm,
             String aprovadoPor, String aprovadoVia, String publicadoEm,
             List<ItemDoRascunho> itens, List<QuestaoDoRascunho> questoes,
             SimuladoDoRascunho simulado, boolean publicado) {}
@@ -432,7 +433,9 @@ public class RascunhosServico {
                 avisosDeReuso(s, aulas));
 
         return new RascunhoDetalhado(base.rascunhoId(), base.tipo(), base.status(), base.resumo(),
-                base.turma(), base.modulo(), base.submodulo(), base.criadoPor(), base.origem(),
+                base.turma(), base.modulo(),
+                r.getSubmodulo() == null || r.getSubmodulo().getModulo() == null ? null : r.getSubmodulo().getModulo().getId(),
+                base.submodulo(), base.criadoPor(), base.origem(),
                 base.criadoEm(), base.aprovadoPor(), base.aprovadoVia(), base.publicadoEm(),
                 itens, descritas, simulado, r.getStatus() == Status.PUBLICADO);
     }

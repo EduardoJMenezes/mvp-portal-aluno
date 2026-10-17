@@ -428,8 +428,8 @@ aviso do alto lista o que falta; com pendência, o botão não libera. "Novo
 simulado" leva direto para essa página depois de criar, e o Claude manda o
 link dela (`conferir_em`, e `aprovar_em` quando a confirmação não aparece no
 chat). Descartar é o "Descartar simulado" do fim da página. A tela de
-Rascunhos ainda publica simulado, mas ninguém mais é mandado para lá por
-causa de um: ela fica só para vídeos e linhas de aula, até sair.
+Rascunhos saiu do portal em 17/10/2026, quando vídeo e linha de aula deixaram
+de pedir aprovação (ver [MODELO-CONTEUDO.md](MODELO-CONTEUDO.md)).
 
 A tela antiga do .docx no portal (pedir o link de envio e revisar por blocos)
 foi apagada junto. Pelo chat nada muda: o Claude passa o link da página de

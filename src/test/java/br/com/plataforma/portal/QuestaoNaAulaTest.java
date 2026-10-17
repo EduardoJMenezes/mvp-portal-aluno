@@ -344,10 +344,10 @@ class QuestaoNaAulaTest extends BaseDoPortal {
                 .andExpect(jsonPath("$.simulado.avisos[0]").value(containsString("também está em aula")));
     }
 
-    // --- pelo Claude continua sendo rascunho --------------------------------------
+    // --- pelo Claude, montar o curso não pede aprovação ---------------------------
 
     @Test
-    void peloMcpAsQuestoesNascemEmRascunhoESoChegamAoAlunoDepoisDoOk() throws Exception {
+    void peloMcpAsQuestoesJaChegamAoAluno() throws Exception {
         var corpo = comando("criar_questoes_como_itens", """
                 {"turma": "Extensivo 2027", "modulo": "K01", "submodulo": "Questões da apostila",
                  "questoes": [
@@ -356,27 +356,74 @@ class QuestaoNaAulaTest extends BaseDoPortal {
                    {"nome": "Desafio", "enunciado": "E o Na⁺?",
                     "alternativas": {"A": "10", "B": "11", "C": "12", "D": "23"}, "gabarito": "A"}]}""")
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.aviso").value("Nada foi publicado. O rascunho precisa da aprovação do professor."))
+                .andExpect(jsonPath("$.aviso").value("Publicado: 2 linha(s) já aparecem para os alunos de Extensivo 2027."))
                 .andExpect(jsonPath("$.rascunho.itens[*].nome").value(Matchers.contains("Q04", "Desafio")))
-                .andExpect(jsonPath("$.rascunho.itens[0].status").value("RASCUNHO"))
-                .andExpect(jsonPath("$.rascunho.itens[0].questao_id").isNumber())
-                .andExpect(jsonPath("$.rascunho.questoes.length()").value(2))
+                .andExpect(jsonPath("$.rascunho.itens[0].status").value("PUBLICADO"))
+                .andExpect(jsonPath("$.rascunho.publicado").value(true))
+                .andExpect(jsonPath("$.rascunho.aprovado_via").value("MONTAGEM_DO_CURSO"))
                 .andReturn().getResponse().getContentAsString();
-        int rascunho = JsonPath.<Integer>read(corpo, "$.rascunho.rascunho_id");
         int item = JsonPath.<Integer>read(corpo, "$.rascunho.itens[0].item_id");
 
-        get("/api/aluno/conteudo", ALUNO).andExpect(jsonPath("$").isEmpty());
-        get("/api/aluno/itens/" + item + "/questao", ALUNO).andExpect(status().isNotFound());
-        // O agente não publica o que ele mesmo propôs.
-        comando("publicar_rascunho", "{\"rascunho\": %d}".formatted(rascunho)).andExpect(status().isBadRequest());
-        assertThat(contar("items WHERE status = 'PUBLICADO'")).isZero();
-
-        post("/api/admin/rascunhos/" + rascunho + "/publicar", "{}", ADMIN).andExpect(status().isOk());
-
+        assertThat(contar("questions WHERE status = 'RASCUNHO'")).isZero();
         get("/api/aluno/conteudo", ALUNO)
                 .andExpect(jsonPath("$[0].modulos[0].submodulos[0].itens[*].nome").value(Matchers.contains("Q04", "Desafio")));
         post("/api/aluno/itens/" + item + "/responder", "{\"alternativa\": \"B\"}", ALUNO)
                 .andExpect(jsonPath("$.correta").value(true));
+    }
+
+    /** A linha que não pode ir para a aula fica em rascunho, e o professor publica no editor do curso. */
+    @Test
+    void linhaComFiguraPendenteFicaEmRascunhoAteOProfessorPublicar() throws Exception {
+        var corpo = comando("criar_questoes_como_itens", """
+                {"turma": "Extensivo 2027", "modulo": "K01", "submodulo": "Questões da apostila",
+                 "questoes": [
+                   {"numero": 1, "enunciado": "Sem figura",
+                    "alternativas": {"A": "1", "B": "2", "C": "3", "D": "4"}, "gabarito": "A"},
+                   {"numero": 2, "enunciado": "Observe o gráfico ![](figura:pendente)",
+                    "alternativas": {"A": "1", "B": "2", "C": "3", "D": "4"}, "gabarito": "B"}]}""")
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.aviso").value(containsString("Ficaram em rascunho: 'Q02' (a questão está com figura pendente)")))
+                .andExpect(jsonPath("$.rascunho.publicado").value(false))
+                .andReturn().getResponse().getContentAsString();
+        int rascunho = JsonPath.<Integer>read(corpo, "$.rascunho.rascunho_id");
+        int pendente = JsonPath.<Integer>read(corpo, "$.rascunho.itens[1].item_id");
+        int questao = JsonPath.<Integer>read(corpo, "$.rascunho.itens[1].questao_id");
+
+        get("/api/aluno/conteudo", ALUNO)
+                .andExpect(jsonPath("$[0].modulos[0].submodulos[0].itens[*].nome").value(Matchers.contains("Q01")));
+        post("/api/admin/itens/" + pendente + "/publicacao", "", ADMIN)
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.detail").value("'Q02' ainda não pode ir para a aula: a questão está com figura pendente."));
+
+        jdbc.update("UPDATE questions SET imagem_pendente = false WHERE id = ?", questao);
+        post("/api/admin/itens/" + pendente + "/publicacao", "", ADMIN)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.publicadas").value(1));
+
+        get("/api/aluno/conteudo", ALUNO)
+                .andExpect(jsonPath("$[0].modulos[0].submodulos[0].itens[*].nome").value(Matchers.contains("Q01", "Q02")));
+        assertThat(contar("questions WHERE id = ? AND status = 'PUBLICADO'", questao)).isEqualTo(1);
+        // Nada mais pendente: o rascunho fecha, com quem publicou no portal gravado.
+        assertThat(contar("drafts WHERE id = ? AND status = 'PUBLICADO' AND aprovado_via = 'PORTAL'", rascunho))
+                .isEqualTo(1);
+    }
+
+    /** "Publicar as que estão em rascunho" do sub-módulo: a que não pode sair volta com o motivo. */
+    @Test
+    void publicarOSubmoduloDevolveAsLinhasRetidas() throws Exception {
+        var corpo = comando("criar_questoes_como_itens", """
+                {"turma": "Extensivo 2027", "modulo": "K01", "submodulo": "Questões da apostila",
+                 "questoes": [{"numero": 7, "enunciado": "Figura ![](figura:pendente)",
+                    "alternativas": {"A": "1", "B": "2", "C": "3", "D": "4"}, "gabarito": "A"}]}""")
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        int sub = jdbc.queryForObject("SELECT submodulo_id FROM items WHERE id = ?", Integer.class,
+                JsonPath.<Integer>read(corpo, "$.rascunho.itens[0].item_id"));
+
+        post("/api/admin/submodulos/" + sub + "/publicacao", "", ADMIN)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.publicadas").value(0))
+                .andExpect(jsonPath("$.retidas[0].nome").value("Q07"))
+                .andExpect(jsonPath("$.retidas[0].motivo").value("a questão está com figura pendente"));
     }
 
     @Test

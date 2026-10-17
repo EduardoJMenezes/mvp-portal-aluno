@@ -15,8 +15,9 @@ class AcervoComandosTest extends BaseDeComando {
                 {"turma": "Extensivo 2027", "nome": "K01"}""").andExpect(status().isOk());
     }
 
+    /** Montar o curso não pede aprovação: o vídeo sai publicado, e o professor confere pelo link. */
     @Test
-    void criaUmItemPorVideoEmRascunho() throws Exception {
+    void criaUmItemPorVideoJaPublicado() throws Exception {
         montarK01();
         comando("cadastrar_assunto", """
                 {"nome": "Estequiometria", "subassuntos": ["Pureza e rendimento"]}""")
@@ -30,7 +31,9 @@ class AcervoComandosTest extends BaseDeComando {
                    {"vimeo_id": "222", "titulo": "Aula 2 — isomeria", "nome": "Aula 2"}]}""")
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.rascunho.tipo").value("ITENS"))
-                .andExpect(jsonPath("$.rascunho.status").value("RASCUNHO"))
+                .andExpect(jsonPath("$.rascunho.status").value("PUBLICADO"))
+                .andExpect(jsonPath("$.rascunho.aprovado_via").value("MONTAGEM_DO_CURSO"))
+                .andExpect(jsonPath("$.rascunho.modulo_id").isNumber())
                 .andExpect(jsonPath("$.rascunho.resumo")
                         .value("2 vídeo(s) para Extensivo 2027 / K01 › Aulas"))
                 .andExpect(jsonPath("$.rascunho.itens[0].nome").value("Aula 1 — cadeias"))
@@ -41,11 +44,10 @@ class AcervoComandosTest extends BaseDeComando {
                 .andExpect(jsonPath("$.rascunho.itens[1].nome").value("Aula 2"))
                 .andExpect(jsonPath("$.erros").isEmpty())
                 .andExpect(jsonPath("$.aviso").value(
-                        "Nada foi publicado. O rascunho precisa da aprovação do professor."));
+                        "Publicado: 2 linha(s) já aparecem para os alunos de Extensivo 2027."));
 
-        // Nasce em rascunho: nenhum aluno vê.
-        assertThat(contar("items WHERE status = 'RASCUNHO'")).isEqualTo(2);
-        assertThat(contar("items WHERE status = 'PUBLICADO'")).isZero();
+        assertThat(contar("items WHERE status = 'PUBLICADO'")).isEqualTo(2);
+        assertThat(contar("items WHERE status = 'RASCUNHO'")).isZero();
     }
 
     /** Reimportar não duplica o vídeo: vimeo_id é identidade externa. */

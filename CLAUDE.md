@@ -58,11 +58,24 @@ cd api && ./mvnw -B verify          # 116 testes, Postgres por Testcontainers
 
 Antes de mexer em `services/publicacao.py`, `services/rascunhos.py` ou na tool
 `publicar_rascunho`, entenda as quatro camadas descritas em
-[docs/ARQUITETURA.md](docs/ARQUITETURA.md#a-regra-que-sustenta-a-poc-6). Nenhuma
-mudança pode abrir um caminho em que conteúdo chegue ao aluno sem aprovação
-humana gravada em `drafts.aprovado_por_id`. `mcp/tests/test_publicacao.py`
+[docs/ARQUITETURA.md](docs/ARQUITETURA.md#a-regra-que-sustenta-a-poc-6). Fora a
+montagem do curso (abaixo), nenhuma mudança pode abrir um caminho em que questão
+ou simulado chegue ao aluno sem aprovação humana gravada em
+`drafts.aprovado_por_id`. `mcp/tests/test_publicacao.py`
 existe para travar isso — se um teste de lá começar a falhar, o problema é a
 mudança, não o teste.
+
+**Montar o curso não pede aprovação (decidido em 17/10/2026).** Vídeo e linha
+de aula que o Claude põe num sub-módulo (`importar_videos_como_itens`, a pasta do
+Vimeo, `criar_questoes_como_itens`) saem publicados na hora, e a tool devolve o
+link do módulo (`conferir_em`) para o professor conferir no portal com a conta
+de administrador — é um link para conferir, não para aprovar. A porta é
+`PublicacaoServico.publicarLinhas`: a linha de questão sem A-D ou com figura
+pendente fica em rascunho, com o motivo, e sai depois pelo "Publicar" do editor
+do curso ou por `publicar_rascunho`, que para rascunho de linhas de aula não
+pede confirmação. O rascunho fechado assim grava quem operava, com
+`aprovado_via = MONTAGEM_DO_CURSO`. A fila "Esperando aprovação" (Admin ›
+Rascunhos) saiu do portal junto. Questão e simulado continuam pedindo o ok.
 
 **Um caso à parte, escrito e fechado:** a análise escrita do aluno
 (`student_analyses`) não passa por `drafts`. A do simulado só chega a ele quando
@@ -166,9 +179,9 @@ Ensaio geral dos quatro fluxos do §21, contra o servidor no ar:
   [tools_estrutura.py](mcp/app/mcp_server/tools_estrutura.py) alteram na hora
   e gravam `alterado_por_id`; a confirmação é o preview no chat, escrito na
   descrição de cada uma. Não volte para formulário de confirmação (elicitation):
-  o app do Claude responde a ele sozinho, sem mostrar a ninguém. Publicar continua exigindo aprovação humana em
-  `drafts.aprovado_por_id`, verificada no banco — inclusive quando se publica
-  item a item, que acontece de dentro de um rascunho já aprovado.
+  o app do Claude responde a ele sozinho, sem mostrar a ninguém. Publicar questão e
+  simulado continua exigindo aprovação humana em `drafts.aprovado_por_id`,
+  verificada no banco; vídeo e linha de aula, não (montar o curso, acima).
 * **Elicitation mudou no protocolo 2026-07-28.** Requisição iniciada pelo
   servidor não existe mais; o canal é `InputRequiredResult` (SEP-2322).
   `publicar_rascunho` implementa os dois caminhos — não simplifique para só um.

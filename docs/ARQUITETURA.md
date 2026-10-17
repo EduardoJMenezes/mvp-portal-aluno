@@ -58,9 +58,10 @@ fraca para a mais forte:
 1. **Instruções do servidor MCP** ([server.py](../backend/app/mcp_server/server.py)):
    dizem ao modelo para nunca publicar sem aprovação. Útil, e insuficiente
    sozinha — é exatamente o que o §6 alerta.
-2. **Nenhuma tool de escrita aceita status.** Todas gravam `RASCUNHO`
-   ([rascunhos.py](../backend/app/services/rascunhos.py)). Não existe caminho,
-   a partir do MCP, que crie conteúdo já publicado.
+2. **Nenhuma tool de escrita aceita status.** Questão e simulado nascem em
+   `RASCUNHO` ([rascunhos.py](../backend/app/services/rascunhos.py)), e não
+   existe caminho, a partir do MCP, que os crie já publicados. Vídeo e linha de
+   aula são a exceção, abaixo.
 3. **`publicar_rascunho` recusa rascunho sem aprovação humana gravada** em
    `drafts.aprovado_por_id` ([publicacao.py](../backend/app/services/publicacao.py)).
    É uma checagem de estado no banco. Um agente que "esqueça" de pedir
@@ -71,6 +72,20 @@ fraca para a mais forte:
    - a confirmação que o servidor pede ao cliente antes de publicar —
      `registrar_confirmacao_do_cliente_mcp`, que **não tem tool exposta**. O
      modelo controla o pedido de publicação; o aceite vem do usuário.
+
+### A exceção: montar o curso (17/10/2026)
+
+Vídeo e linha de aula que o Claude põe num sub-módulo saem publicados na hora
+(`PublicacaoServico.publicarLinhas`), e a tool devolve o link do módulo
+(`conferir_em`) para o professor conferir no portal, com a conta de
+administrador. Foi decisão do dono do projeto: conferir o curso montado é mais
+útil ao professor do que aprovar linha por linha, e a fila "Esperando
+aprovação" saiu do portal. O rascunho continua existindo por baixo — é o lote
+de quem pôs o quê —, e fecha com `aprovado_via = MONTAGEM_DO_CURSO` e o
+operador gravado. A linha de questão sem A-D ou com figura pendente não vai
+para a aula: fica em rascunho, com o motivo, e sai pelo "Publicar" do editor do
+curso ou por `publicar_rascunho`, que para esse tipo de rascunho não pede
+confirmação. Questão avulsa e simulado continuam sob as quatro camadas.
 
 ### A confirmação, e por que ela não é `ctx.elicit`
 

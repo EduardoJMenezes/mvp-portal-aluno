@@ -83,13 +83,13 @@ class AdminContasTest extends BaseDoPortal {
         post("/api/admin/turmas", "{\"nome\": \"\", \"ano\": 2028}", ADMIN).andExpect(status().isUnprocessableContent());
     }
 
+    private static final String PROPOSTA = """
+            {"enunciado": "Proposta do Claude", "alternativas": {"A": "1", "B": "2", "C": "3", "D": "4"},
+             "gabarito": "A"}""";
+
     @Test
     void rascunhoEDescartadoSoPeloPortal() throws Exception {
-        comando("criar_modulo", "{\"turma\": \"Extensivo 2027\", \"nome\": \"K01\"}").andExpect(status().isOk());
-        var video = criarVideo("v1", "Q01");
-        var corpo = comando("importar_videos_como_itens", """
-                {"turma": "Extensivo 2027", "modulo": "K01", "submodulo": "Aulas",
-                 "videos": [{"vimeo_id": "v1", "titulo": "Q01"}]}""")
+        var corpo = comando("criar_questao_rascunho", PROPOSTA)
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
         var rascunho = Integer.parseInt(corpo.replaceAll(".*\"rascunho_id\":(\\d+).*", "$1"));
 
@@ -97,23 +97,33 @@ class AdminContasTest extends BaseDoPortal {
         delete("/api/admin/rascunhos/" + rascunho, ADMIN).andExpect(status().isOk())
                 .andExpect(jsonPath("$.descartado").value(true));
         assertThat(contar("drafts")).isZero();
-        assertThat(contar("items")).isZero();
-        assertThat(contar("videos WHERE id = ?", video)).isEqualTo(1);
+        assertThat(contar("questions WHERE enunciado = 'Proposta do Claude'")).isZero();
     }
 
     @Test
     void publicarPeloPortalCarimbaAAprovacaoHumana() throws Exception {
-        comando("criar_modulo", "{\"turma\": \"Extensivo 2027\", \"nome\": \"K01\"}").andExpect(status().isOk());
-        var corpo = comando("importar_videos_como_itens", """
-                {"turma": "Extensivo 2027", "modulo": "K01", "submodulo": "Aulas",
-                 "videos": [{"vimeo_id": "v1", "titulo": "Q01"}]}""")
+        var corpo = comando("criar_questao_rascunho", PROPOSTA)
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
         var rascunho = Integer.parseInt(corpo.replaceAll(".*\"rascunho_id\":(\\d+).*", "$1"));
 
         post("/api/admin/rascunhos/" + rascunho + "/publicar", "", ADMIN).andExpect(status().isOk())
                 .andExpect(jsonPath("$.publicado").value(true))
                 .andExpect(jsonPath("$.aprovado_via").value("PORTAL"));
+        assertThat(contar("questions WHERE status = 'PUBLICADO' AND enunciado = 'Proposta do Claude'")).isEqualTo(1);
+    }
+
+    /** O vídeo que o Claude põe no curso já chega ao aluno — e sem o embed na árvore. */
+    @Test
+    void videoDoClaudeChegaAoAlunoSemOEmbedNaArvore() throws Exception {
+        comando("criar_modulo", "{\"turma\": \"Extensivo 2027\", \"nome\": \"K01\"}").andExpect(status().isOk());
+        comando("importar_videos_como_itens", """
+                {"turma": "Extensivo 2027", "modulo": "K01", "submodulo": "Aulas",
+                 "videos": [{"vimeo_id": "v1", "titulo": "Q01"}]}""")
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.rascunho.publicado").value(true));
+
         get("/api/aluno/conteudo", ALUNO).andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].modulos[0].submodulos[0].itens[0].nome").value("Q01"))
                 .andExpect(jsonPath("$[0].modulos[0].submodulos[0].itens[0].video.embed_url").doesNotExist());
     }
 }

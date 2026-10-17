@@ -66,7 +66,6 @@ const DO_OPERADOR: (Destino | Grupo)[] = [
       { href: "/admin/vendas/", rotulo: "Vendas" },
     ],
   },
-  { href: "/admin/rascunhos/", rotulo: "Rascunhos" },
 ];
 
 const semBarra = (caminho: string) => (caminho.length > 1 ? caminho.replace(/\/+$/, "") : caminho);

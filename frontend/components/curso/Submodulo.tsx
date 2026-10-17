@@ -3,7 +3,7 @@
 // Um sub-módulo na tela de montar o curso: a fila das linhas (vídeo, PDF ou questão), o botão
 // único de "Adicionar" e o que cada linha deixa fazer.
 
-import { ArrowDown, ArrowUp, CornerDownRight, Eye, Paperclip, Pencil, Play, Plus, SquarePen, Tags, Trash2, Users } from "lucide-react";
+import { ArrowDown, ArrowUp, CircleCheck, CornerDownRight, Eye, Paperclip, Pencil, Play, Plus, SquarePen, Tags, Trash2, Users } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
 import { OffCanvas } from "@/components/Camadas";
@@ -13,8 +13,8 @@ import { QuestaoParaVer } from "@/components/PreviaDaQuestao";
 import { VerPdf } from "@/components/PreviaDoPdf";
 import { PassarVideos, TelaDoVideo } from "@/components/PreviaDoVideo";
 import { Botao, BotaoLink, Etiqueta, Formulario, LinkDeTitulo, botao } from "@/components/ui";
-import { api, type Assunto, type Aula, type ItemCurso, type Modulo, type SubModulo } from "@/lib/api";
-import { duracao } from "@/lib/formato";
+import { api, type Assunto, type Aula, type ItemCurso, type Modulo, type Montagem, type SubModulo } from "@/lib/api";
+import { duracao, plural } from "@/lib/formato";
 import { Alca, Azulejo, BIBLIOTECA, Marca, TIPOS, composicao, tipoDaLinha, useArrastar, type Arrastar, type Confirmar, type Executar, type Tipo } from "./comum";
 import { AdicionarVideos } from "./AdicionarVideos";
 import { AdicionarQuestao } from "./AdicionarQuestao";
@@ -60,6 +60,7 @@ export function SecaoDoSubmodulo({
   const [renomeando, setRenomeando] = useState(false);
   const [nome, setNome] = useState(sub.nome);
   const publicados = sub.itens.filter((i) => i.status === "PUBLICADO").length;
+  const emRascunho = sub.itens.length - publicados;
   const outros = modulo.submodulos.filter((s) => s.id !== sub.id);
   const arrastar = useArrastar(sub.itens.map((i) => i.id), Object.fromEntries(sub.itens.map((i) => [i.id, i.nome])), aoReordenar);
   const fechar = () => setAdicionando(null);
@@ -89,6 +90,22 @@ export function SecaoDoSubmodulo({
     if (sim) await executar(() => api.removerSubmodulo(BIBLIOTECA, modulo.id, sub.id), `Sub-módulo "${sub.nome}" removido.`);
   }
 
+  // O que o Claude pôs no curso já sai publicado; fica em rascunho só a linha que não podia ir para
+  // a aula (questão com figura pendente, por exemplo). Acertada, ela sai daqui.
+  async function publicarRascunhos() {
+    let feito: Montagem | null = null;
+    await executar(
+      async () => {
+        feito = await api.publicarSubmodulo(sub.id);
+      },
+      () => {
+        const { publicadas, retidas } = feito!;
+        const saiu = publicadas ? `${plural(publicadas, "linha publicada", "linhas publicadas")} em ${sub.nome}.` : "Nenhuma linha foi publicada.";
+        return retidas.length ? `${saiu} Ficaram em rascunho: ${retidas.map((r) => `"${r.nome}" (${r.motivo})`).join("; ")}.` : saiu;
+      },
+    );
+  }
+
   async function renomear(e: FormEvent) {
     e.preventDefault();
     if (nome.trim() === sub.nome) return setRenomeando(false);
@@ -116,6 +133,11 @@ export function SecaoDoSubmodulo({
               {semAssunto > 0 && <span title="Sem assunto, a linha não entra no que o aluno recebe para revisar">, {semAssunto} sem assunto</span>}
             </p>
             <div className="ml-auto flex items-center gap-1">
+              {emRascunho > 0 && (
+                <Botao tamanho="pequeno" variante="primario" onClick={() => publicarRascunhos()}>
+                  {emRascunho === 1 ? "Publicar a linha em rascunho" : `Publicar as ${emRascunho} em rascunho`}
+                </Botao>
+              )}
               <Menu rotulo={`Adicionar em ${sub.nome}`} itens={entradas} largura="w-80" className={botao("secundario", "pequeno")}>
                 <Plus aria-hidden="true" className="size-4" strokeWidth={2.4} />
                 Adicionar
@@ -283,6 +305,7 @@ function Linha({
   }
 
   const acoes: (ItemDoMenu | false)[] = [
+    item.status !== "PUBLICADO" && { rotulo: "Publicar", icone: CircleCheck, aoEscolher: () => void executar(() => api.publicarLinha(item.id), `"${item.nome}" publicado.`) },
     tipo === "video" && { rotulo: "Ver o vídeo", icone: Play, aoEscolher: aoVer },
     tipo === "questao" && { rotulo: "Ver a questão", icone: Eye, aoEscolher: aoVer },
     { rotulo: "Renomear", icone: Pencil, aoEscolher: () => { setNome(item.nome); setModo("nome"); } },

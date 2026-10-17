@@ -3,6 +3,7 @@ package br.com.plataforma.comandos;
 import br.com.plataforma.acervo.AcervoServico;
 import br.com.plataforma.catalogo.CatalogoServico;
 import br.com.plataforma.comum.Identidade;
+import br.com.plataforma.rascunhos.PublicacaoServico;
 import br.com.plataforma.rascunhos.RascunhosServico;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
@@ -21,7 +22,8 @@ import org.springframework.web.bind.annotation.RestController;
  *
  * <p>Falar com a API do Vimeo — listar pastas, listar vídeos, ler o número do título, casar as
  * faixas com os destinos — é do adaptador MCP, que é quem tem o cliente e o token. O que chega
- * aqui já é a lista pronta: este lado só grava, e grava em rascunho.
+ * aqui já é a lista pronta: este lado grava e publica. Montar o curso não pede aprovação
+ * (17/10/2026): o professor confere pelo link do módulo.
  */
 @RestController
 @RequestMapping("/comandos")
@@ -30,12 +32,14 @@ public class AcervoComandos {
     private final CatalogoServico catalogo;
     private final RascunhosServico rascunhos;
     private final AcervoServico acervo;
+    private final PublicacaoServico publicacao;
 
     public AcervoComandos(CatalogoServico catalogo, RascunhosServico rascunhos,
-            AcervoServico acervo) {
+            AcervoServico acervo, PublicacaoServico publicacao) {
         this.catalogo = catalogo;
         this.rascunhos = rascunhos;
         this.acervo = acervo;
+        this.publicacao = publicacao;
     }
 
     public record VideosNoAcervo(List<String> vimeoIds) {}
@@ -70,10 +74,12 @@ public class AcervoComandos {
         var turma = catalogo.resolverTurmaOuBiblioteca(pedido.turma());
         var resultado = rascunhos.importarVideosComoItens(ident, turma, pedido.modulo(),
                 pedido.submodulo(), pedido.videos());
+        var agora = Instant.now();
+        var montagem = publicacao.publicarMontagem(ident, resultado.rascunho().getId(), agora);
 
         return new ItensImportados(
-                rascunhos.detalhar(ident, resultado.rascunho().getId(), Instant.now()),
+                rascunhos.detalhar(ident, resultado.rascunho().getId(), agora),
                 resultado.erros(),
-                "Nada foi publicado. O rascunho precisa da aprovação do professor.");
+                PublicacaoServico.recado(montagem, turma == null ? null : turma.getNome()));
     }
 }

@@ -33,7 +33,8 @@ seção "Em aberto", no fim.
 > * **O que o professor monta no portal já sai publicado** — vídeo, PDF e
 >   questão. A proposta nasce, é aprovada por ele e publicada no mesmo ato
 >   (`PublicacaoServico.publicarPeloPortal`), então a aprovação humana continua
->   gravada. O que chega pelo Claude segue em rascunho.
+>   gravada. O que chega pelo Claude segue em rascunho. *(Mudou em 17/10/2026:
+>   vídeo e linha de aula do Claude também já saem publicados — ver abaixo.)*
 > * As linhas só de vídeo que já existiam ("Q04") continuam valendo como estão.
 
 > **Mudou em 06/10/2026 (migração V11): o módulo tem capa.** É o que o aluno
@@ -98,6 +99,17 @@ seção "Em aberto", no fim.
 >   aluno lê o da alternativa que marcou e o da correta — na aula, logo depois
 >   de responder; no simulado, com o resultado. Como a resolução, muda mesmo
 >   com a prova aberta. E continua valendo: o aluno responde **uma vez**.
+>
+> **Mudou em 17/10/2026: montar o curso pelo Claude não pede aprovação.**
+> `importar_videos_como_itens`, a pasta do Vimeo e `criar_questoes_como_itens`
+> publicam na hora (`PublicacaoServico.publicarLinhas`) e devolvem o link do
+> módulo (`conferir_em`, `/admin/biblioteca/?modulo=`) para o professor
+> conferir. A linha de questão sem A-D ou com figura pendente fica em rascunho,
+> com o motivo; no editor do curso ela ganha "Publicar" no menu da linha, e o
+> sub-módulo, "Publicar as N em rascunho" (`POST /api/admin/itens/{id}/publicacao`
+> e `POST /api/admin/submodulos/{id}/publicacao`). A fila "Esperando aprovação"
+> e a tela Admin › Rascunhos saíram do portal; as rotas
+> `/api/admin/rascunhos/**` continuam na API, sem uso pelo portal.
 >
 > **Mudou em 09/10/2026: o Vimeo se navega pela tela.** Em "Montar o curso",
 > "Adicionar › Vídeos" abre um off-canvas com o acervo como ele está guardado:

@@ -81,7 +81,7 @@ function Curso() {
   return (
     <Pagina
       titulo="Montar o curso"
-      legenda="Monte cada módulo com vídeos, PDFs e questões. O que você põe aqui já entra publicado; o que chega pelo Claude passa antes por Rascunhos."
+      legenda="Monte cada módulo com vídeos, PDFs e questões. O que você põe aqui, ou pede ao Claude, já entra publicado."
       acoes={<Botao onClick={() => setCopiar(true)} aria-haspopup="dialog">Copiar entre turmas</Botao>}
     >
       {dialogo}

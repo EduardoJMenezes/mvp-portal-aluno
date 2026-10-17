@@ -295,8 +295,8 @@ public class AdminPortal {
             @Valid @RequestBody ItensIn dados) {
         var importados = acervoComandos.importarVideosComoItens(ident,
                 new AcervoComandos.ImportarVideosComoItens(turma, modulo, submodulo, dados.videos()));
+        // O comando já publica: montar o curso não espera aprovação.
         var rascunho = importados.rascunho().rascunhoId();
-        publicacao.publicarPeloPortal(ident, rascunho, Instant.now());
         return new AcervoComandos.ItensImportados(rascunhos.detalhar(ident, rascunho, Instant.now()),
                 importados.erros(), "Publicado: os vídeos já aparecem para os alunos.");
     }

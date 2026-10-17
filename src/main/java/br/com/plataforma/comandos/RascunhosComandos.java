@@ -112,8 +112,9 @@ public class RascunhosComandos {
     public record QuestoesNaAula(RascunhosServico.RascunhoDetalhado rascunho, String aviso) {}
 
     /**
-     * Põe questões num sub-módulo, em rascunho: cada uma vira uma linha que o aluno responde na
-     * aula. A questão vem do acervo, pelo id, ou inteira — e aí nasce no mesmo rascunho.
+     * Põe questões num sub-módulo: cada uma vira uma linha que o aluno responde na aula. A questão
+     * vem do acervo, pelo id, ou inteira — e aí nasce no mesmo rascunho. É montagem do curso, então
+     * sai publicada; a linha de questão sem A-D ou com figura pendente fica em rascunho.
      */
     @PostMapping("/criar_questoes_como_itens")
     @Transactional
@@ -127,8 +128,10 @@ public class RascunhosComandos {
         }
         var r = rascunhos.criarQuestoesNaAula(ident, turma, alvos.submodulo(),
                 entradas.paraAula(pedido.questoes()), entradas.resolucoes(pedido.resolucoes()));
-        return new QuestoesNaAula(rascunhos.detalhar(ident, r.getId(), Instant.now()),
-                "Nada foi publicado. O rascunho precisa da aprovação do professor.");
+        var agora = Instant.now();
+        var montagem = publicacao.publicarMontagem(ident, r.getId(), agora);
+        return new QuestoesNaAula(rascunhos.detalhar(ident, r.getId(), agora),
+                PublicacaoServico.recado(montagem, turma == null ? null : turma.getNome()));
     }
 
     // --- listar_rascunhos ----------------------------------------------------

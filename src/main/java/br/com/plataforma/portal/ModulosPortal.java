@@ -192,8 +192,42 @@ public class ModulosPortal {
                         nova.resolucaoComentada(), null, nova.comentarios()));
         var rascunho = rascunhos.criarQuestoesNaAula(ident, null, sub,
                 List.of(new RascunhosServico.QuestaoParaAula(entrada, dados.nome())), null);
-        publicacao.publicarPeloPortal(ident, rascunho.getId(), Instant.now());
+        var montagem = publicacao.publicarMontagem(ident, rascunho.getId(), Instant.now());
+        if (!montagem.retidas().isEmpty()) {
+            // Aqui quem escolheu a questão está na tela: melhor recusar do que deixar a linha em rascunho.
+            var retida = montagem.retidas().getFirst();
+            throw new RegraDeNegocio("'%s' não pode ir para a aula: %s.".formatted(retida.nome(), retida.motivo()));
+        }
         return EstruturaServico.ItemNaArvore.de(estrutura.itensDoRascunho(rascunho.getId(), false).getFirst());
+    }
+
+    /**
+     * Publica uma linha que ficou em rascunho (a questão estava sem figura, por exemplo). Montar o
+     * curso não pede aprovação: o professor acerta a linha e publica dali mesmo.
+     */
+    @PostMapping("/itens/{item}/publicacao")
+    @Transactional
+    public PublicacaoServico.Montagem publicarLinha(@AuthenticationPrincipal Identidade ident,
+            @PathVariable Integer item) {
+        var linha = exigirItem(item);
+        var montagem = publicacao.publicarLinhas(ident, List.of(linha), Instant.now());
+        if (!montagem.retidas().isEmpty()) {
+            throw new RegraDeNegocio("'%s' ainda não pode ir para a aula: %s."
+                    .formatted(linha.getNome(), montagem.retidas().getFirst().motivo()));
+        }
+        return montagem;
+    }
+
+    /** Todas as linhas em rascunho do sub-módulo. A que não pode sair volta em {@code retidas}. */
+    @PostMapping("/submodulos/{submodulo}/publicacao")
+    @Transactional
+    public PublicacaoServico.Montagem publicarSubmodulo(@AuthenticationPrincipal Identidade ident,
+            @PathVariable Integer submodulo) {
+        var sub = estrutura.submodulo(submodulo)
+                .orElseThrow(() -> new NaoEncontrado("Sub-módulo %d não existe.".formatted(submodulo)));
+        var emRascunho = estrutura.itensDo(sub).stream()
+                .filter(i -> i.getStatus() != br.com.plataforma.comum.Status.PUBLICADO).toList();
+        return publicacao.publicarLinhas(ident, emRascunho, Instant.now());
     }
 
     /** Uma linha só de PDF no fim do sub-módulo. */

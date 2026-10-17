@@ -747,6 +747,9 @@ export type Aluno = { id: number; nome: string; email: string; senha_temporaria:
 
 export type TokenMcp = { id: number; nome: string; criado_em: string | null; ultimo_uso_em: string | null; revogado: boolean };
 
+/** O que a publicação de linhas de aula fez: quantas saíram e quais ficaram em rascunho, com o motivo. */
+export type Montagem = { publicadas: number; retidas: { item_id: number; nome: string; motivo: string }[] };
+
 export type PastaVimeo = { id: string; nome: string; dentro_de: string | null; videos: number | null; videos_com_subpastas: number | null; tem_subpasta: boolean; pai_id?: string | null };
 /** Um vídeo da pasta, na ordem em que entraria no curso. `avisos`: o que impediria o aluno de assistir. */
 export type VideoDaPasta = { vimeo_id: string; titulo: string; duracao_segundos: number | null; url: string | null; embed_url: string | null; thumbnail_url: string | null; avisos: string[] };
@@ -1000,13 +1003,6 @@ export const api = {
     pedir(`/admin/assuntos/${assunto}/subassuntos/${sub}`, { method: "PATCH", json: { nome } }),
   removerSubassunto: (assunto: number, sub: number) => pedir(`/admin/assuntos/${assunto}/subassuntos/${sub}`, { method: "DELETE" }),
 
-  // rascunhos
-  rascunhos: (status?: string) => pedir<RascunhoResumo[]>(`/admin/rascunhos${q({ status })}`),
-  rascunho: (id: number) => pedir<Rascunho>(`/admin/rascunhos/${id}`),
-  publicar: (id: number, itens?: number[]) =>
-    pedir<{ publicado: boolean; mensagem?: string }>(`/admin/rascunhos/${id}/publicar`, { method: "POST", json: itens ? { itens } : {} }),
-  descartar: (id: number) => pedir(`/admin/rascunhos/${id}`, { method: "DELETE" }),
-
   // questões
   questao: (id: number) => pedir<QuestaoDetalhada>(`/admin/questoes/${id}`),
   criarQuestao: (dados: Record<string, unknown>) => pedir<Rascunho>("/admin/questoes", { method: "POST", json: dados }),
@@ -1089,6 +1085,10 @@ export const api = {
     pedir<Aula>(`/admin/aulas/${id}/material`, { method: "PUT", json: { material, so_no_dia } }),
   materialDoItem: (item: number, material: number | null) =>
     pedir<{ item_id: number; nome: string; material: MaterialLigado | null }>(`/admin/itens/${item}/material`, { method: "PUT", json: { material } }),
+  /** Publica a linha que ficou em rascunho. Se ela ainda não pode ir para a aula, o erro diz por quê. */
+  publicarLinha: (item: number) => pedir<Montagem>(`/admin/itens/${item}/publicacao`, { method: "POST" }),
+  /** Todas as linhas em rascunho do sub-módulo; as que não podem sair voltam em `retidas`. */
+  publicarSubmodulo: (submodulo: number) => pedir<Montagem>(`/admin/submodulos/${submodulo}/publicacao`, { method: "POST" }),
   /** A questão do acervo (`questao_id`) ou uma nova, criada ali: a linha já sai publicada. */
   questaoNoSubmodulo: (submodulo: number, dados: { questao_id?: number; nome?: string; nova?: Record<string, unknown> }) =>
     pedir<ItemCurso>(`/admin/submodulos/${submodulo}/questao`, { method: "POST", json: dados }),
