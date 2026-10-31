@@ -138,8 +138,10 @@ public class EstruturaServico {
         }
     }
 
+    /** {@code folhaDeRespostas}: as questões daqui o aluno lança de uma vez (ver {@link SubModulo}). */
     public record SubModuloNaArvore(
-            Integer id, String nome, TipoSubModulo tipo, Integer ordem, List<ItemNaArvore> itens) {}
+            Integer id, String nome, TipoSubModulo tipo, Integer ordem, List<ItemNaArvore> itens,
+            boolean folhaDeRespostas) {}
 
     /**
      * {@code turma}: a turma pela qual se olha; {@code turmas}: todas as que recebem o módulo.
@@ -159,7 +161,7 @@ public class EstruturaServico {
         public ModuloNaArvore comLinhas(java.util.function.UnaryOperator<ItemNaArvore> troca) {
             return new ModuloNaArvore(id, nome, ordem, categoria, turma, turmas, submodulos.stream()
                     .map(s -> new SubModuloNaArvore(s.id(), s.nome(), s.tipo(), s.ordem(),
-                            s.itens().stream().map(troca).toList()))
+                            s.itens().stream().map(troca).toList(), s.folhaDeRespostas()))
                     .toList(), icone, fotoVersao);
         }
     }
@@ -229,7 +231,7 @@ public class EstruturaServico {
                     continue;
                 }
                 galhos.add(new SubModuloNaArvore(sub.getId(), sub.getNome(), sub.getTipo(), sub.getOrdem(),
-                        lista.stream().map(ItemNaArvore::de).toList()));
+                        lista.stream().map(ItemNaArvore::de).toList(), sub.isFolhaDeRespostas()));
             }
 
             if (doAluno && !manterVazios && galhos.isEmpty()) {
@@ -253,7 +255,7 @@ public class EstruturaServico {
                         ramos.de(modulo).stream()
                                 .map(sub -> new SubModuloNaArvore(sub.getId(), sub.getNome(), sub.getTipo(),
                                         sub.getOrdem(), ramos.de(sub).stream()
-                                                .map(ItemNaArvore::de).toList()))
+                                                .map(ItemNaArvore::de).toList(), sub.isFolhaDeRespostas()))
                                 .toList(),
                         modulo.getIcone(), modulo.getFotoVersao()))
                 .toList();
@@ -521,6 +523,24 @@ public class EstruturaServico {
         }
         submodulo.tocar(ident);
         return submodulos.save(submodulo);
+    }
+
+    /**
+     * Liga ou desliga a folha de respostas. Desligar devolve a regra da aula comum: quem ainda não
+     * respondeu passa a responder uma por uma, com o gabarito na hora.
+     */
+    @Transactional
+    public SubModulo definirFolhaDeRespostas(Identidade ident, SubModulo submodulo, boolean folha) {
+        ident.exigirOperador();
+        submodulo.definirFolhaDeRespostas(folha);
+        submodulo.tocar(ident);
+        return submodulos.save(submodulo);
+    }
+
+    /** As linhas do sub-módulo, na ordem da tela, sem filtro de turma nem de publicação. */
+    @Transactional(readOnly = true)
+    public List<Item> linhas(SubModulo submodulo) {
+        return itens.findBySubmoduloOrderByOrdemAsc(submodulo);
     }
 
     @Transactional

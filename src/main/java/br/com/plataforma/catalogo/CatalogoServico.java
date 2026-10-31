@@ -168,7 +168,8 @@ public class CatalogoServico {
 
     public record SubModuloComVideos(
             Integer id, String nome, br.com.plataforma.estrutura.TipoSubModulo tipo, Integer ordem,
-            List<ItemComVideo> itens, List<br.com.plataforma.aulas.AulasServico.NoCurso> aulas) {}
+            List<ItemComVideo> itens, List<br.com.plataforma.aulas.AulasServico.NoCurso> aulas,
+            boolean folhaDeRespostas) {}
 
     /** {@code icone} e {@code fotoVersao}: a capa do cartão, como em {@link EstruturaServico.ModuloNaArvore}. */
     public record ModuloComVideos(
@@ -234,7 +235,7 @@ public class CatalogoServico {
                                                             feitas.containsKey(i.id()) ? feitas.get(i.id()).correta() : null),
                                                     i.questao() == null ? vistos.contains(i.id()) : feitas.containsKey(i.id())))
                                             .toList(),
-                                    aoVivo.getOrDefault(s.id(), List.of())))
+                                    aoVivo.getOrDefault(s.id(), List.of()), s.folhaDeRespostas()))
                                     .toList(),
                             m.icone(), m.fotoVersao()))
                     .toList()));

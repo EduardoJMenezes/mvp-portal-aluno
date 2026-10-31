@@ -42,6 +42,10 @@ public class SubModulo extends Rastreavel implements Nomeavel {
     @Column(nullable = false)
     private Integer ordem;
 
+    /** As questões daqui são lançadas de uma vez, como gabarito da apostila (V18). */
+    @Column(name = "folha_de_respostas", nullable = false)
+    private boolean folhaDeRespostas;
+
     protected SubModulo() {}
 
     SubModulo(Modulo modulo, String nome, TipoSubModulo tipo, int ordem) {
@@ -71,6 +75,14 @@ public class SubModulo extends Rastreavel implements Nomeavel {
 
     public Modulo getModulo() {
         return modulo;
+    }
+
+    public boolean isFolhaDeRespostas() {
+        return folhaDeRespostas;
+    }
+
+    void definirFolhaDeRespostas(boolean folha) {
+        this.folhaDeRespostas = folha;
     }
 
     void renomear(String nome) {

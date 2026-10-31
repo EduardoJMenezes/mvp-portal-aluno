@@ -14,6 +14,19 @@ seção "Em aberto", no fim.
 > as turmas dela; o módulo aparece quando sobra aula visível. Onde este texto
 > diz "módulo da turma", leia "módulo que a turma recebe".
 
+> **Mudou em 31/10/2026 (migração V18): o sub-módulo pode ser folha de
+> respostas** (`submodules.folha_de_respostas`). É o pedido do professor para a
+> apostila: o aluno resolve no papel e lança as letras na plataforma, todas de
+> uma vez. Até o envio, nenhuma questão da folha mostra gabarito, e responder
+> uma por uma é recusado (`ExerciciosServico.responder`) — quem visse a
+> correção da primeira acertaria as outras antes de enviar. O envio
+> (`POST /api/aluno/submodulos/{id}/folha`) grava em `item_answers`, numa
+> transação, uma letra para cada linha de questão ainda sem resposta, nem mais
+> nem menos; depois disso cada questão abre corrigida, como na aula comum, e
+> o desempenho por assunto soma essas respostas sem nada de especial. Quem
+> liga é o Claude, por `definir_folha_de_respostas`. Quem já tinha respondido
+> alguma antes de a folha ser ligada lança só o que falta.
+
 > **Mudou em 06/10/2026 (migração V10): a questão entrou na aula.** A linha de
 > um sub-módulo é um vídeo, um PDF ou uma **questão do acervo**
 > (`items.questao_id`), e o aluno responde ali mesmo. Vale o contrário do que

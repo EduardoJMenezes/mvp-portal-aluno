@@ -133,6 +133,24 @@ public class AlunoPortal {
         return exercicios.responder(ident, item, dados.alternativa(), Instant.now());
     }
 
+    // --- a folha de respostas ------------------------------------------------
+
+    /** A folha do sub-módulo: em branco até o aluno enviar, corrigida depois. */
+    @GetMapping("/submodulos/{submodulo}/folha")
+    public ExerciciosServico.Folha folhaDeRespostas(@AuthenticationPrincipal Identidade ident, @PathVariable Integer submodulo) {
+        return exercicios.folha(ident, submodulo, Instant.now());
+    }
+
+    /** {@code respostas}: a letra de cada linha, pelo id da linha. */
+    public record FolhaIn(java.util.Map<Integer, String> respostas) {}
+
+    /** Vale o primeiro envio, com todas as questões marcadas: a correção volta aqui. */
+    @PostMapping("/submodulos/{submodulo}/folha")
+    public ExerciciosServico.Folha enviarFolha(@AuthenticationPrincipal Identidade ident,
+            @PathVariable Integer submodulo, @RequestBody FolhaIn dados) {
+        return exercicios.enviarFolha(ident, submodulo, dados.respostas(), Instant.now());
+    }
+
     @GetMapping("/desempenho")
     public ProvaDoAluno.Historico desempenho(@AuthenticationPrincipal Identidade ident) {
         return prova.historico(ident, Instant.now());

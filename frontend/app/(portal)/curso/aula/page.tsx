@@ -6,10 +6,11 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useMemo, useState } from "react";
 import { CapituloConcluido } from "@/components/Comemoracao";
 import { Exercicio } from "@/components/Exercicio";
+import { FolhaDeRespostas } from "@/components/FolhaDeRespostas";
 import { Player } from "@/components/Player";
 import { LinkDoPdf } from "@/components/Pdf";
 import { Aviso, Botao, Estado, Pagina, Progresso, botao } from "@/components/ui";
-import { abrirEmNovaAba, api, useDados, type AulaNoCurso, type ConteudoDaTurma, type ItemCurso } from "@/lib/api";
+import { abrirEmNovaAba, api, useDados, type AulaNoCurso, type ConteudoDaTurma, type ItemCurso, type SubModulo } from "@/lib/api";
 import { duracao, emBrasilia } from "@/lib/formato";
 import { AVISO_DA_PREVIA, useNaPrevia, useUsuario } from "@/lib/sessao";
 
@@ -36,6 +37,8 @@ function Modulo({ turmas }: { turmas: ConteudoDaTurma[] }) {
   const parametros = useSearchParams();
   const moduloId = Number(parametros.get("modulo"));
   const itemId = Number(parametros.get("item"));
+  // A folha de respostas corrigida, aberta pela lista depois do envio.
+  const folhaPedida = Number(parametros.get("folha"));
 
   const modulo = useMemo(() => turmas.flatMap((t) => t.modulos).find((m) => m.id === moduloId), [turmas, moduloId]);
   const itens = useMemo(() => modulo?.submodulos.flatMap((s) => s.itens) ?? [], [modulo]);
@@ -58,6 +61,12 @@ function Modulo({ turmas }: { turmas: ConteudoDaTurma[] }) {
   const indice = Math.max(0, itens.findIndex((i) => i.id === itemId));
   const atual = itens[indice];
   const concluido = (item: ItemCurso) => (item.questao ? item.id in feitasAgora || !!item.questao.respondida : (concluidosAgora[item.id] ?? !!item.concluido));
+  // Na folha de respostas, a questão só abre sozinha depois do envio: antes, e ao entrar no capítulo, quem aparece é a folha.
+  const enviada = (sub: SubModulo) => sub.itens.some((i) => i.questao && concluido(i));
+  const subDoAtual = atual && modulo.submodulos.find((s) => s.itens.some((i) => i.id === atual.id));
+  const folha =
+    modulo.submodulos.find((s) => s.folha_de_respostas && s.id === folhaPedida) ??
+    (subDoAtual?.folha_de_respostas && atual?.questao && (!itemId || !(acompanha && enviada(subDoAtual))) ? subDoAtual : undefined);
   const feitos = itens.filter(concluido).length;
   const anotar = (item: number, valor: boolean) => setConcluidosAgora((c) => (c[item] === valor ? c : { ...c, [item]: valor }));
 
@@ -91,7 +100,17 @@ function Modulo({ turmas }: { turmas: ConteudoDaTurma[] }) {
       )}
       <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_20rem]">
         <div className="flex min-w-0 flex-col gap-3">
-          {!atual ? (
+          {folha ? (
+            <FolhaDeRespostas
+              key={folha.id}
+              submodulo={folha.id}
+              moduloId={modulo.id}
+              aoEnviar={(f) => {
+                setFeitasAgora((feitas) => ({ ...feitas, ...Object.fromEntries(f.linhas.map((l) => [l.item_id, l.correta === true])) }));
+                router.replace(`/curso/aula/?modulo=${modulo.id}&folha=${folha.id}`, { scroll: false });
+              }}
+            />
+          ) : !atual ? (
             <Aviso tom="info" titulo="Ainda sem aula neste capítulo">
               As aulas ao vivo dele estão na lista. Depois de cada uma, a gravação aparece aqui.
             </Aviso>
@@ -118,7 +137,7 @@ function Modulo({ turmas }: { turmas: ConteudoDaTurma[] }) {
           ) : (
             <Aviso tom="atencao">Este item está sem vídeo.</Aviso>
           )}
-          {atual && <div className="flex flex-wrap items-center justify-between gap-3">
+          {atual && !folha && <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="min-w-0">
               <h2 className="text-xl font-semibold text-tinta">{atual?.nome}</h2>
               {atual?.video && !atual.video.bloqueado && atual.video.duracao_segundos ? (
@@ -145,7 +164,7 @@ function Modulo({ turmas }: { turmas: ConteudoDaTurma[] }) {
           {erroAoMarcar && <Aviso tom="erro">{erroAoMarcar}</Aviso>}
         </div>
 
-        <aside aria-label="Aulas do módulo" className="flex flex-col gap-3 lg:sticky lg:top-20 lg:max-h-[calc(100dvh-6rem)] lg:overflow-y-auto">
+        <aside aria-label="Aulas do módulo" className="flex min-w-0 flex-col gap-3 lg:sticky lg:top-20 lg:max-h-[calc(100dvh-6rem)] lg:overflow-y-auto">
           {acompanha && itens.length > 0 && (
             <div className="rounded-cartao border border-borda bg-papel px-4 py-3">
               <p className="flex items-baseline justify-between gap-2 text-sm">
@@ -164,8 +183,21 @@ function Modulo({ turmas }: { turmas: ConteudoDaTurma[] }) {
                 </span>
               </summary>
               <ol className="border-t border-borda py-1">
+                {sub.folha_de_respostas && sub.itens.some((i) => i.questao) && (
+                  <li>
+                    <Link
+                      href={`/curso/aula/?modulo=${modulo.id}&folha=${sub.id}`}
+                      scroll={false}
+                      aria-current={folha?.id === sub.id ? "true" : undefined}
+                      className={`flex items-center gap-2 px-4 py-2 text-[15px] ${folha?.id === sub.id ? "bg-lilas font-semibold text-acento-forte" : "text-tinta hover:bg-canvas"}`}
+                    >
+                      <span aria-hidden="true" className="flex w-4 shrink-0 justify-center text-[11px] font-bold text-suave">≡</span>
+                      <span className="truncate">{enviada(sub) ? "Folha de respostas corrigida" : "Folha de respostas"}</span>
+                    </Link>
+                  </li>
+                )}
                 {sub.itens.map((item) => {
-                  const selecionado = item.id === atual?.id;
+                  const selecionado = !folha && item.id === atual?.id;
                   const bloqueado = item.questao ? false : item.video ? item.video.bloqueado : !item.material;
                   // undefined: ainda não respondeu.
                   const acertou = !item.questao ? undefined : item.id in feitasAgora ? feitasAgora[item.id] : item.questao.respondida ? item.questao.correta === true : undefined;
