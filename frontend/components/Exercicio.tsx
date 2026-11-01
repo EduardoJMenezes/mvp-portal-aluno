@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { api, type Exercicio as Dados } from "@/lib/api";
-import { AVISO_DA_PREVIA, useNaPrevia } from "@/lib/sessao";
+import { AVISO_DA_PREVIA, useNaPrevia, useUsuario } from "@/lib/sessao";
 import { TextoFormatado } from "@/lib/texto";
 import { VideoSobDemanda } from "./Player";
 import { Aviso, Botao, Carregamento, Esqueleto, Etiqueta } from "./ui";
@@ -12,12 +12,34 @@ import { Aviso, Botao, Carregamento, Esqueleto, Etiqueta } from "./ui";
 // gabarito e resolução nem chegam ao navegador. Com gabarito no fim (as questões
 // da apostila), a resposta fica registrada e a correção só chega depois da última.
 
+// A letra marcada e ainda não confirmada fica no navegador, por aluno e por questão:
+// quem marca e vai para a próxima sem confirmar encontra a marcação ao voltar.
+const chaveDoRascunho = (usuario: number, item: number) => `questao-marcada:${usuario}:${item}`;
+
+function lerMarcada(chave: string): string {
+  try {
+    return localStorage.getItem(chave) ?? "";
+  } catch {
+    return "";
+  }
+}
+
+function guardarMarcada(chave: string, letra: string) {
+  try {
+    if (letra) localStorage.setItem(chave, letra);
+    else localStorage.removeItem(chave);
+  } catch {
+    // Sem armazenamento (aba anônima): a marcação vale só enquanto a questão está aberta.
+  }
+}
+
 export function Exercicio({ item, aoResponder }: { item: number; aoResponder?: (correta: boolean | null, faltam: number | null) => void }) {
   const [dados, setDados] = useState<Dados | null>(null);
   const [marcada, setMarcada] = useState("");
   const [erro, setErro] = useState("");
   const [enviando, setEnviando] = useState(false);
   const previa = useNaPrevia();
+  const chave = chaveDoRascunho(useUsuario().id, item);
 
   useEffect(() => {
     let vivo = true;
@@ -25,13 +47,25 @@ export function Exercicio({ item, aoResponder }: { item: number; aoResponder?: (
     setMarcada("");
     setErro("");
     api.questaoDaAula(item).then(
-      (d) => vivo && setDados(d),
+      (d) => {
+        if (!vivo) return;
+        setDados(d);
+        // Só volta a letra que a questão tem e enquanto ela não foi respondida.
+        const guardada = d.respondida ? "" : lerMarcada(chave);
+        if (d.respondida) guardarMarcada(chave, "");
+        if (guardada && guardada in d.alternativas) setMarcada(guardada);
+      },
       (ex) => vivo && setErro(ex instanceof Error ? ex.message : "Não foi possível abrir a questão."),
     );
     return () => {
       vivo = false;
     };
-  }, [item]);
+  }, [item, chave]);
+
+  function marcar(letra: string) {
+    setMarcada(letra);
+    guardarMarcada(chave, letra);
+  }
 
   async function confirmar() {
     if (!marcada || enviando) return;
@@ -40,6 +74,7 @@ export function Exercicio({ item, aoResponder }: { item: number; aoResponder?: (
     try {
       const corrigida = await api.responderNaAula(item, marcada);
       setDados(corrigida);
+      guardarMarcada(chave, "");
       aoResponder?.(corrigida.correta, corrigida.faltam);
     } catch (ex) {
       setErro(ex instanceof Error ? ex.message : "Não foi possível registrar a resposta.");
@@ -148,7 +183,7 @@ export function Exercicio({ item, aoResponder }: { item: number; aoResponder?: (
                     escolhida ? "border-acento bg-lilas" : "border-borda bg-papel hover:border-suave"
                   }`}
                 >
-                  <input type="radio" name={`exercicio-${dados.item_id}`} value={letra} checked={escolhida} onChange={() => setMarcada(letra)} className="sr-only" />
+                  <input type="radio" name={`exercicio-${dados.item_id}`} value={letra} checked={escolhida} onChange={() => marcar(letra)} className="sr-only" />
                   <span
                     aria-hidden="true"
                     className={`mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full border text-sm font-semibold ${
