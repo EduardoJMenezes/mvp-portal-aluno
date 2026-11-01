@@ -1,10 +1,11 @@
 "use client";
 
-import { KeyRound, UserMinus } from "lucide-react";
+import { KeyRound, UserMinus, UserPlus } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
 import { AnaliseDoSimuladoParaOProfessor, AnaliseGeral } from "@/components/Analise";
 import { AssuntosEmDetalhe } from "@/components/AssuntosEmDetalhe";
+import { CadastrarAluno, TurmaDoAluno } from "@/components/CadastroDeAluno";
 import { CursoDoAluno } from "@/components/CursoDoAluno";
 import { Matricular, type Segredo } from "@/components/Matricular";
 import { Menu } from "@/components/Menu";
@@ -45,6 +46,9 @@ function BuscaDeAlunos() {
   const [busca, setBusca] = useState("");
   const [segredo, setSegredo] = useState<Segredo | null>(null);
   const [matriculando, setMatriculando] = useState(false);
+  const [cadastrando, setCadastrando] = useState(false);
+  // Pôr ou tirar um aluno de uma turma, pela linha dele: a matrícula é um vínculo à parte.
+  const [vinculo, setVinculo] = useState<{ modo: "adicionar" | "tirar"; aluno: AlunoNaBusca } | null>(null);
   const [erro, setErro] = useState("");
   const [dialogo, confirmar] = useConfirmar();
   const termo = semAcento(busca.trim());
@@ -97,15 +101,31 @@ function BuscaDeAlunos() {
           : "Todos os alunos da plataforma, inclusive os que não estão em nenhuma turma. Abra um para ver o que ele já fez do curso, como está em cada assunto, os simulados e a análise geral."
       }
       acoes={
-        turma && (
-          <>
-            <BotaoLink href={`/admin/turmas/desempenho/?turma=${turma.id}`}>Desempenho da turma</BotaoLink>
-            <Botao variante="primario" onClick={() => setMatriculando(true)}>Matricular aluno</Botao>
-          </>
-        )
+        <>
+          {turma && <BotaoLink href={`/admin/turmas/desempenho/?turma=${turma.id}`}>Desempenho da turma</BotaoLink>}
+          {turma && <Botao onClick={() => setMatriculando(true)}>Adicionar à turma</Botao>}
+          <Botao variante="primario" onClick={() => setCadastrando(true)}>Cadastrar aluno</Botao>
+        </>
       }
     >
       {dialogo}
+      {cadastrando && (
+        <CadastrarAluno
+          turmas={turmas.dados ?? []}
+          marcadas={turma ? [turma.id] : []}
+          aoCadastrar={(r) => { setSegredo(r); void alunos.recarregar(); }}
+          aoFechar={() => setCadastrando(false)}
+        />
+      )}
+      {vinculo && (
+        <TurmaDoAluno
+          modo={vinculo.modo}
+          aluno={vinculo.aluno}
+          turmas={turmas.dados ?? []}
+          aoTerminar={() => void alunos.recarregar()}
+          aoFechar={() => setVinculo(null)}
+        />
+      )}
       {matriculando && turma && (
         <Matricular turma={turma.id} aoMatricular={(r) => { if (r) setSegredo(r); void alunos.recarregar(); }} aoFechar={() => setMatriculando(false)} />
       )}
@@ -135,13 +155,13 @@ function BuscaDeAlunos() {
         {(todos) => {
           const daTurma = todos.filter(naTurma);
           const lista = daTurma.filter(naBusca);
-          if (!todos.length) return <Vazio titulo="Nenhum aluno cadastrado">Os alunos entram matriculados numa turma: escolha a turma no filtro e use &quot;Matricular aluno&quot;.</Vazio>;
+          if (!todos.length) return <Vazio titulo="Nenhum aluno cadastrado">Cadastre o primeiro em &quot;Cadastrar aluno&quot;. A turma é opcional.</Vazio>;
           if (turmaId && !turma) return turmas.carregando ? null : <Aviso tom="atencao">Esta turma não existe mais. Escolha outra no filtro.</Aviso>;
           if (!lista.length) {
             return termo ? (
               <Vazio titulo="Ninguém com esse nome">Confira a grafia, ou procure pelo e-mail.</Vazio>
             ) : turma ? (
-              <Vazio titulo="Nenhum aluno nesta turma">Matricule o primeiro em &quot;Matricular aluno&quot;.</Vazio>
+              <Vazio titulo="Nenhum aluno nesta turma">Cadastre um aluno novo ou use &quot;Adicionar à turma&quot; para quem já tem conta.</Vazio>
             ) : (
               <Vazio titulo="Ninguém sem turma">Todo aluno da plataforma está matriculado em alguma turma.</Vazio>
             );
@@ -154,7 +174,7 @@ function BuscaDeAlunos() {
                 {termo ? ` de ${daTurma.length}` : ""}
                 {!filtro && semTurma ? ` · ${plural(semTurma, "sem turma", "sem turma")}` : ""}
               </p>
-              <Cartao className="overflow-x-auto">
+              <Cartao className="relative overflow-x-auto">
                 <table className="tabela min-w-[60rem]">
                   <thead>
                     <tr>
@@ -198,7 +218,13 @@ function BuscaDeAlunos() {
                               rotulo={`Mais ações de ${a.nome}`}
                               itens={[
                                 { rotulo: "Gerar nova senha", icone: KeyRound, aoEscolher: () => void redefinir(a) },
-                                ...(turma ? ["divisor" as const, { rotulo: "Tirar da turma", icone: UserMinus, perigo: true, aoEscolher: () => void tirar(a) }] : []),
+                                "divisor" as const,
+                                { rotulo: "Adicionar a uma turma", icone: UserPlus, aoEscolher: () => setVinculo({ modo: "adicionar", aluno: a }) },
+                                ...(turma
+                                  ? [{ rotulo: "Tirar desta turma", icone: UserMinus, perigo: true, aoEscolher: () => void tirar(a) }]
+                                  : a.turmas.length > 0
+                                    ? [{ rotulo: "Tirar de uma turma", icone: UserMinus, perigo: true, aoEscolher: () => setVinculo({ modo: "tirar", aluno: a }) }]
+                                    : []),
                               ]}
                             />
                           </div>
@@ -355,7 +381,7 @@ function Acompanhamento({ aluno }: { aluno: string }) {
                   )}
 
                   <TituloDeSecao>Questão a questão</TituloDeSecao>
-                  <Cartao className="overflow-x-auto">
+                  <Cartao className="relative overflow-x-auto">
                     <table className="tabela min-w-[36rem]">
                       <thead>
                         <tr>

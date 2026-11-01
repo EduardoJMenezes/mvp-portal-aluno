@@ -325,6 +325,43 @@ public class ContasServico {
         return new Matriculado(turma.getNome(), aluno(usuario), senha);
     }
 
+    /** {@code turmas}: em que turmas ele já entrou matriculado; vazio, ele existe sem turma. */
+    public record AlunoCadastrado(AlunoNaLista aluno, String senhaTemporaria, List<String> turmas) {}
+
+    /**
+     * Cria a conta do aluno, com ou sem turma: aluno e turma existem um sem o outro, e a matrícula
+     * é o vínculo à parte. A senha temporária aparece só nesta resposta.
+     */
+    @Transactional
+    public AlunoCadastrado cadastrarAluno(Identidade ident, String nome, String email, List<Turma> turmas) {
+        ident.exigirOperador();
+        ident.exigirHumanoNoPortal("Cadastrar aluno");
+        var conta = email == null ? "" : email.strip().toLowerCase(Locale.ROOT);
+        if (conta.isEmpty()) {
+            throw new RegraDeNegocio("Informe o e-mail do aluno: é o login dele.");
+        }
+        var limpo = nome == null ? "" : nome.strip();
+        if (limpo.isEmpty()) {
+            throw new RegraDeNegocio("Informe o nome do aluno: é o que aparece no ranking e no portal.");
+        }
+        usuarios.findFirstByEmailIgnoreCase(conta).ifPresent(u -> {
+            throw new RegraDeNegocio(u.getPapel() == Papel.ALUNO
+                    ? "Já existe o aluno %s com o e-mail %s. Para pô-lo numa turma, use \"Adicionar a uma turma\" na linha dele."
+                            .formatted(u.getNome(), conta)
+                    : "%s é a conta de um %s, não de um aluno.".formatted(conta, u.getPapel()));
+        });
+        var senha = Senhas.temporaria();
+        var usuario = usuarios.save(new Usuario(limpo, conta, Senhas.hash(senha), Papel.ALUNO, true));
+        var nomes = new java.util.ArrayList<String>();
+        for (var turma : turmas == null ? List.<Turma>of() : turmas) {
+            if (matriculas.findByUsuarioIdAndTurma(usuario.getId(), turma).isEmpty()) {
+                matriculas.save(new Matricula(usuario.getId(), turma));
+                nomes.add(turma.getNome());
+            }
+        }
+        return new AlunoCadastrado(aluno(usuario), senha, nomes);
+    }
+
     public record Desmatriculado(String turma, String aluno, boolean removido) {}
 
     /**

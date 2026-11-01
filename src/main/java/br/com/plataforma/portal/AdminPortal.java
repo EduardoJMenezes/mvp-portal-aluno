@@ -168,6 +168,18 @@ public class AdminPortal {
         return contas.matricular(ident, catalogo.resolverTurma(turma), dados.nome(), dados.email());
     }
 
+    public record AlunoIn(@NotBlank @Email String email, @NotBlank @Size(max = 120) String nome, List<Integer> turmas) {}
+
+    /** Cria o aluno, com ou sem turma. A senha temporária aparece uma vez, nesta resposta. */
+    @PostMapping("/alunos")
+    @Transactional
+    public ContasServico.AlunoCadastrado cadastrarAluno(@AuthenticationPrincipal Identidade ident,
+            @Valid @RequestBody AlunoIn dados) {
+        var turmas = dados.turmas() == null ? List.<br.com.plataforma.catalogo.Turma>of()
+                : dados.turmas().stream().map(t -> catalogo.resolverTurma(String.valueOf(t))).toList();
+        return contas.cadastrarAluno(ident, dados.nome(), dados.email(), turmas);
+    }
+
     @DeleteMapping("/turmas/{turma}/alunos/{aluno}")
     @Transactional
     public ContasServico.Desmatriculado desmatricular(@AuthenticationPrincipal Identidade ident,

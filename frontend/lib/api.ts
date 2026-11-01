@@ -996,6 +996,9 @@ export const api = {
   alunosDaTurma: (turma: number) => pedir<{ turma_id: number; turma: string; alunos: Aluno[] }>(`/admin/turmas/${turma}/alunos`),
   matricular: (turma: number, email: string, nome: string) =>
     pedir<{ turma: string; aluno: Aluno; senha_temporaria: string | null }>(`/admin/turmas/${turma}/alunos`, { method: "POST", json: { email, nome } }),
+  /** Cria o aluno, com ou sem turma. A senha temporária vem só aqui. */
+  cadastrarAluno: (nome: string, email: string, turmas: number[]) =>
+    pedir<{ aluno: Aluno; senha_temporaria: string; turmas: string[] }>("/admin/alunos", { method: "POST", json: { nome, email, turmas } }),
   desmatricular: (turma: number, aluno: number) => pedir<{ removido: boolean }>(`/admin/turmas/${turma}/alunos/${aluno}`, { method: "DELETE" }),
   redefinirSenha: (aluno: number) => pedir<{ aluno: Aluno; senha_temporaria: string }>(`/admin/alunos/${aluno}/senha`, { method: "POST" }),
 

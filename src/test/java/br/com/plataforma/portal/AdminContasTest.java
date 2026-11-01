@@ -35,6 +35,37 @@ class AdminContasTest extends BaseDoPortal {
         get("/api/admin/turmas/10/alunos", ADMIN).andExpect(jsonPath("$.alunos.length()").value(2));
     }
 
+    /** Aluno e turma existem um sem o outro: o aluno nasce sem turma e entra numa depois. */
+    @Test
+    void oAlunoNasceSemTurmaEEntraNumaDepois() throws Exception {
+        var corpo = post("/api/admin/alunos", "{\"email\": \"Livre@Teste.invalid\", \"nome\": \"Lia Livre\"}", ADMIN)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.aluno.email").value("livre@teste.invalid"))
+                .andExpect(jsonPath("$.aluno.senha_temporaria").value(true))
+                .andExpect(jsonPath("$.senha_temporaria").isString())
+                .andExpect(jsonPath("$.turmas").isEmpty())
+                .andReturn().getResponse().getContentAsString();
+        var senha = corpo.replaceAll(".*\"senha_temporaria\":\"([a-z0-9]+)\".*", "$1");
+        login("livre@teste.invalid", senha).andExpect(status().isOk());
+
+        get("/api/admin/alunos?busca=lia", ADMIN).andExpect(jsonPath("$[0].turmas").isEmpty());
+        // Mesmo e-mail de novo: recusa e diz o caminho.
+        post("/api/admin/alunos", "{\"email\": \"livre@teste.invalid\", \"nome\": \"Outra\"}", ADMIN)
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.detail").value(org.hamcrest.Matchers.containsString("Adicionar a uma turma")));
+        // A matrícula é o vínculo à parte: a conta que já existe entra na turma pelo e-mail.
+        post("/api/admin/turmas/10/alunos", "{\"email\": \"livre@teste.invalid\"}", ADMIN)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.senha_temporaria").doesNotExist());
+        get("/api/admin/alunos?busca=lia", ADMIN).andExpect(jsonPath("$[0].turmas[0]").value("Extensivo 2027"));
+
+        // Ou já entra em turmas no cadastro.
+        post("/api/admin/alunos", "{\"email\": \"duas@teste.invalid\", \"nome\": \"Dora\", \"turmas\": [10, 11]}", ADMIN)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.turmas.length()").value(2));
+        post("/api/admin/alunos", "{\"email\": \"x@teste.invalid\", \"nome\": \"X\"}", ALUNO).andExpect(status().isForbidden());
+    }
+
     @Test
     void desmatricularTiraDaTurmaESemNomeNaoCriaConta() throws Exception {
         delete("/api/admin/turmas/10/alunos/bruno@teste.invalid", ADMIN).andExpect(status().isOk())
