@@ -4,3 +4,5 @@ export const enderecoDoCapitulo = (modulo: number) => `/curso/capitulo/?modulo=$
 
 export const enderecoDaSecao = (modulo: number, secao: number, item?: number) =>
   `/curso/aula/?modulo=${modulo}&secao=${secao}${item ? `&item=${item}` : ""}`;
+
+export const enderecoDaAnalise = (modulo: number, secao: number) => `/curso/analise/?modulo=${modulo}&secao=${secao}`;

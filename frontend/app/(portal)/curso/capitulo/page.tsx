@@ -6,9 +6,9 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useMemo } from "react";
 import { CapaDoModulo } from "@/components/CapaDoModulo";
 import { iconeDoSubmodulo } from "@/components/CartaoDoModulo";
-import { Aviso, Estado, Pagina, Progresso } from "@/components/ui";
+import { Aviso, BotaoLink, Estado, Pagina, Progresso } from "@/components/ui";
 import { api, useDados, type ConteudoDaTurma, type Modulo, type SubModulo } from "@/lib/api";
-import { enderecoDaSecao } from "@/lib/curso";
+import { enderecoDaAnalise, enderecoDaSecao } from "@/lib/curso";
 import { emBrasilia, plural } from "@/lib/formato";
 import { partesDoNome } from "@/lib/icones";
 import { useUsuario } from "@/lib/sessao";
@@ -72,9 +72,22 @@ function Secoes({ turmas }: { turmas: ConteudoDaTurma[] }) {
           ))}
         </ol>
       )}
+      {acompanha &&
+        modulo.submodulos.filter(corrigida).map((s) => (
+          <div key={s.id} className="flex flex-wrap items-center justify-between gap-3 rounded-cartao border border-sucesso-borda bg-sucesso-fundo px-4 py-3">
+            <p className="text-[15px] font-medium text-sucesso">Você terminou {s.nome}.</p>
+            <BotaoLink tamanho="pequeno" variante="primario" href={enderecoDaAnalise(modulo.id, s.id)}>Ver minha análise</BotaoLink>
+          </div>
+        ))}
     </Pagina>
   );
 }
+
+/** As questões da seção, todas respondidas e já corrigidas: a análise delas está pronta. */
+const corrigida = (secao: SubModulo) => {
+  const deQuestao = secao.itens.filter((i) => i.questao);
+  return deQuestao.length > 0 && deQuestao.every((i) => i.questao?.respondida && i.questao.correta != null);
+};
 
 /** O que a seção guarda, contado do jeito que o aluno fala: "5 aulas", "20 questões", "3 PDFs". */
 function descrever(itens: SubModulo["itens"]): string {
@@ -95,7 +108,7 @@ function CartaoDaSecao({ modulo, secao, acompanha }: { modulo: Modulo; secao: Su
   const deQuestao = secao.itens.filter((i) => i.questao);
   const acertos = deQuestao.filter((i) => i.questao?.correta === true).length;
   // Com gabarito no fim, enquanto falta questão a correção está guardada: só dá para contar respondidas.
-  const corrigidas = deQuestao.length > 0 && deQuestao.every((i) => i.questao?.respondida && i.questao.correta != null);
+  const corrigidas = corrigida(secao);
   const proxima = acompanha && feitos > 0 ? secao.itens.find((i) => !i.concluido) : undefined;
   const aoVivo = (secao.aulas ?? []).find((a) => a.estado === "ABERTA" || a.estado === "AGUARDANDO") ?? (secao.aulas ?? []).find((a) => a.estado === "AGENDADA");
 

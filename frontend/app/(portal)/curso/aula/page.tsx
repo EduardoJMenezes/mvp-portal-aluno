@@ -4,13 +4,13 @@ import { Check, CircleCheck } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useMemo, useState } from "react";
-import { CapituloConcluido } from "@/components/Comemoracao";
+import { CapituloConcluido, QuestoesTerminadas } from "@/components/Comemoracao";
 import { Exercicio } from "@/components/Exercicio";
 import { Player } from "@/components/Player";
 import { LinkDoPdf } from "@/components/Pdf";
-import { Aviso, Botao, Estado, Pagina, Progresso, botao } from "@/components/ui";
+import { Aviso, Botao, BotaoLink, Estado, Pagina, Progresso, botao } from "@/components/ui";
 import { abrirEmNovaAba, api, useDados, type AulaNoCurso, type ConteudoDaTurma, type ItemCurso } from "@/lib/api";
-import { enderecoDaSecao, enderecoDoCapitulo } from "@/lib/curso";
+import { enderecoDaAnalise, enderecoDaSecao, enderecoDoCapitulo } from "@/lib/curso";
 import { duracao, emBrasilia } from "@/lib/formato";
 import { AVISO_DA_PREVIA, useNaPrevia, useUsuario } from "@/lib/sessao";
 
@@ -58,6 +58,8 @@ function Modulo({ turmas, recarregar }: { turmas: ConteudoDaTurma[]; recarregar:
   // O mesmo para a aula assistida: o que mudou nesta visita vale por cima do que a árvore trouxe.
   const [concluidosAgora, setConcluidosAgora] = useState<Record<number, boolean>>({});
   const [erroAoMarcar, setErroAoMarcar] = useState("");
+  // A correção das questões da seção acabou de sair (gabarito no fim): o parabéns com a análise.
+  const [terminou, setTerminou] = useState(false);
   // Só o aluno tem progresso: o professor abre esta tela para conferir, e nada é gravado.
   const acompanha = useUsuario().papel === "ALUNO";
 
@@ -79,6 +81,14 @@ function Modulo({ turmas, recarregar }: { turmas: ConteudoDaTurma[]; recarregar:
   const concluido = (item: ItemCurso) => (item.questao ? item.id in feitasAgora || !!item.questao.respondida : (concluidosAgora[item.id] ?? !!item.concluido));
   const feitos = doCapitulo.filter(concluido).length;
   const feitosNaSecao = itens.filter(concluido).length;
+  // As questões da seção, todas respondidas e já corrigidas: a análise delas está pronta.
+  const deQuestao = itens.filter((i) => i.questao);
+  const corrigida =
+    deQuestao.length > 0 &&
+    deQuestao.every((i) => {
+      const agora = i.id in feitasAgora ? feitasAgora[i.id] : i.questao?.respondida ? (i.questao.correta ?? null) : undefined;
+      return agora === true || agora === false;
+    });
   const anotar = (item: number, valor: boolean) => setConcluidosAgora((c) => (c[item] === valor ? c : { ...c, [item]: valor }));
 
   async function marcar(item: ItemCurso, valor: boolean) {
@@ -113,6 +123,19 @@ function Modulo({ turmas, recarregar }: { turmas: ConteudoDaTurma[]; recarregar:
           proximo={seguinte && { nome: seguinte.nome, href: enderecoDoCapitulo(seguinte.id) }}
         />
       )}
+      {acompanha && terminou && secao && (
+        <QuestoesTerminadas
+          total={itens.filter((i) => i.questao).length}
+          analise={enderecoDaAnalise(modulo.id, secao.id)}
+          aoFechar={() => setTerminou(false)}
+        />
+      )}
+      {acompanha && secao && corrigida && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-cartao border border-sucesso-borda bg-sucesso-fundo px-4 py-3">
+          <p className="text-[15px] font-medium text-sucesso">Você terminou as questões deste bloco.</p>
+          <BotaoLink tamanho="pequeno" variante="primario" href={enderecoDaAnalise(modulo.id, secao.id)}>Ver minha análise</BotaoLink>
+        </div>
+      )}
       <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_20rem]">
         <div className="flex min-w-0 flex-col gap-3">
           {!atual ? (
@@ -126,6 +149,7 @@ function Modulo({ turmas, recarregar }: { turmas: ConteudoDaTurma[]; recarregar:
                 if (faltam === 0) {
                   // A última do bloco soltou a correção de todas: a árvore relida traz cada acerto.
                   void recarregar().then(() => setFeitasAgora({}));
+                  setTerminou(true);
                 }
                 setFeitasAgora((f) => ({ ...f, [atual.id]: correta }));
               }}

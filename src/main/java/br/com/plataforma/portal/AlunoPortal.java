@@ -40,11 +40,13 @@ public class AlunoPortal {
     private final MateriaisServico materiais;
     private final AulasServico aulas;
     private final ExerciciosServico exercicios;
+    private final br.com.plataforma.exercicios.AnaliseDaSecaoServico analiseDaSecao;
     private final br.com.plataforma.estrutura.EstruturaServico estrutura;
     private final ObjectMapper json;
 
     public AlunoPortal(CatalogoServico catalogo, ProvaDoAluno prova, QuestoesServico questoes,
             MateriaisServico materiais, AulasServico aulas, ExerciciosServico exercicios,
+            br.com.plataforma.exercicios.AnaliseDaSecaoServico analiseDaSecao,
             br.com.plataforma.estrutura.EstruturaServico estrutura, ObjectMapper json) {
         this.catalogo = catalogo;
         this.prova = prova;
@@ -52,6 +54,7 @@ public class AlunoPortal {
         this.materiais = materiais;
         this.aulas = aulas;
         this.exercicios = exercicios;
+        this.analiseDaSecao = analiseDaSecao;
         this.estrutura = estrutura;
         this.json = json;
     }
@@ -131,6 +134,13 @@ public class AlunoPortal {
     public ExerciciosServico.Exercicio responderNaAula(@AuthenticationPrincipal Identidade ident,
             @PathVariable Integer item, @RequestBody RespostaDaAulaIn dados) {
         return exercicios.responder(ident, item, dados.alternativa(), Instant.now());
+    }
+
+    /** A análise de quem terminou as questões da seção; antes disso, só quantas faltam. */
+    @GetMapping("/submodulos/{secao}/analise")
+    public br.com.plataforma.exercicios.AnaliseDaSecaoServico.AnaliseDaSecao analiseDaSecao(
+            @AuthenticationPrincipal Identidade ident, @PathVariable Integer secao) {
+        return analiseDaSecao.abrir(ident, secao, Instant.now());
     }
 
     @GetMapping("/desempenho")

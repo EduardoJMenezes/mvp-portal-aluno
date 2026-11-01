@@ -140,6 +140,53 @@ class GabaritoNoFimTest extends BaseDoPortal {
         get("/api/admin/alunos/" + ALUNO + "/assuntos", ADMIN).andExpect(jsonPath("$.respostas").value(3));
     }
 
+    /** O que o aluno vê ao terminar: grade, acerto por assunto com a média da turma, duas frases e o que estudar. */
+    @Test
+    void aAnaliseDaSecaoSoSaiNoFimEERasa() throws Exception {
+        var solucoes = jdbc.queryForObject("INSERT INTO subjects (nome) VALUES ('Soluções') RETURNING id", Integer.class);
+        var diluicao = jdbc.queryForObject("INSERT INTO subtopics (assunto_id, nome) VALUES (?, 'Diluição') RETURNING id", Integer.class, solucoes);
+        var termo = jdbc.queryForObject("INSERT INTO subjects (nome) VALUES ('Termoquímica') RETURNING id", Integer.class);
+        jdbc.update("INSERT INTO question_subjects (questao_id, assunto_id, subassunto_id) SELECT questao_id, ?, ? FROM items WHERE id IN (?, ?)",
+                solucoes, diluicao, linhas.get(0), linhas.get(1));
+        jdbc.update("INSERT INTO question_subjects (questao_id, assunto_id) SELECT questao_id, ? FROM items WHERE id = ?", termo, linhas.get(2));
+        // Um vídeo de revisão do capítulo, marcado com o sub-assunto em que ele vai errar.
+        var secao = jdbc.queryForObject("SELECT submodulo_id FROM items WHERE id = ?", Integer.class, linhas.get(0));
+        var revisao = jdbc.queryForObject("""
+                INSERT INTO submodules (modulo_id, nome, tipo, ordem) SELECT modulo_id, 'Revisão', 'VIDEO', 9 FROM submodules WHERE id = ? RETURNING id""",
+                Integer.class, secao);
+        var video = jdbc.queryForObject("INSERT INTO videos (vimeo_id, titulo) VALUES ('555', 'Diluição em 10 minutos') RETURNING id", Integer.class);
+        jdbc.update("INSERT INTO video_subjects (video_id, assunto_id, subassunto_id) VALUES (?, ?, ?)", video, solucoes, diluicao);
+        jdbc.update("INSERT INTO items (submodulo_id, nome, ordem, status, video_id) VALUES (?, 'Diluição', 1, 'PUBLICADO', ?)", revisao, video);
+        ligar().andExpect(status().isOk());
+
+        responder(0, "B").andExpect(status().isOk());
+        get("/api/aluno/submodulos/" + secao + "/analise", ALUNO)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.pronta").value(false))
+                .andExpect(jsonPath("$.faltam").value(2))
+                .andExpect(jsonPath("$.questoes").isEmpty())
+                .andExpect(jsonPath("$.sobre_os_erros").value(nullValue()));
+
+        responder(1, "A").andExpect(status().isOk());
+        responder(2, "E").andExpect(status().isOk());
+        get("/api/aluno/submodulos/" + secao + "/analise", ALUNO)
+                .andExpect(jsonPath("$.pronta").value(true))
+                .andExpect(jsonPath("$.acertos").value(2))
+                .andExpect(jsonPath("$.total").value(3))
+                .andExpect(jsonPath("$.questoes[*].correta").value(Matchers.contains(true, false, true)))
+                .andExpect(jsonPath("$.por_assunto[0].assunto").value("Soluções"))
+                .andExpect(jsonPath("$.por_assunto[0].percentual").value(50))
+                .andExpect(jsonPath("$.por_assunto[0].media_da_turma").value(50))
+                .andExpect(jsonPath("$.por_assunto[0].alunos_na_media").value(1))
+                .andExpect(jsonPath("$.sobre_os_acertos").value(containsString("Você acertou 2 de 3")))
+                .andExpect(jsonPath("$.sobre_os_erros").value("Você errou em Diluição (Q02). Estude esses pontos e reveja a resolução dessas questões."))
+                .andExpect(jsonPath("$.para_estudar[0].ponto").value("Diluição"))
+                .andExpect(jsonPath("$.para_estudar[0].questoes[0].nome").value("Q02"))
+                .andExpect(jsonPath("$.para_estudar[0].videos[0].nome").value("Diluição"));
+
+        get("/api/aluno/submodulos/" + secao + "/analise", ADMIN).andExpect(status().isForbidden());
+    }
+
     @Test
     void oProfessorVeAPreviaComGabaritoENaoResponde() throws Exception {
         ligar().andExpect(status().isOk());

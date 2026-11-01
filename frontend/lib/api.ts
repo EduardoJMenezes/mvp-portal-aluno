@@ -227,6 +227,25 @@ export type Exercicio = {
   gabarito_no_fim: boolean;
   faltam: number | null;
 };
+/** A análise de quem terminou as questões de uma seção. Rasa de propósito: a profunda é do professor. */
+export type LigacaoDaAnalise = { item_id: number; secao_id: number; nome: string };
+export type AnaliseDaSecao = {
+  modulo_id: number;
+  modulo: string;
+  secao_id: number;
+  secao: string;
+  /** Respondeu todas e a correção saiu; antes disso só `faltam` vem preenchido. */
+  pronta: boolean;
+  faltam: number;
+  acertos: number;
+  total: number;
+  percentual: number;
+  questoes: { item_id: number; nome: string; correta: boolean; assunto: string | null; subassunto: string | null }[];
+  por_assunto: { assunto: string; acertos: number; questoes: number; percentual: number; media_da_turma: number; alunos_na_media: number }[];
+  sobre_os_acertos: string | null;
+  sobre_os_erros: string | null;
+  para_estudar: { ponto: string; questoes: LigacaoDaAnalise[]; videos: LigacaoDaAnalise[] }[];
+};
 /** Aula ao vivo agendada no sub-módulo, enquanto a gravação não chegou. ENCERRADA aqui é "processando". */
 export type AulaNoCurso = { aula_id: number; titulo: string; inicio_em: string; minutos: number; estado: Aula["estado"]; abre_em: string; material?: MaterialLigado | null };
 /** `gabarito_no_fim`: a correção das questões daqui só sai depois da última. */
@@ -888,6 +907,7 @@ export const api = {
     pedir<ProgressoDoItem>(`/aluno/itens/${item}/progresso`, { method: "POST", json: { posicao_segundos, duracao_segundos } }),
   marcarConcluido: (item: number, concluido: boolean) =>
     pedir<ProgressoDoItem>(`/aluno/itens/${item}/concluido`, { method: "PUT", json: { concluido } }),
+  analiseDaSecao: (secao: number) => pedir<AnaliseDaSecao>(`/aluno/submodulos/${secao}/analise`),
   responderNaAula: (item: number, alternativa: string) =>
     pedir<Exercicio>(`/aluno/itens/${item}/responder`, { method: "POST", json: { alternativa } }),
   simulados: () => pedir<SimuladoResumo[]>("/aluno/simulados"),

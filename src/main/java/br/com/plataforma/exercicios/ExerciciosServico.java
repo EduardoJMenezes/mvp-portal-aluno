@@ -152,7 +152,7 @@ public class ExerciciosServico {
     }
 
     /** As linhas de questão do sub-módulo que esta pessoa vê, na ordem da tela. */
-    private List<Item> linhasVisiveis(Identidade ident, SubModulo sub, Instant agora) {
+    List<Item> linhasVisiveis(Identidade ident, SubModulo sub, Instant agora) {
         var deQuestao = estrutura.linhas(sub).stream().filter(i -> i.getQuestao() != null).toList();
         if (ident.eOperador()) {
             return deQuestao;

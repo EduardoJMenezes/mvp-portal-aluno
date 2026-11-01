@@ -117,3 +117,35 @@ export function CapituloConcluido({
     </>
   );
 }
+
+/**
+ * O fim das questões de uma seção com gabarito no fim: a correção acabou de sair. Mesmo estouro do
+ * capítulo concluído, e o caminho para a análise das respostas.
+ */
+export function QuestoesTerminadas({ total, analise, aoFechar }: { total: number; analise: string; aoFechar: () => void }) {
+  return (
+    <>
+      <Estouro />
+      <div className="pointer-events-none fixed inset-x-0 bottom-0 z-50 flex justify-center px-4 pb-5" role="status">
+        <div className="comemoracao pointer-events-auto flex w-full max-w-lg items-start gap-3.5 rounded-2xl border border-sucesso-borda bg-papel p-4 shadow-suave">
+          <span className="selo-pulsa flex size-11 shrink-0 items-center justify-center rounded-full bg-sucesso-fundo text-sucesso-vivo">
+            <BadgeCheck aria-hidden="true" className="size-7" strokeWidth={2} />
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="font-titulo text-lg font-bold leading-snug text-tinta">Parabéns!</p>
+            <p className="mt-0.5 text-[15px] text-tinta-2">
+              Você respondeu as {total} questões. A correção saiu: veja onde foi bem e o que vale estudar.
+            </p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <Link href={analise} className={botao("primario", "pequeno")}>Ver minha análise</Link>
+              <button type="button" onClick={aoFechar} className={botao("neutro", "pequeno")}>Ver as questões corrigidas</button>
+            </div>
+          </div>
+          <button type="button" onClick={aoFechar} aria-label="Fechar" className="-mr-1 -mt-1 flex size-8 shrink-0 items-center justify-center rounded-lg text-suave hover:bg-canvas hover:text-tinta">
+            <X aria-hidden="true" className="size-[18px]" />
+          </button>
+        </div>
+      </div>
+    </>
+  );
+}
