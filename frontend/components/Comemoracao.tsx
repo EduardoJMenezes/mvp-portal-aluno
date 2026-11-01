@@ -134,11 +134,10 @@ export function QuestoesTerminadas({ total, analise, aoFechar }: { total: number
           <div className="min-w-0 flex-1">
             <p className="font-titulo text-lg font-bold leading-snug text-tinta">Parabéns!</p>
             <p className="mt-0.5 text-[15px] text-tinta-2">
-              Você respondeu as {total} questões. A correção saiu: veja onde foi bem e o que vale estudar.
+              Você respondeu as {total} questões. A correção saiu: na análise você vê cada questão corrigida, onde foi bem e o que vale estudar.
             </p>
             <div className="mt-3 flex flex-wrap gap-2">
               <Link href={analise} className={botao("primario", "pequeno")}>Ver minha análise</Link>
-              <button type="button" onClick={aoFechar} className={botao("neutro", "pequeno")}>Ver as questões corrigidas</button>
             </div>
           </div>
           <button type="button" onClick={aoFechar} aria-label="Fechar" className="-mr-1 -mt-1 flex size-8 shrink-0 items-center justify-center rounded-lg text-suave hover:bg-canvas hover:text-tinta">

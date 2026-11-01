@@ -1,13 +1,15 @@
 "use client";
 
-import { CircleCheck, CircleX, PlayCircle, SquarePen } from "lucide-react";
-import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
-import { Suspense } from "react";
-import { Anel } from "@/components/Resultado";
+import { ChevronLeft, ChevronRight, CircleCheck, CircleX, PlayCircle, SquarePen } from "lucide-react";
+import { useSearchParams } from "next/navigation";
+import { Suspense, useState } from "react";
+import { OffCanvas } from "@/components/Camadas";
+import { Exercicio } from "@/components/Exercicio";
 import { GradeQuestoes } from "@/components/GradeQuestoes";
-import { Aviso, BotaoLink, Cartao, Estado, Pagina, TituloDeSecao } from "@/components/ui";
-import { api, useDados, type AnaliseDaSecao } from "@/lib/api";
+import { Player } from "@/components/Player";
+import { Anel } from "@/components/Resultado";
+import { Aviso, Botao, BotaoLink, Cartao, Estado, Etiqueta, Pagina, TituloDeSecao } from "@/components/ui";
+import { api, useDados, type AnaliseDaSecao, type ConteudoDaTurma, type LigacaoDaAnalise } from "@/lib/api";
 import { enderecoDaSecao, enderecoDoCapitulo } from "@/lib/curso";
 import { plural, porcento } from "@/lib/formato";
 
@@ -15,6 +17,10 @@ import { plural, porcento } from "@/lib/formato";
 // vermelha, o desempenho por assunto contra a média da turma, e os blocos de acertos e erros com a
 // pizza de cada um. Os textos são curtos de propósito — "errou isto, estude isto". A leitura
 // aprofundada é do professor, não da tela.
+//
+// A navegação é a da tela: o aluno veio rever. Questão e vídeo abrem num painel por cima, com
+// anterior/próxima lá dentro, e fechar devolve à análise no mesmo ponto — nada de ir para outra
+// página e procurar o caminho de volta.
 
 export default function PaginaDaAnalise() {
   return (
@@ -29,9 +35,11 @@ function Analise() {
   const modulo = Number(parametros.get("modulo"));
   const secao = Number(parametros.get("secao"));
   const analise = useDados(() => api.analiseDaSecao(secao), [secao]);
+  // A árvore do curso: é dela que saem o player dos vídeos e o número de seções do capítulo.
+  const conteudo = useDados(() => api.conteudo().catch(() => [] as ConteudoDaTurma[]), []);
   return (
     <Estado {...analise} linhas={6}>
-      {(a) => <Conteudo a={a} moduloId={modulo} />}
+      {(a) => <Conteudo a={a} moduloId={modulo} turmas={conteudo.dados ?? []} />}
     </Estado>
   );
 }
@@ -39,9 +47,14 @@ function Analise() {
 // As cores das fatias: as mesmas do restante do portal, na ordem dos assuntos.
 const CORES = ["var(--color-acento)", "var(--color-ceu)", "var(--color-violeta)", "var(--color-atencao-vivo)", "var(--color-sucesso-vivo)", "var(--color-erro)"];
 
-function Conteudo({ a, moduloId }: { a: AnaliseDaSecao; moduloId: number }) {
-  const router = useRouter();
-  const voltar = { href: enderecoDoCapitulo(moduloId || a.modulo_id), rotulo: "Capítulo" };
+type Aberto = { tipo: "questao"; indice: number } | { tipo: "video"; ligacao: LigacaoDaAnalise };
+
+function Conteudo({ a, moduloId, turmas }: { a: AnaliseDaSecao; moduloId: number; turmas: ConteudoDaTurma[] }) {
+  const [aberto, setAberto] = useState<Aberto | null>(null);
+  const modulo = turmas.flatMap((t) => t.modulos).find((m) => m.id === (moduloId || a.modulo_id));
+  // Capítulo de uma seção só não tem tela de escolha: o voltar é "Meu curso".
+  const voltar = modulo && modulo.submodulos.length <= 1 ? { href: "/curso/", rotulo: "Meu curso" } : { href: enderecoDoCapitulo(moduloId || a.modulo_id), rotulo: "Capítulo" };
+  const abrirQuestao = (item: number) => setAberto({ tipo: "questao", indice: Math.max(0, a.questoes.findIndex((q) => q.item_id === item)) });
 
   if (!a.pronta) {
     return (
@@ -70,7 +83,7 @@ function Conteudo({ a, moduloId }: { a: AnaliseDaSecao; moduloId: number }) {
           <p className="font-titulo text-2xl font-bold text-tinta">
             {a.acertos} de {a.total} <span className="text-base font-normal text-tinta-2">acertos</span>
           </p>
-          <p className="mt-1 text-[15px] text-tinta-2">Clique numa questão para ver a resolução.</p>
+          <p className="mt-1 text-[15px] text-tinta-2">Clique numa questão da grade para ver a resolução.</p>
         </div>
       </Cartao>
 
@@ -82,7 +95,7 @@ function Conteudo({ a, moduloId }: { a: AnaliseDaSecao; moduloId: number }) {
           <GradeQuestoes
             rotulo="Acertos e erros por questão"
             estados={a.questoes.map((q) => (q.correta ? "acertou" : "errou"))}
-            aoEscolher={(i) => router.push(enderecoDaSecao(a.modulo_id, a.secao_id, a.questoes[i].item_id))}
+            aoEscolher={(i) => setAberto({ tipo: "questao", indice: i })}
           />
         </Cartao>
       </section>
@@ -128,14 +141,14 @@ function Conteudo({ a, moduloId }: { a: AnaliseDaSecao; moduloId: number }) {
                   <span className="text-[15px] font-semibold text-tinta">{p.ponto}</span>
                   <span className="flex flex-wrap gap-x-3 gap-y-1">
                     {p.questoes.map((q) => (
-                      <Link key={q.item_id} href={enderecoDaSecao(a.modulo_id, q.secao_id, q.item_id)} className="inline-flex items-center gap-1 text-sm font-medium text-acento underline-offset-2 hover:underline">
+                      <Botao key={q.item_id} tamanho="mini" variante="discreto" onClick={() => abrirQuestao(q.item_id)}>
                         <SquarePen aria-hidden="true" className="size-4" /> Resolução da {q.nome}
-                      </Link>
+                      </Botao>
                     ))}
                     {p.videos.map((v) => (
-                      <Link key={v.item_id} href={enderecoDaSecao(a.modulo_id, v.secao_id, v.item_id)} className="inline-flex items-center gap-1 text-sm font-medium text-acento underline-offset-2 hover:underline">
+                      <Botao key={v.item_id} tamanho="mini" variante="discreto" onClick={() => setAberto({ tipo: "video", ligacao: v })}>
                         <PlayCircle aria-hidden="true" className="size-4" /> {v.nome}
-                      </Link>
+                      </Botao>
                     ))}
                   </span>
                 </li>
@@ -144,7 +157,61 @@ function Conteudo({ a, moduloId }: { a: AnaliseDaSecao; moduloId: number }) {
           )}
         </Bloco>
       </div>
+      {aberto && <Painel a={a} aberto={aberto} turmas={turmas} mudar={setAberto} />}
     </Pagina>
+  );
+}
+
+/**
+ * O painel por cima da análise. Questão: a corrigida, com a resolução, e anterior/próxima para
+ * percorrer a grade sem fechar. Vídeo: o player. Fechar volta à análise como estava.
+ */
+function Painel({ a, aberto, turmas, mudar }: { a: AnaliseDaSecao; aberto: Aberto; turmas: ConteudoDaTurma[]; mudar: (novo: Aberto | null) => void }) {
+  const [visivel, setVisivel] = useState(true);
+  const fechar = () => setVisivel(false);
+
+  if (aberto.tipo === "video") {
+    const item = turmas.flatMap((t) => t.modulos).flatMap((m) => m.submodulos).flatMap((s) => s.itens).find((i) => i.id === aberto.ligacao.item_id);
+    return (
+      <OffCanvas aberto={visivel} aoFechar={fechar} aoSumir={() => mudar(null)} lado="direita" tamanho="grande" titulo={aberto.ligacao.nome} legenda="Para estudar"
+        rodape={<div className="flex justify-end"><Botao onClick={fechar}>Voltar à análise</Botao></div>}>
+        {item?.video ? <Player video={item.video} /> : <Aviso tom="atencao">Este vídeo não está disponível para você.</Aviso>}
+      </OffCanvas>
+    );
+  }
+
+  const i = aberto.indice;
+  const q = a.questoes[i];
+  return (
+    <OffCanvas
+      aberto={visivel}
+      aoFechar={fechar}
+      aoSumir={() => mudar(null)}
+      lado="direita"
+      tamanho="grande"
+      titulo={
+        <span className="flex flex-wrap items-center gap-2">
+          {q.nome}
+          {q.correta ? <Etiqueta tom="sucesso">Acertou</Etiqueta> : <Etiqueta tom="erro">Errou</Etiqueta>}
+        </span>
+      }
+      legenda={[q.assunto, q.subassunto].filter(Boolean).join(" · ") || undefined}
+      rodape={
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex gap-2">
+            <Botao disabled={i === 0} onClick={() => mudar({ tipo: "questao", indice: i - 1 })}>
+              <ChevronLeft aria-hidden="true" className="size-4" /> Anterior
+            </Botao>
+            <Botao disabled={i >= a.questoes.length - 1} onClick={() => mudar({ tipo: "questao", indice: i + 1 })}>
+              Próxima <ChevronRight aria-hidden="true" className="size-4" />
+            </Botao>
+          </div>
+          <Botao variante="primario" onClick={fechar}>Voltar à análise</Botao>
+        </div>
+      }
+    >
+      <Exercicio key={q.item_id} item={q.item_id} />
+    </OffCanvas>
   );
 }
 

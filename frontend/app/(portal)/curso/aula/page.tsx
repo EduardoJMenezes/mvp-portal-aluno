@@ -3,7 +3,7 @@
 import { Check, CircleCheck } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { CapituloConcluido, QuestoesTerminadas } from "@/components/Comemoracao";
 import { Exercicio } from "@/components/Exercicio";
 import { Player } from "@/components/Player";
@@ -60,13 +60,21 @@ function Modulo({ turmas, recarregar }: { turmas: ConteudoDaTurma[]; recarregar:
   const [erroAoMarcar, setErroAoMarcar] = useState("");
   // A correção das questões da seção acabou de sair (gabarito no fim): o parabéns com a análise.
   const [terminou, setTerminou] = useState(false);
+  // Respondeu algo nesta visita: quem acabou de terminar vê o parabéns antes de ir para a análise.
+  const respondeuAgora = useRef(false);
   // Só o aluno tem progresso: o professor abre esta tela para conferir, e nada é gravado.
   const acompanha = useUsuario().papel === "ALUNO";
+
+  // Seção só de questões, todas respondidas e corrigidas: a fase de responder acabou, e a seção
+  // passa a ser a análise. Quem chega aqui (pelo curso, pela agenda, por um link) vai direto para ela.
+  const terminada =
+    acompanha && !!secao && secao.itens.length > 0 && secao.itens.every((i) => i.questao?.respondida && i.questao.correta != null);
 
   // Capítulo de várias seções sem nenhuma escolhida: quem escolhe é a tela do capítulo.
   useEffect(() => {
     if (modulo && !secao && variasSecoes) router.replace(enderecoDoCapitulo(modulo.id));
-  }, [modulo, secao, variasSecoes, router]);
+    else if (modulo && secao && terminada && !respondeuAgora.current) router.replace(enderecoDaAnalise(modulo.id, secao.id));
+  }, [modulo, secao, variasSecoes, terminada, router]);
 
   if (!modulo) {
     return (
@@ -101,7 +109,7 @@ function Modulo({ turmas, recarregar }: { turmas: ConteudoDaTurma[]; recarregar:
       setErroAoMarcar(ex instanceof Error ? ex.message : "Não foi possível salvar.");
     }
   }
-  if (variasSecoes && !secao) return null;
+  if ((variasSecoes && !secao) || (terminada && !respondeuAgora.current)) return null;
   const ir = (novo: number) => router.push(secao ? enderecoDaSecao(modulo.id, secao.id, itens[novo].id) : `/curso/aula/?modulo=${modulo.id}&item=${itens[novo].id}`, { scroll: false });
 
   // Para onde ir depois de terminar: o capítulo seguinte da turma que ainda tem o que fazer.
@@ -146,6 +154,7 @@ function Modulo({ turmas, recarregar }: { turmas: ConteudoDaTurma[]; recarregar:
             <Exercicio
               item={atual.id}
               aoResponder={(correta, faltam) => {
+                respondeuAgora.current = true;
                 if (faltam === 0) {
                   // A última do bloco soltou a correção de todas: a árvore relida traz cada acerto.
                   void recarregar().then(() => setFeitasAgora({}));

@@ -6,7 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useMemo } from "react";
 import { CapaDoModulo } from "@/components/CapaDoModulo";
 import { iconeDoSubmodulo } from "@/components/CartaoDoModulo";
-import { Aviso, BotaoLink, Estado, Pagina, Progresso } from "@/components/ui";
+import { Aviso, Estado, Pagina, Progresso } from "@/components/ui";
 import { api, useDados, type ConteudoDaTurma, type Modulo, type SubModulo } from "@/lib/api";
 import { enderecoDaAnalise, enderecoDaSecao } from "@/lib/curso";
 import { emBrasilia, plural } from "@/lib/formato";
@@ -72,13 +72,6 @@ function Secoes({ turmas }: { turmas: ConteudoDaTurma[] }) {
           ))}
         </ol>
       )}
-      {acompanha &&
-        modulo.submodulos.filter(corrigida).map((s) => (
-          <div key={s.id} className="flex flex-wrap items-center justify-between gap-3 rounded-cartao border border-sucesso-borda bg-sucesso-fundo px-4 py-3">
-            <p className="text-[15px] font-medium text-sucesso">Você terminou {s.nome}.</p>
-            <BotaoLink tamanho="pequeno" variante="primario" href={enderecoDaAnalise(modulo.id, s.id)}>Ver minha análise</BotaoLink>
-          </div>
-        ))}
     </Pagina>
   );
 }
@@ -119,9 +112,11 @@ function CartaoDaSecao({ modulo, secao, acompanha }: { modulo: Modulo; secao: Su
   else if (completo) situacao = "Concluído";
   else situacao = feitos === 0 ? "Ainda não começou" : `${feitos} de ${total} concluídos`;
 
+  // Questões terminadas: a seção virou a análise, e o cartão leva direto para ela.
+  const paraAnalise = acompanha && deQuestao.length === total && corrigidas;
   return (
     <Link
-      href={enderecoDaSecao(modulo.id, secao.id, proxima?.id)}
+      href={paraAnalise ? enderecoDaAnalise(modulo.id, secao.id) : enderecoDaSecao(modulo.id, secao.id, proxima?.id)}
       className={`group flex h-full flex-col gap-3 rounded-cartao border bg-papel p-5 shadow-suave transition-colors ${acompanha && completo ? "border-sucesso-borda hover:border-sucesso-vivo" : "border-borda/70 hover:border-acento/50"}`}
     >
       <span className="flex items-center gap-3">
@@ -148,7 +143,7 @@ function CartaoDaSecao({ modulo, secao, acompanha }: { modulo: Modulo; secao: Su
         </span>
       )}
       <span className={`${acompanha && total > 0 ? "" : "mt-auto"} inline-flex items-center gap-1.5 text-sm font-semibold text-acento group-hover:text-acento-forte`}>
-        {completo ? "Rever" : proxima ? "Continuar" : "Abrir"}
+        {paraAnalise ? "Ver minha análise" : completo ? "Rever" : proxima ? "Continuar" : "Abrir"}
         <ArrowRight aria-hidden="true" className="size-4 transition-transform group-hover:translate-x-0.5" />
       </span>
     </Link>
