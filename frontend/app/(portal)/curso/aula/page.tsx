@@ -3,13 +3,14 @@
 import { Check, CircleCheck } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import { CapituloConcluido } from "@/components/Comemoracao";
 import { Exercicio } from "@/components/Exercicio";
 import { Player } from "@/components/Player";
 import { LinkDoPdf } from "@/components/Pdf";
 import { Aviso, Botao, Estado, Pagina, Progresso, botao } from "@/components/ui";
 import { abrirEmNovaAba, api, useDados, type AulaNoCurso, type ConteudoDaTurma, type ItemCurso } from "@/lib/api";
+import { enderecoDaSecao, enderecoDoCapitulo } from "@/lib/curso";
 import { duracao, emBrasilia } from "@/lib/formato";
 import { AVISO_DA_PREVIA, useNaPrevia, useUsuario } from "@/lib/sessao";
 
@@ -36,9 +37,21 @@ function Modulo({ turmas, recarregar }: { turmas: ConteudoDaTurma[]; recarregar:
   const parametros = useSearchParams();
   const moduloId = Number(parametros.get("modulo"));
   const itemId = Number(parametros.get("item"));
+  const secaoId = Number(parametros.get("secao"));
 
   const modulo = useMemo(() => turmas.flatMap((t) => t.modulos).find((m) => m.id === moduloId), [turmas, moduloId]);
-  const itens = useMemo(() => modulo?.submodulos.flatMap((s) => s.itens) ?? [], [modulo]);
+  // A seção aberta: a pedida, a da aula pedida (links de fora só dizem a aula) ou a única do capítulo.
+  const secao = useMemo(
+    () =>
+      modulo?.submodulos.find((s) => s.id === secaoId) ??
+      modulo?.submodulos.find((s) => s.itens.some((i) => i.id === itemId)) ??
+      (modulo?.submodulos.length === 1 ? modulo.submodulos[0] : undefined),
+    [modulo, secaoId, itemId],
+  );
+  // A lista e o Anterior/Próximo ficam na seção; o "capítulo concluído" olha o capítulo inteiro.
+  const itens = useMemo(() => secao?.itens ?? [], [secao]);
+  const doCapitulo = useMemo(() => modulo?.submodulos.flatMap((s) => s.itens) ?? [], [modulo]);
+  const variasSecoes = (modulo?.submodulos.length ?? 0) > 1;
   // A resposta dada agora: a lista marca a questão sem esperar a árvore do curso ser relida.
   // null: respondida, com a correção guardada até a última do bloco (gabarito no fim).
   const [feitasAgora, setFeitasAgora] = useState<Record<number, boolean | null>>({});
@@ -47,6 +60,11 @@ function Modulo({ turmas, recarregar }: { turmas: ConteudoDaTurma[]; recarregar:
   const [erroAoMarcar, setErroAoMarcar] = useState("");
   // Só o aluno tem progresso: o professor abre esta tela para conferir, e nada é gravado.
   const acompanha = useUsuario().papel === "ALUNO";
+
+  // Capítulo de várias seções sem nenhuma escolhida: quem escolhe é a tela do capítulo.
+  useEffect(() => {
+    if (modulo && !secao && variasSecoes) router.replace(enderecoDoCapitulo(modulo.id));
+  }, [modulo, secao, variasSecoes, router]);
 
   if (!modulo) {
     return (
@@ -59,7 +77,8 @@ function Modulo({ turmas, recarregar }: { turmas: ConteudoDaTurma[]; recarregar:
   const indice = Math.max(0, itens.findIndex((i) => i.id === itemId));
   const atual = itens[indice];
   const concluido = (item: ItemCurso) => (item.questao ? item.id in feitasAgora || !!item.questao.respondida : (concluidosAgora[item.id] ?? !!item.concluido));
-  const feitos = itens.filter(concluido).length;
+  const feitos = doCapitulo.filter(concluido).length;
+  const feitosNaSecao = itens.filter(concluido).length;
   const anotar = (item: number, valor: boolean) => setConcluidosAgora((c) => (c[item] === valor ? c : { ...c, [item]: valor }));
 
   async function marcar(item: ItemCurso, valor: boolean) {
@@ -72,22 +91,26 @@ function Modulo({ turmas, recarregar }: { turmas: ConteudoDaTurma[]; recarregar:
       setErroAoMarcar(ex instanceof Error ? ex.message : "Não foi possível salvar.");
     }
   }
-  const ir = (novo: number) => router.push(`/curso/aula/?modulo=${modulo.id}&item=${itens[novo].id}`, { scroll: false });
+  if (variasSecoes && !secao) return null;
+  const ir = (novo: number) => router.push(secao ? enderecoDaSecao(modulo.id, secao.id, itens[novo].id) : `/curso/aula/?modulo=${modulo.id}&item=${itens[novo].id}`, { scroll: false });
 
   // Para onde ir depois de terminar: o capítulo seguinte da turma que ainda tem o que fazer.
   const daTurma = turmas.find((t) => t.modulos.some((m) => m.id === modulo.id))?.modulos ?? [];
   const posicao = daTurma.findIndex((m) => m.id === modulo.id);
   const seguinte = [...daTurma.slice(posicao + 1), ...daTurma.slice(0, posicao)].find((m) => m.submodulos.some((s) => s.itens.some((i) => !i.concluido)));
-  const primeiroQueFalta = seguinte?.submodulos.flatMap((s) => s.itens).find((i) => !i.concluido);
 
   return (
-    <Pagina titulo={modulo.nome} legenda={modulo.turma} voltar={{ href: "/curso/", rotulo: "Meu curso" }}>
+    <Pagina
+      titulo={modulo.nome}
+      legenda={variasSecoes && secao ? `${secao.nome} · ${modulo.turma}` : modulo.turma}
+      voltar={variasSecoes ? { href: enderecoDoCapitulo(modulo.id), rotulo: "Capítulo" } : { href: "/curso/", rotulo: "Meu curso" }}
+    >
       {acompanha && (
         <CapituloConcluido
           modulo={modulo}
           feitos={feitos}
-          total={itens.length}
-          proximo={seguinte && { nome: seguinte.nome, href: `/curso/aula/?modulo=${seguinte.id}${primeiroQueFalta ? `&item=${primeiroQueFalta.id}` : ""}` }}
+          total={doCapitulo.length}
+          proximo={seguinte && { nome: seguinte.nome, href: enderecoDoCapitulo(seguinte.id) }}
         />
       )}
       <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_20rem]">
@@ -159,13 +182,13 @@ function Modulo({ turmas, recarregar }: { turmas: ConteudoDaTurma[]; recarregar:
           {acompanha && itens.length > 0 && (
             <div className="rounded-cartao border border-borda bg-papel px-4 py-3">
               <p className="flex items-baseline justify-between gap-2 text-sm">
-                <span className="font-semibold text-tinta">{feitos === itens.length ? "Capítulo concluído" : "Seu progresso"}</span>
-                <span className="tabular-nums text-suave">{feitos} de {itens.length}</span>
+                <span className="font-semibold text-tinta">{feitosNaSecao === itens.length ? (variasSecoes ? "Seção concluída" : "Capítulo concluído") : "Seu progresso"}</span>
+                <span className="tabular-nums text-suave">{feitosNaSecao} de {itens.length}</span>
               </p>
-              <Progresso feitos={feitos} total={itens.length} rotulo="Progresso neste capítulo" className="mt-2" />
+              <Progresso feitos={feitosNaSecao} total={itens.length} rotulo={variasSecoes ? "Progresso nesta seção" : "Progresso neste capítulo"} className="mt-2" />
             </div>
           )}
-          {modulo.submodulos.map((sub) => (
+          {(secao ? [secao] : modulo.submodulos).map((sub) => (
             <details key={sub.id} open className="rounded-cartao border border-borda bg-papel">
               <summary className="flex cursor-pointer items-center justify-between px-4 py-3 font-semibold text-tinta">
                 {sub.nome}
@@ -182,7 +205,7 @@ function Modulo({ turmas, recarregar }: { turmas: ConteudoDaTurma[]; recarregar:
                   return (
                     <li key={item.id}>
                       <Link
-                        href={`/curso/aula/?modulo=${modulo.id}&item=${item.id}`}
+                        href={enderecoDaSecao(modulo.id, sub.id, item.id)}
                         scroll={false}
                         aria-current={selecionado ? "true" : undefined}
                         className={`flex items-center gap-2 px-4 py-2 text-[15px] ${selecionado ? "bg-lilas font-semibold text-acento-forte" : "text-tinta hover:bg-canvas"}`}

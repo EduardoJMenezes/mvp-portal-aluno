@@ -4,6 +4,7 @@
 
 import { BotaoLink, Etiqueta } from "@/components/ui";
 import type { DestinoDoEvento, EventoDaAgenda } from "@/lib/api";
+import { enderecoDoCapitulo } from "@/lib/curso";
 
 const DIA = new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Sao_Paulo", weekday: "short", day: "2-digit", month: "2-digit" });
 const HORA = new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Sao_Paulo", hour: "2-digit", minute: "2-digit" });
@@ -16,7 +17,7 @@ export function hrefDoDestino(d: DestinoDoEvento): string {
     case "AULA":
       return `/curso/aula/?modulo=${d.modulo_id}&item=${d.id}`;
     case "MODULO":
-      return `/curso/aula/?modulo=${d.id}`;
+      return enderecoDoCapitulo(d.id);
     case "AULA_AO_VIVO":
       return "/aulas/";
     case "SIMULADO":

@@ -4,6 +4,7 @@ import { ArrowRight, Check, CircleCheck, CircleHelp, FileText, LayoutList, Squar
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import type { AulaNoCurso, Modulo } from "@/lib/api";
+import { enderecoDoCapitulo } from "@/lib/curso";
 import { contarAulas, emBrasilia } from "@/lib/formato";
 import { partesDoNome } from "@/lib/icones";
 import { CapaDoModulo } from "./CapaDoModulo";
@@ -17,7 +18,7 @@ import { Progresso } from "./ui";
  * O ícone do sub-módulo sai do que há dentro dele, nunca do nome: "Questões da apostila" pode
  * guardar os vídeos de resolução, e aí é uma lista de vídeos. Misturado ou vazio, uma lista.
  */
-function iconeDoSubmodulo(itens: Modulo["submodulos"][number]["itens"]): LucideIcon {
+export function iconeDoSubmodulo(itens: Modulo["submodulos"][number]["itens"]): LucideIcon {
   if (itens.length === 0) return LayoutList;
   if (itens.every((i) => i.questao)) return CircleHelp;
   if (itens.every((i) => !i.questao && i.video_id != null)) return SquarePlay;
@@ -32,8 +33,6 @@ export function CartaoDoModulo({ modulo, comProgresso = false }: { modulo: Modul
   const soVideos = itens.length > 0 && itens.every((i) => i.video_id != null);
   const feitos = itens.filter((i) => i.concluido).length;
   const completo = itens.length > 0 && feitos === itens.length;
-  // Quem já começou cai direto na primeira aula que falta.
-  const proxima = comProgresso && feitos > 0 ? itens.find((i) => !i.concluido) : undefined;
   const concluido = comProgresso && completo;
 
   // Quem acabou de terminar este capítulo e voltou para cá vê o selo chegar, uma vez.
@@ -51,7 +50,7 @@ export function CartaoDoModulo({ modulo, comProgresso = false }: { modulo: Modul
 
   return (
     <Link
-      href={`/curso/aula/?modulo=${modulo.id}${proxima ? `&item=${proxima.id}` : ""}`}
+      href={enderecoDoCapitulo(modulo.id)}
       className={`group flex h-full gap-4 rounded-cartao border bg-papel p-5 shadow-suave transition-colors ${concluido ? "border-sucesso-borda hover:border-sucesso-vivo" : "border-borda/70 hover:border-acento/50"}`}
     >
       <span className="relative shrink-0 self-start">
