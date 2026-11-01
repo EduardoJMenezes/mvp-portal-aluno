@@ -490,7 +490,19 @@ export type Panorama = {
   /** Quantas respostas chegaram depois da análise geral que está valendo; nulo sem análise. */
   respostas_novas: number | null;
 };
-export type AlunoNaBusca = { id: number; nome: string; email: string; turmas: string[]; analise_geral_em: string | null };
+/** Um aluno da plataforma, com ou sem turma, e o que ele já fez. `ultima_atividade`: nula se nunca fez nada. */
+export type AlunoNaBusca = {
+  id: number;
+  nome: string;
+  email: string;
+  turmas: string[];
+  analise_geral_em: string | null;
+  cadastrado_em: string | null;
+  ultima_atividade: string | null;
+  aulas_concluidas: number;
+  questoes_respondidas: number;
+  simulados_feitos: number;
+};
 export type ResultadoLiberado = { simulado: string; liberado_agora: boolean; liberado_em: string; participantes: number; com_analise: number; sem_analise: number };
 export type QuestaoDaAulaNaTurma = {
   item_id: number;

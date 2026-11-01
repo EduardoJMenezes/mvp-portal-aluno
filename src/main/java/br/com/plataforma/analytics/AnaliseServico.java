@@ -639,16 +639,63 @@ public class AnaliseServico {
         return descrever(aluno, s);
     }
 
-    /** {@code analiseGeralEm}: quando a análise geral dele foi escrita; nulo se ainda não há. */
-    public record AlunoNaBusca(Integer id, String nome, String email, List<String> turmas, Instant analiseGeralEm) {}
+    /**
+     * {@code analiseGeralEm}: quando a análise geral dele foi escrita; nulo se ainda não há.
+     * {@code ultimaAtividade}: a última aula vista, questão respondida ou simulado, nulo se nunca fez nada.
+     * {@code aulasConcluidas}, {@code questoesRespondidas} e {@code simuladosFeitos}: o que ele já fez, em
+     * qualquer turma; simulado conta entregue, e o que saiu da tela não entra.
+     */
+    public record AlunoNaBusca(Integer id, String nome, String email, List<String> turmas, Instant analiseGeralEm,
+            Instant cadastradoEm, Instant ultimaAtividade, int aulasConcluidas, int questoesRespondidas,
+            int simuladosFeitos) {}
+
+    private record Atividade(Instant ultima, int aulas, int questoes, int simulados) {
+        static final Atividade NENHUMA = new Atividade(null, 0, 0, 0);
+    }
+
+    private static Instant instante(Object valor) {
+        return switch (valor) {
+            case null -> null;
+            case Instant i -> i;
+            case java.time.OffsetDateTime o -> o.toInstant();
+            case java.sql.Timestamp t -> t.toInstant();
+            default -> throw new IllegalStateException("Data inesperada: " + valor.getClass());
+        };
+    }
+
+    /** O que cada aluno já fez, numa consulta só: a lista inteira não pode custar uma ida ao banco por aluno. */
+    @SuppressWarnings("unchecked")
+    private Map<Integer, Atividade> atividadePorAluno() {
+        var saida = new HashMap<Integer, Atividade>();
+        List<Object[]> linhas = em.createNativeQuery("""
+                SELECT u.id,
+                       GREATEST(p.ultima, r.ultima, a.ultima),
+                       COALESCE(p.aulas, 0), COALESCE(r.questoes, 0), COALESCE(a.simulados, 0)
+                  FROM users u
+                  LEFT JOIN (SELECT aluno_id, max(visto_em) ultima, count(concluido_em) aulas
+                               FROM item_progress GROUP BY aluno_id) p ON p.aluno_id = u.id
+                  LEFT JOIN (SELECT aluno_id, max(respondido_em) ultima, count(*) questoes
+                               FROM item_answers GROUP BY aluno_id) r ON r.aluno_id = u.id
+                  LEFT JOIN (SELECT t.aluno_id, max(COALESCE(t.finalizado_em, t.iniciado_em)) ultima,
+                                    count(t.finalizado_em) simulados
+                               FROM exam_attempts t JOIN exams e ON e.id = t.simulado_id AND e.removido_em IS NULL
+                              GROUP BY t.aluno_id) a ON a.aluno_id = u.id
+                 WHERE u.papel = 'ALUNO'""").getResultList();
+        for (var l : linhas) {
+            saida.put(((Number) l[0]).intValue(), new Atividade(instante(l[1]), ((Number) l[2]).intValue(),
+                    ((Number) l[3]).intValue(), ((Number) l[4]).intValue()));
+        }
+        return saida;
+    }
 
     private static String semAcento(String texto) {
         return Normalizer.normalize(texto, Normalizer.Form.NFD).replaceAll("\\p{M}", "").toLowerCase(Locale.ROOT);
     }
 
     /**
-     * Os alunos, para o professor achar um pelo nome ou pelo e-mail e abrir o acompanhamento dele.
-     * Três consultas para a lista inteira: os alunos, as turmas de cada um e quem já tem análise.
+     * Todos os alunos da plataforma, com ou sem turma — é a tela "Alunos" do professor, que acha um
+     * pelo nome ou pelo e-mail e abre o acompanhamento dele. Quatro consultas para a lista inteira:
+     * os alunos, as turmas de cada um, quem já tem análise e o que cada um já fez.
      */
     @Transactional(readOnly = true)
     public List<AlunoNaBusca> alunos(Identidade ident, String busca) {
@@ -657,11 +704,16 @@ public class AnaliseServico {
         em.createQuery("select m.usuarioId, t.nome from Matricula m join m.turma t order by t.nome", Object[].class)
                 .getResultList().forEach(l -> turmas.computeIfAbsent((Integer) l[0], k -> new ArrayList<>()).add((String) l[1]));
         var gerais = analises.ultimasGerais().stream().collect(Collectors.toMap(AnaliseDoAluno::getAlunoId, AnaliseDoAluno::getEscritaEm));
+        var atividade = atividadePorAluno();
         var termo = branco(busca) ? null : semAcento(busca.strip());
         return em.createQuery("select u from Usuario u where u.papel = :papel order by u.nome", Usuario.class)
                 .setParameter("papel", Papel.ALUNO).getResultList().stream()
                 .filter(u -> termo == null || semAcento(u.getNome()).contains(termo) || semAcento(u.getEmail()).contains(termo))
-                .map(u -> new AlunoNaBusca(u.getId(), u.getNome(), u.getEmail(), turmas.getOrDefault(u.getId(), List.of()), gerais.get(u.getId())))
+                .map(u -> {
+                    var fez = atividade.getOrDefault(u.getId(), Atividade.NENHUMA);
+                    return new AlunoNaBusca(u.getId(), u.getNome(), u.getEmail(), turmas.getOrDefault(u.getId(), List.of()),
+                            gerais.get(u.getId()), u.getCriadoEm(), fez.ultima(), fez.aulas(), fez.questoes(), fez.simulados());
+                })
                 .toList();
     }
 }

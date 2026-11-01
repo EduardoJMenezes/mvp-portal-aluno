@@ -519,6 +519,29 @@ class AnaliseDoAlunoTest extends BaseDoPortal {
         get("/api/admin/alunos?busca=ninguem", ADMIN).andExpect(jsonPath("$").isEmpty());
     }
 
+    /** A tela "Alunos": quem não tem turma também aparece, com o que cada um já fez. */
+    @Test
+    void aListaTemTodoAlunoComOQueEleJaFez() throws Exception {
+        var semTurma = criarUsuario("Zélia Sem Turma", "zelia@teste.invalid", SENHA, "ALUNO", false);
+        var otavio = criarUsuario("Otávio", "otavio@teste.invalid", SENHA, "ALUNO", false);
+        comando("criar_modulo", "{\"turma\": \"Extensivo 2027\", \"nome\": \"K01\"}").andExpect(status().isOk());
+        var item = jdbc.queryForObject("""
+                INSERT INTO items (submodulo_id, nome, ordem, status, questao_id)
+                SELECT s.id, 'Q01', 1, 'PUBLICADO', ? FROM submodules s LIMIT 1 RETURNING id""", Integer.class, q1);
+        jdbc.update("INSERT INTO item_answers (item_id, aluno_id, questao_id, alternativa_marcada, correta, respondido_em) "
+                + "VALUES (?, ?, ?, 'A', true, '2026-10-30T12:00:00Z')", item, otavio, q1);
+
+        get("/api/admin/alunos?busca=zelia", ADMIN)
+                .andExpect(jsonPath("$[0].id").value(semTurma))
+                .andExpect(jsonPath("$[0].turmas").isEmpty())
+                .andExpect(jsonPath("$[0].cadastrado_em").exists())
+                .andExpect(jsonPath("$[0].ultima_atividade").doesNotExist())
+                .andExpect(jsonPath("$[0].questoes_respondidas").value(0));
+        get("/api/admin/alunos?busca=otavio", ADMIN)
+                .andExpect(jsonPath("$[0].questoes_respondidas").value(1))
+                .andExpect(jsonPath("$[0].ultima_atividade").value(org.hamcrest.Matchers.startsWith("2026-10-30T12:00")));
+    }
+
     // --- o simulado depois da prova, para o professor ------------------------------
 
     @Test

@@ -22,7 +22,7 @@ export default function PaginaDoDesempenho() {
 
 const semAcento = (texto: string) => texto.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
 
-/** A porta de entrada: o professor acha o aluno pelo nome e abre o acompanhamento dele. */
+/** Todos os alunos da plataforma, com ou sem turma: o professor acha um pelo nome e abre o acompanhamento dele. */
 function BuscaDeAlunos() {
   const alunos = useDados(() => api.alunos());
   const [busca, setBusca] = useState("");
@@ -30,7 +30,7 @@ function BuscaDeAlunos() {
   const filtrar = (lista: AlunoNaBusca[]) => (termo ? lista.filter((a) => semAcento(a.nome).includes(termo) || semAcento(a.email).includes(termo)) : lista);
 
   return (
-    <Pagina titulo="Desempenho por aluno" legenda="Procure um aluno para ver o que ele já fez do curso, como está em cada assunto, como foi nos simulados e a análise geral dele.">
+    <Pagina titulo="Alunos" legenda="Todos os alunos da plataforma, inclusive os que não estão em nenhuma turma. Abra um para ver o que ele já fez do curso, como está em cada assunto, os simulados e a análise geral.">
       <Campo rotulo="Aluno" className="max-w-md">
         {(id) => <input id={id} type="search" autoFocus value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Nome ou e-mail" className="campo" />}
       </Campo>
@@ -38,35 +38,53 @@ function BuscaDeAlunos() {
         {(todos) => {
           const lista = filtrar(todos);
           if (!todos.length) return <Vazio titulo="Nenhum aluno cadastrado">Os alunos entram pelas turmas, em Turmas e alunos.</Vazio>;
+          const semTurma = todos.filter((a) => !a.turmas.length).length;
           if (!lista.length) return <Vazio titulo="Ninguém com esse nome">Confira a grafia, ou procure pelo e-mail.</Vazio>;
           return (
-            <Cartao className="overflow-x-auto">
-              <table className="tabela min-w-[36rem]">
-                <thead>
-                  <tr>
-                    <th scope="col">Aluno</th>
-                    <th scope="col">Turmas</th>
-                    <th scope="col">Análise geral</th>
-                    <th scope="col"><span className="sr-only">Abrir</span></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {lista.map((a) => (
-                    <tr key={a.id}>
-                      <td>
-                        <LinkDeTitulo href={`/admin/alunos/?aluno=${a.id}`}>{a.nome}</LinkDeTitulo>
-                        <span className="block text-[13px] text-suave">{a.email}</span>
-                      </td>
-                      <td className="text-suave">{a.turmas.join(", ") || "Sem turma"}</td>
-                      <td>{a.analise_geral_em ? <Etiqueta tom="sucesso">Escrita em {dataCurta(a.analise_geral_em)}</Etiqueta> : <span className="text-suave">—</span>}</td>
-                      <td className="text-right">
-                        <BotaoLink tamanho="mini" href={`/admin/alunos/?aluno=${a.id}`}>Acompanhar</BotaoLink>
-                      </td>
+            <>
+              <p className="text-sm text-suave">
+                {plural(lista.length, "aluno", "alunos")}
+                {termo ? ` de ${todos.length}` : ""}
+                {semTurma ? ` · ${plural(semTurma, "sem turma", "sem turma")}` : ""}
+              </p>
+              <Cartao className="overflow-x-auto">
+                <table className="tabela min-w-[56rem]">
+                  <thead>
+                    <tr>
+                      <th scope="col">Aluno</th>
+                      <th scope="col">Turmas</th>
+                      <th scope="col">Cadastro</th>
+                      <th scope="col">Última atividade</th>
+                      <th scope="col" className="text-right">Aulas</th>
+                      <th scope="col" className="text-right">Questões</th>
+                      <th scope="col" className="text-right">Simulados</th>
+                      <th scope="col">Análise geral</th>
+                      <th scope="col"><span className="sr-only">Abrir</span></th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </Cartao>
+                  </thead>
+                  <tbody>
+                    {lista.map((a) => (
+                      <tr key={a.id}>
+                        <td>
+                          <LinkDeTitulo href={`/admin/alunos/?aluno=${a.id}`}>{a.nome}</LinkDeTitulo>
+                          <span className="block text-[13px] text-suave">{a.email}</span>
+                        </td>
+                        <td>{a.turmas.length ? a.turmas.join(", ") : <Etiqueta tom="atencao">Sem turma</Etiqueta>}</td>
+                        <td className="whitespace-nowrap text-suave">{dataCurta(a.cadastrado_em) || "—"}</td>
+                        <td className="whitespace-nowrap text-suave">{a.ultima_atividade ? dataCurta(a.ultima_atividade) : "Nunca"}</td>
+                        <td className="text-right tabular-nums">{a.aulas_concluidas}</td>
+                        <td className="text-right tabular-nums">{a.questoes_respondidas}</td>
+                        <td className="text-right tabular-nums">{a.simulados_feitos}</td>
+                        <td>{a.analise_geral_em ? <Etiqueta tom="sucesso">Escrita em {dataCurta(a.analise_geral_em)}</Etiqueta> : <span className="text-suave">—</span>}</td>
+                        <td className="text-right">
+                          <BotaoLink tamanho="mini" href={`/admin/alunos/?aluno=${a.id}`}>Acompanhar</BotaoLink>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </Cartao>
+            </>
           );
         }}
       </Estado>
@@ -108,7 +126,7 @@ function Acompanhamento({ aluno }: { aluno: string }) {
   const doSimulado = useDados(() => (idDoSimulado ? api.analiseDoAluno(aluno, idDoSimulado).catch(() => null) : Promise.resolve(null)), [aluno, idDoSimulado]);
 
   return (
-    <Pagina titulo={panorama.dados?.aluno ?? desempenho.dados?.aluno ?? "Desempenho do aluno"} legenda={panorama.dados?.turmas.length ? panorama.dados.turmas.join(", ") : "A análise geral, como está em cada assunto, o que já fez do curso e como foi em cada simulado."} voltar={{ href: "/admin/alunos/", rotulo: "Desempenho por aluno" }}>
+    <Pagina titulo={panorama.dados?.aluno ?? desempenho.dados?.aluno ?? "Desempenho do aluno"} legenda={panorama.dados?.turmas.length ? panorama.dados.turmas.join(", ") : "A análise geral, como está em cada assunto, o que já fez do curso e como foi em cada simulado."} voltar={{ href: "/admin/alunos/", rotulo: "Alunos" }}>
       <Abas abas={ABAS} atual={aba} aoTrocar={(nova) => router.replace(endereco(nova, nova === "simulados" ? simulado : undefined), { scroll: false })} />
       {aba === "curso" && <CursoDoAluno aluno={aluno} />}
       {aba === "geral" && (
