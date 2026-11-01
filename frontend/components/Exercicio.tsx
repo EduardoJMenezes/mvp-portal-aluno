@@ -9,9 +9,10 @@ import { Aviso, Botao, Carregamento, Esqueleto, Etiqueta } from "./ui";
 
 // A questão dentro da aula: o aluno marca, confirma e vê o gabarito na hora.
 // Vale a primeira resposta, e quem segura isso é o backend — antes de responder,
-// gabarito e resolução nem chegam ao navegador.
+// gabarito e resolução nem chegam ao navegador. Com gabarito no fim (as questões
+// da apostila), a resposta fica registrada e a correção só chega depois da última.
 
-export function Exercicio({ item, aoResponder }: { item: number; aoResponder?: (correta: boolean) => void }) {
+export function Exercicio({ item, aoResponder }: { item: number; aoResponder?: (correta: boolean | null, faltam: number | null) => void }) {
   const [dados, setDados] = useState<Dados | null>(null);
   const [marcada, setMarcada] = useState("");
   const [erro, setErro] = useState("");
@@ -39,7 +40,7 @@ export function Exercicio({ item, aoResponder }: { item: number; aoResponder?: (
     try {
       const corrigida = await api.responderNaAula(item, marcada);
       setDados(corrigida);
-      aoResponder?.(corrigida.correta === true);
+      aoResponder?.(corrigida.correta, corrigida.faltam);
     } catch (ex) {
       setErro(ex instanceof Error ? ex.message : "Não foi possível registrar a resposta.");
     } finally {
@@ -53,13 +54,16 @@ export function Exercicio({ item, aoResponder }: { item: number; aoResponder?: (
 
   // O professor abre a prévia com o gabarito, sem ter respondido.
   const corrigida = dados.gabarito !== null;
+  // Respondeu, mas a correção espera as outras questões (gabarito no fim).
+  const guardada = dados.respondida && !corrigida;
 
   return (
     <section aria-label={dados.nome} className="min-w-0 rounded-cartao border border-borda bg-papel p-5 sm:p-7">
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <p className="text-xs font-semibold uppercase tracking-wide text-suave">Questão</p>
-        {dados.respondida && (dados.correta ? <Etiqueta tom="sucesso">Você acertou</Etiqueta> : <Etiqueta tom="erro">Você errou</Etiqueta>)}
+        {dados.respondida && corrigida && (dados.correta ? <Etiqueta tom="sucesso">Você acertou</Etiqueta> : <Etiqueta tom="erro">Você errou</Etiqueta>)}
         {corrigida && !dados.respondida && <Etiqueta tom="info">Prévia do professor</Etiqueta>}
+        {guardada && <Etiqueta tom="info">Resposta registrada</Etiqueta>}
       </div>
 
       <TextoFormatado texto={dados.enunciado} />
@@ -102,6 +106,35 @@ export function Exercicio({ item, aoResponder }: { item: number; aoResponder?: (
             );
           })}
         </ul>
+      ) : guardada ? (
+        <>
+          <ul className="mt-5 flex flex-col gap-2">
+            {Object.entries(dados.alternativas).map(([letra, texto]) => {
+              const escolhida = letra === dados.marcada;
+              return (
+                <li key={letra} className={`flex items-start gap-3 rounded-cartao border px-4 py-3 ${escolhida ? "border-acento bg-lilas" : "border-borda bg-papel"}`}>
+                  <span
+                    aria-hidden="true"
+                    className={`mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full border text-sm font-semibold ${
+                      escolhida ? "border-acento bg-acento text-white" : "border-borda-campo text-tinta-2"
+                    }`}
+                  >
+                    {letra}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <TextoFormatado texto={texto} compacto />
+                    {escolhida && <p className="mt-1 text-[13px] font-semibold text-acento-forte">Sua resposta ({letra})</p>}
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+          <p className="mt-5 border-t border-borda pt-4 text-[13px] text-suave">
+            {dados.faltam
+              ? `A correção sai quando você responder todas as questões deste bloco: ${dados.faltam === 1 ? "falta 1" : `faltam ${dados.faltam}`}.`
+              : "A correção sai quando você responder todas as questões deste bloco."}
+          </p>
+        </>
       ) : (
         <>
           <fieldset className="mt-5 flex flex-col gap-2.5" disabled={enviando}>
@@ -135,7 +168,11 @@ export function Exercicio({ item, aoResponder }: { item: number; aoResponder?: (
               {enviando ? "Enviando…" : "Confirmar resposta"}
             </Botao>
             <p className="text-[13px] text-suave">
-              {previa ? `${AVISO_DA_PREVIA} O aluno confirma e vê o gabarito e a resolução na hora.` : "Só vale a primeira resposta: depois de confirmar, não dá para trocar."}
+              {previa
+                ? `${AVISO_DA_PREVIA} O aluno confirma e vê o gabarito e a resolução ${dados.gabarito_no_fim ? "depois de responder todas as questões deste bloco" : "na hora"}.`
+                : dados.gabarito_no_fim
+                  ? "Só vale a primeira resposta. A correção sai quando você responder todas as questões deste bloco."
+                  : "Só vale a primeira resposta: depois de confirmar, não dá para trocar."}
             </p>
           </div>
         </>

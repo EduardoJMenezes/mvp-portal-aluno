@@ -14,18 +14,21 @@ seção "Em aberto", no fim.
 > as turmas dela; o módulo aparece quando sobra aula visível. Onde este texto
 > diz "módulo da turma", leia "módulo que a turma recebe".
 
-> **Mudou em 31/10/2026 (migração V18): o sub-módulo pode ser folha de
-> respostas** (`submodules.folha_de_respostas`). É o pedido do professor para a
-> apostila: o aluno resolve no papel e lança as letras na plataforma, todas de
-> uma vez. Até o envio, nenhuma questão da folha mostra gabarito, e responder
-> uma por uma é recusado (`ExerciciosServico.responder`) — quem visse a
-> correção da primeira acertaria as outras antes de enviar. O envio
-> (`POST /api/aluno/submodulos/{id}/folha`) grava em `item_answers`, numa
-> transação, uma letra para cada linha de questão ainda sem resposta, nem mais
-> nem menos; depois disso cada questão abre corrigida, como na aula comum, e
-> o desempenho por assunto soma essas respostas sem nada de especial. Quem
-> liga é o Claude, por `definir_folha_de_respostas`. Quem já tinha respondido
-> alguma antes de a folha ser ligada lança só o que falta.
+> **Mudou em 01/11/2026 (migração V19): gabarito no fim** (`submodules.gabarito_no_fim`).
+> É o pedido do professor para as questões da apostila: o aluno já resolveu no
+> papel e responde na plataforma, uma por uma, vendo cada questão inteira — mas a
+> correção (acerto, gabarito, resolução, comentários) fica guardada até ele
+> responder a última questão do sub-módulo, e aí sai a de todas de uma vez. A
+> resposta é gravada como na aula comum (`item_answers`, vale a primeira); o que
+> muda é o que sai para o aluno: `ExerciciosServico` devolve `faltam`, a árvore do
+> curso marca a questão como respondida sem dizer se acertou
+> (`comCorrecaoGuardada`), e o desempenho por assunto dele não a conta até o fim.
+> O professor vê tudo desde a primeira. Quem liga é o Claude, por
+> `definir_gabarito_no_fim`. A V18 tinha feito isso como "folha de respostas"
+> (só as letras, enviadas juntas); o professor queria as questões espelhadas, e a
+> folha saiu. Limite conhecido: o vídeo de resolução de uma questão se libera ao
+> responder (`AcessoServico`), antes do fim — as questões da apostila de hoje não
+> têm vídeo.
 
 > **Mudou em 06/10/2026 (migração V10): a questão entrou na aula.** A linha de
 > um sub-módulo é um vídeo, um PDF ou uma **questão do acervo**

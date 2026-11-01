@@ -223,24 +223,15 @@ export type Exercicio = {
   resolucao: Video | null;
   /** Por letra: por que a alternativa está certa ou errada. Só chega depois da resposta. */
   comentarios?: Record<string, string>;
+  /** A correção espera a última questão do sub-módulo; `faltam` diz quantas ainda faltam (0: já saiu). */
+  gabarito_no_fim: boolean;
+  faltam: number | null;
 };
 /** Aula ao vivo agendada no sub-módulo, enquanto a gravação não chegou. ENCERRADA aqui é "processando". */
 export type AulaNoCurso = { aula_id: number; titulo: string; inicio_em: string; minutos: number; estado: Aula["estado"]; abre_em: string; material?: MaterialLigado | null };
-/** `folha_de_respostas`: as questões daqui o aluno lança de uma vez, depois de resolver no papel. */
-export type SubModulo = { id: number; nome: string; tipo: string; ordem: number; itens: ItemCurso[]; aulas?: AulaNoCurso[]; folha_de_respostas?: boolean };
+/** `gabarito_no_fim`: a correção das questões daqui só sai depois da última. */
+export type SubModulo = { id: number; nome: string; tipo: string; ordem: number; itens: ItemCurso[]; aulas?: AulaNoCurso[]; gabarito_no_fim?: boolean };
 
-/** Uma linha da folha. `gabarito` e `correta` só vêm depois do envio (ou na prévia do professor). */
-export type LinhaDaFolha = { item_id: number; nome: string; letras: string[]; marcada: string | null; correta: boolean | null; gabarito: string | null };
-export type FolhaDeRespostas = {
-  submodulo_id: number;
-  submodulo: string;
-  modulo: string | null;
-  enviada: boolean;
-  enviada_em: string | null;
-  acertos: number | null;
-  total: number;
-  linhas: LinhaDaFolha[];
-};
 /** `turmas`: as que recebem o módulo, que mora numa biblioteca (decisão 0011). Só o professor recebe. */
 /**
  * `icone` e `foto_versao` são a capa do cartão: com foto, vale a foto; sem as duas, o portal
@@ -897,10 +888,6 @@ export const api = {
     pedir<ProgressoDoItem>(`/aluno/itens/${item}/progresso`, { method: "POST", json: { posicao_segundos, duracao_segundos } }),
   marcarConcluido: (item: number, concluido: boolean) =>
     pedir<ProgressoDoItem>(`/aluno/itens/${item}/concluido`, { method: "PUT", json: { concluido } }),
-  folhaDeRespostas: (submodulo: number) => pedir<FolhaDeRespostas>(`/aluno/submodulos/${submodulo}/folha`),
-  /** `respostas`: a letra de cada linha, pelo id da linha. Vale o primeiro envio. */
-  enviarFolha: (submodulo: number, respostas: Record<number, string>) =>
-    pedir<FolhaDeRespostas>(`/aluno/submodulos/${submodulo}/folha`, { method: "POST", json: { respostas } }),
   responderNaAula: (item: number, alternativa: string) =>
     pedir<Exercicio>(`/aluno/itens/${item}/responder`, { method: "POST", json: { alternativa } }),
   simulados: () => pedir<SimuladoResumo[]>("/aluno/simulados"),

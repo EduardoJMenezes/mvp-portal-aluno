@@ -42,9 +42,9 @@ public class SubModulo extends Rastreavel implements Nomeavel {
     @Column(nullable = false)
     private Integer ordem;
 
-    /** As questões daqui são lançadas de uma vez, como gabarito da apostila (V18). */
-    @Column(name = "folha_de_respostas", nullable = false)
-    private boolean folhaDeRespostas;
+    /** As questões daqui só mostram a correção quando o aluno responde a última (V19). */
+    @Column(name = "gabarito_no_fim", nullable = false)
+    private boolean gabaritoNoFim;
 
     protected SubModulo() {}
 
@@ -77,12 +77,12 @@ public class SubModulo extends Rastreavel implements Nomeavel {
         return modulo;
     }
 
-    public boolean isFolhaDeRespostas() {
-        return folhaDeRespostas;
+    public boolean isGabaritoNoFim() {
+        return gabaritoNoFim;
     }
 
-    void definirFolhaDeRespostas(boolean folha) {
-        this.folhaDeRespostas = folha;
+    void definirGabaritoNoFim(boolean noFim) {
+        this.gabaritoNoFim = noFim;
     }
 
     void renomear(String nome) {

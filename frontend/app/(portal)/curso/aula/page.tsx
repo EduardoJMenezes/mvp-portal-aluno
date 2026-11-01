@@ -6,11 +6,10 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useMemo, useState } from "react";
 import { CapituloConcluido } from "@/components/Comemoracao";
 import { Exercicio } from "@/components/Exercicio";
-import { FolhaDeRespostas } from "@/components/FolhaDeRespostas";
 import { Player } from "@/components/Player";
 import { LinkDoPdf } from "@/components/Pdf";
 import { Aviso, Botao, Estado, Pagina, Progresso, botao } from "@/components/ui";
-import { abrirEmNovaAba, api, useDados, type AulaNoCurso, type ConteudoDaTurma, type ItemCurso, type SubModulo } from "@/lib/api";
+import { abrirEmNovaAba, api, useDados, type AulaNoCurso, type ConteudoDaTurma, type ItemCurso } from "@/lib/api";
 import { duracao, emBrasilia } from "@/lib/formato";
 import { AVISO_DA_PREVIA, useNaPrevia, useUsuario } from "@/lib/sessao";
 
@@ -27,23 +26,22 @@ function Aula() {
   const conteudo = useDados(() => api.conteudo(), [], 60);
   return (
     <Estado {...conteudo} linhas={4}>
-      {(turmas) => <Modulo turmas={turmas} />}
+      {(turmas) => <Modulo turmas={turmas} recarregar={conteudo.recarregar} />}
     </Estado>
   );
 }
 
-function Modulo({ turmas }: { turmas: ConteudoDaTurma[] }) {
+function Modulo({ turmas, recarregar }: { turmas: ConteudoDaTurma[]; recarregar: () => Promise<unknown> }) {
   const router = useRouter();
   const parametros = useSearchParams();
   const moduloId = Number(parametros.get("modulo"));
   const itemId = Number(parametros.get("item"));
-  // A folha de respostas corrigida, aberta pela lista depois do envio.
-  const folhaPedida = Number(parametros.get("folha"));
 
   const modulo = useMemo(() => turmas.flatMap((t) => t.modulos).find((m) => m.id === moduloId), [turmas, moduloId]);
   const itens = useMemo(() => modulo?.submodulos.flatMap((s) => s.itens) ?? [], [modulo]);
   // A resposta dada agora: a lista marca a questão sem esperar a árvore do curso ser relida.
-  const [feitasAgora, setFeitasAgora] = useState<Record<number, boolean>>({});
+  // null: respondida, com a correção guardada até a última do bloco (gabarito no fim).
+  const [feitasAgora, setFeitasAgora] = useState<Record<number, boolean | null>>({});
   // O mesmo para a aula assistida: o que mudou nesta visita vale por cima do que a árvore trouxe.
   const [concluidosAgora, setConcluidosAgora] = useState<Record<number, boolean>>({});
   const [erroAoMarcar, setErroAoMarcar] = useState("");
@@ -61,12 +59,6 @@ function Modulo({ turmas }: { turmas: ConteudoDaTurma[] }) {
   const indice = Math.max(0, itens.findIndex((i) => i.id === itemId));
   const atual = itens[indice];
   const concluido = (item: ItemCurso) => (item.questao ? item.id in feitasAgora || !!item.questao.respondida : (concluidosAgora[item.id] ?? !!item.concluido));
-  // Na folha de respostas, a questão só abre sozinha depois do envio: antes, e ao entrar no capítulo, quem aparece é a folha.
-  const enviada = (sub: SubModulo) => sub.itens.some((i) => i.questao && concluido(i));
-  const subDoAtual = atual && modulo.submodulos.find((s) => s.itens.some((i) => i.id === atual.id));
-  const folha =
-    modulo.submodulos.find((s) => s.folha_de_respostas && s.id === folhaPedida) ??
-    (subDoAtual?.folha_de_respostas && atual?.questao && (!itemId || !(acompanha && enviada(subDoAtual))) ? subDoAtual : undefined);
   const feitos = itens.filter(concluido).length;
   const anotar = (item: number, valor: boolean) => setConcluidosAgora((c) => (c[item] === valor ? c : { ...c, [item]: valor }));
 
@@ -100,22 +92,21 @@ function Modulo({ turmas }: { turmas: ConteudoDaTurma[] }) {
       )}
       <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_20rem]">
         <div className="flex min-w-0 flex-col gap-3">
-          {folha ? (
-            <FolhaDeRespostas
-              key={folha.id}
-              submodulo={folha.id}
-              moduloId={modulo.id}
-              aoEnviar={(f) => {
-                setFeitasAgora((feitas) => ({ ...feitas, ...Object.fromEntries(f.linhas.map((l) => [l.item_id, l.correta === true])) }));
-                router.replace(`/curso/aula/?modulo=${modulo.id}&folha=${folha.id}`, { scroll: false });
-              }}
-            />
-          ) : !atual ? (
+          {!atual ? (
             <Aviso tom="info" titulo="Ainda sem aula neste capítulo">
               As aulas ao vivo dele estão na lista. Depois de cada uma, a gravação aparece aqui.
             </Aviso>
           ) : atual.questao ? (
-            <Exercicio item={atual.id} aoResponder={(correta) => setFeitasAgora((f) => ({ ...f, [atual.id]: correta }))} />
+            <Exercicio
+              item={atual.id}
+              aoResponder={(correta, faltam) => {
+                if (faltam === 0) {
+                  // A última do bloco soltou a correção de todas: a árvore relida traz cada acerto.
+                  void recarregar().then(() => setFeitasAgora({}));
+                }
+                setFeitasAgora((f) => ({ ...f, [atual.id]: correta }));
+              }}
+            />
           ) : atual.video ? (
             <VideoDaAula key={atual.id} item={atual} acompanha={acompanha} aoMudar={(valor) => anotar(atual.id, valor)} />
           ) : atual.material ? (
@@ -137,7 +128,7 @@ function Modulo({ turmas }: { turmas: ConteudoDaTurma[] }) {
           ) : (
             <Aviso tom="atencao">Este item está sem vídeo.</Aviso>
           )}
-          {atual && !folha && <div className="flex flex-wrap items-center justify-between gap-3">
+          {atual && <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="min-w-0">
               <h2 className="text-xl font-semibold text-tinta">{atual?.nome}</h2>
               {atual?.video && !atual.video.bloqueado && atual.video.duracao_segundos ? (
@@ -183,24 +174,11 @@ function Modulo({ turmas }: { turmas: ConteudoDaTurma[] }) {
                 </span>
               </summary>
               <ol className="border-t border-borda py-1">
-                {sub.folha_de_respostas && sub.itens.some((i) => i.questao) && (
-                  <li>
-                    <Link
-                      href={`/curso/aula/?modulo=${modulo.id}&folha=${sub.id}`}
-                      scroll={false}
-                      aria-current={folha?.id === sub.id ? "true" : undefined}
-                      className={`flex items-center gap-2 px-4 py-2 text-[15px] ${folha?.id === sub.id ? "bg-lilas font-semibold text-acento-forte" : "text-tinta hover:bg-canvas"}`}
-                    >
-                      <span aria-hidden="true" className="flex w-4 shrink-0 justify-center text-[11px] font-bold text-suave">≡</span>
-                      <span className="truncate">{enviada(sub) ? "Folha de respostas corrigida" : "Folha de respostas"}</span>
-                    </Link>
-                  </li>
-                )}
                 {sub.itens.map((item) => {
-                  const selecionado = !folha && item.id === atual?.id;
+                  const selecionado = item.id === atual?.id;
                   const bloqueado = item.questao ? false : item.video ? item.video.bloqueado : !item.material;
-                  // undefined: ainda não respondeu.
-                  const acertou = !item.questao ? undefined : item.id in feitasAgora ? feitasAgora[item.id] : item.questao.respondida ? item.questao.correta === true : undefined;
+                  // undefined: ainda não respondeu; null: respondeu, e a correção espera a última do bloco.
+                  const acertou = !item.questao ? undefined : item.id in feitasAgora ? feitasAgora[item.id] : item.questao.respondida ? (item.questao.correta ?? null) : undefined;
                   return (
                     <li key={item.id}>
                       <Link
@@ -212,6 +190,8 @@ function Modulo({ turmas }: { turmas: ConteudoDaTurma[] }) {
                         <span aria-hidden="true" className="flex w-4 shrink-0 justify-center text-xs text-suave">
                           {bloqueado ? (
                             <svg width="12" height="12" viewBox="0 0 24 24"><path d="M7 10V7a5 5 0 0 1 10 0v3" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" /><rect x="4.5" y="10" width="15" height="11" rx="2.5" fill="currentColor" /></svg>
+                          ) : acertou === null ? (
+                            <span className="text-[13px] font-bold text-acento">•</span>
                           ) : acertou !== undefined ? (
                             <span className={`font-bold ${acertou ? "text-sucesso" : "text-erro"}`}>{acertou ? "✓" : "✗"}</span>
                           ) : !item.questao && concluido(item) ? (
@@ -227,7 +207,7 @@ function Modulo({ turmas }: { turmas: ConteudoDaTurma[] }) {
                         <span className="truncate">{item.nome}</span>
                         {bloqueado && <span className="sr-only">(bloqueado)</span>}
                         {!item.questao && concluido(item) && <span className="sr-only">({item.video ? "assistida" : "lido"})</span>}
-                        {item.questao && <span className="sr-only">{acertou === undefined ? "(questão para responder)" : acertou ? "(questão: você acertou)" : "(questão: você errou)"}</span>}
+                        {item.questao && <span className="sr-only">{acertou === undefined ? "(questão para responder)" : acertou === null ? "(questão respondida: a correção sai no fim do bloco)" : acertou ? "(questão: você acertou)" : "(questão: você errou)"}</span>}
                       </Link>
                     </li>
                   );

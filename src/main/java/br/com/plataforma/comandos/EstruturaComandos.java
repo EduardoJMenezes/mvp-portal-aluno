@@ -95,40 +95,41 @@ public class EstruturaComandos {
         return new SubmoduloCriado(sub.getId(), sub.getNome(), alvos.modulo().getNome(), turma == null ? null : turma.getNome());
     }
 
-    // --- definir_folha_de_respostas -----------------------------------------
+    // --- definir_gabarito_no_fim --------------------------------------------
 
-    public record DefinirFolhaDeRespostas(
+    public record DefinirGabaritoNoFim(
             @NotBlank(message = "é obrigatória: o nome ou o id da turma") String turma,
             @NotBlank(message = "é obrigatório: o nome ou o id do módulo") String modulo,
             @NotBlank(message = "é obrigatório, ex.: 'Questões da apostila'") String submodulo,
             Boolean ativa) {}
 
-    public record FolhaDefinida(
-            Integer submoduloId, String submodulo, String modulo, boolean folhaDeRespostas, int questoes,
+    public record GabaritoNoFimDefinido(
+            Integer submoduloId, String submodulo, String modulo, boolean gabaritoNoFim, int questoes,
             int alunosQueJaResponderam, String mensagem) {}
 
-    @PostMapping("/definir_folha_de_respostas")
+    @PostMapping("/definir_gabarito_no_fim")
     @Transactional
-    public FolhaDefinida definirFolhaDeRespostas(
-            @AuthenticationPrincipal Identidade ident, @Valid @RequestBody DefinirFolhaDeRespostas pedido) {
+    public GabaritoNoFimDefinido definirGabaritoNoFim(
+            @AuthenticationPrincipal Identidade ident, @Valid @RequestBody DefinirGabaritoNoFim pedido) {
         var turma = catalogo.resolverTurmaOuBiblioteca(pedido.turma());
         var alvos = estrutura.alvos(turma, pedido.modulo(), pedido.submodulo(), null);
         var ativa = pedido.ativa() == null || pedido.ativa();
-        var sub = estrutura.definirFolhaDeRespostas(ident, alvos.submodulo(), ativa);
+        var sub = estrutura.definirGabaritoNoFim(ident, alvos.submodulo(), ativa);
         var questoes = estrutura.linhas(sub).stream().filter(i -> i.getQuestao() != null).map(i -> i.getId()).toList();
         var responderam = (int) exercicios.respostasNosItens(questoes).stream()
                 .map(ExerciciosServico.Resposta::alunoId).distinct().count();
         String mensagem;
         if (!ativa) {
-            mensagem = "Folha desligada: as questões voltam a ser respondidas uma por uma, com o gabarito na hora.";
+            mensagem = "Gabarito no fim desligado: cada questão volta a mostrar a correção logo depois da resposta.";
         } else if (questoes.isEmpty()) {
-            mensagem = "Folha ligada, mas o sub-módulo ainda não tem questão: ponha as questões com criar_questoes_como_itens.";
+            mensagem = "Gabarito no fim ligado, mas o sub-módulo ainda não tem questão: ponha as questões com criar_questoes_como_itens.";
         } else {
-            mensagem = "Folha ligada: o aluno lança as %d letras de uma vez e só então vê a correção.".formatted(questoes.size())
-                    + (responderam > 0 ? " %d aluno(s) já tinham respondido alguma: essas respostas valem, e eles lançam só o que falta."
+            mensagem = ("Gabarito no fim ligado: o aluno responde as %d questões uma por uma e só vê a correção, de todas, "
+                    + "depois da última.").formatted(questoes.size())
+                    + (responderam > 0 ? " %d aluno(s) já tinham respondido alguma: essas respostas valem, e a correção volta a ficar guardada até eles terminarem."
                             .formatted(responderam) : "");
         }
-        return new FolhaDefinida(sub.getId(), sub.getNome(), alvos.modulo().getNome(), sub.isFolhaDeRespostas(),
+        return new GabaritoNoFimDefinido(sub.getId(), sub.getNome(), alvos.modulo().getNome(), sub.isGabaritoNoFim(),
                 questoes.size(), responderam, mensagem);
     }
 

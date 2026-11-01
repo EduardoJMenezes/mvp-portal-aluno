@@ -169,7 +169,7 @@ public class CatalogoServico {
     public record SubModuloComVideos(
             Integer id, String nome, br.com.plataforma.estrutura.TipoSubModulo tipo, Integer ordem,
             List<ItemComVideo> itens, List<br.com.plataforma.aulas.AulasServico.NoCurso> aulas,
-            boolean folhaDeRespostas) {}
+            boolean gabaritoNoFim) {}
 
     /** {@code icone} e {@code fotoVersao}: a capa do cartão, como em {@link EstruturaServico.ModuloNaArvore}. */
     public record ModuloComVideos(
@@ -212,9 +212,9 @@ public class CatalogoServico {
                     .collect(java.util.stream.Collectors.toCollection(java.util.LinkedHashSet::new));
             var videos = acervo.porIds(ids);
             var liberados = acesso.videosLiberados(ident, ids, agora);
-            var feitas = exercicios.feitasPeloAluno(ident.usuarioId(), modulos.stream()
+            var feitas = exercicios.feitasPeloAluno(ident, modulos.stream()
                     .flatMap(m -> m.submodulos().stream()).flatMap(s -> s.itens().stream())
-                    .filter(i -> i.questao() != null).map(EstruturaServico.ItemNaArvore::id).toList());
+                    .filter(i -> i.questao() != null).map(EstruturaServico.ItemNaArvore::id).toList(), agora);
             var vistos = ident.eAluno() ? progresso.concluidosPeloAluno(ident.usuarioId(), modulos.stream()
                     .flatMap(m -> m.submodulos().stream()).flatMap(s -> s.itens().stream())
                     .filter(i -> i.questao() == null).map(EstruturaServico.ItemNaArvore::id).toList()) : java.util.Set.<Integer>of();
@@ -235,7 +235,7 @@ public class CatalogoServico {
                                                             feitas.containsKey(i.id()) ? feitas.get(i.id()).correta() : null),
                                                     i.questao() == null ? vistos.contains(i.id()) : feitas.containsKey(i.id())))
                                             .toList(),
-                                    aoVivo.getOrDefault(s.id(), List.of()), s.folhaDeRespostas()))
+                                    aoVivo.getOrDefault(s.id(), List.of()), s.gabaritoNoFim()))
                                     .toList(),
                             m.icone(), m.fotoVersao()))
                     .toList()));

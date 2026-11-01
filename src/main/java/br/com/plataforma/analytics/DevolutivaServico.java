@@ -375,7 +375,11 @@ public class DevolutivaServico {
         if (!ident.eAluno()) {
             throw new RegraDeNegocio("Esta é a visão do aluno. Para um aluno específico, use o acompanhamento dele.");
         }
-        return montar(respostasDe(List.of(ident.usuarioId()), true, agora), ident, agora);
+        // A questão de gabarito no fim ainda sem correção não entra: certa ou errada, ela contaria o segredo.
+        var guardadas = exercicios.comCorrecaoGuardada(ident, agora);
+        var respostas = respostasDe(List.of(ident.usuarioId()), true, agora).stream()
+                .filter(r -> r.itemId() == null || !guardadas.contains(r.itemId())).toList();
+        return montar(respostas, ident, agora);
     }
 
     /**
