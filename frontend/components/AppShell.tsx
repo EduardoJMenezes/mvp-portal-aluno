@@ -202,8 +202,10 @@ export function AppShell({ children }: { children: ReactNode }) {
   const { sair } = useSessao();
   const caminho = semBarra(usePathname() ?? "/");
   const operador = ehOperador(usuario);
-  // O aluno relê o menu a cada minuto: é assim que a bolinha de ao vivo acende sozinha.
-  const menu = useDados(() => (operador ? Promise.resolve([]) : api.menu()), [operador], operador ? undefined : 60);
+  // O aluno relê o menu a cada minuto: é assim que a bolinha de ao vivo acende sozinha. Com a senha
+  // temporária o backend recusa tudo menos a troca dela, então nem pede: só existe a "Minha conta".
+  const semMenu = operador || usuario.trocar_senha;
+  const menu = useDados(() => (semMenu ? Promise.resolve([]) : api.menu()), [semMenu], semMenu ? undefined : 60);
   const destinos = doAluno(menu.dados ?? []);
 
   // Os menus do cabeçalho são <details>: fecham ao clicar fora e com Esc, como se espera de um menu.

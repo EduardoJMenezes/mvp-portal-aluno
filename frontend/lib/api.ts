@@ -71,7 +71,8 @@ export async function pedir<T>(caminho: string, opcoes: Opcoes = {}): Promise<T>
       if (resposta.status === 401 && !SEM_REDIRECIONAR.includes(caminho)) {
         const volta = encodeURIComponent(window.location.pathname + window.location.search);
         window.location.assign(`/entrar/?volta=${volta}`);
-      } else if (resposta.status === 403 && mensagem.startsWith("Troque a senha temporária")) {
+      } else if (resposta.status === 403 && mensagem.startsWith("Troque a senha temporária") && !window.location.pathname.startsWith("/conta")) {
+        // Já na "Minha conta", mandar para lá de novo recarregaria a página sem parar.
         window.location.assign("/conta/?trocar=1");
       }
     }
