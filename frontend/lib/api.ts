@@ -502,6 +502,8 @@ export type AlunoNaBusca = {
   aulas_concluidas: number;
   questoes_respondidas: number;
   simulados_feitos: number;
+  /** Ainda não trocou a senha que recebeu. */
+  senha_temporaria: boolean;
 };
 export type ResultadoLiberado = { simulado: string; liberado_agora: boolean; liberado_em: string; participantes: number; com_analise: number; sem_analise: number };
 export type QuestaoDaAulaNaTurma = {

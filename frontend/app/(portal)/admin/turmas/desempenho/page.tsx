@@ -27,7 +27,7 @@ function DesempenhoDaTurma() {
       titulo={dados.dados ? `Desempenho · ${dados.dados.turma}` : "Desempenho da turma"}
       legenda="Onde a turma acerta e onde erra, juntando as questões das aulas e os simulados entregues."
       voltar={{ href: "/admin/turmas/", rotulo: "Turmas" }}
-      acoes={<BotaoLink href={`/admin/turmas/alunos/?turma=${turma}`}>Ver aluno por aluno</BotaoLink>}
+      acoes={<BotaoLink href={`/admin/alunos/?turma=${turma}`}>Ver aluno por aluno</BotaoLink>}
     >
       <Estado {...dados} linhas={4}>
         {(d) => {

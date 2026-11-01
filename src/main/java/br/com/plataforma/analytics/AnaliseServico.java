@@ -644,10 +644,11 @@ public class AnaliseServico {
      * {@code ultimaAtividade}: a última aula vista, questão respondida ou simulado, nulo se nunca fez nada.
      * {@code aulasConcluidas}, {@code questoesRespondidas} e {@code simuladosFeitos}: o que ele já fez, em
      * qualquer turma; simulado conta entregue, e o que saiu da tela não entra.
+     * {@code senhaTemporaria}: ainda não trocou a senha que recebeu.
      */
     public record AlunoNaBusca(Integer id, String nome, String email, List<String> turmas, Instant analiseGeralEm,
             Instant cadastradoEm, Instant ultimaAtividade, int aulasConcluidas, int questoesRespondidas,
-            int simuladosFeitos) {}
+            int simuladosFeitos, boolean senhaTemporaria) {}
 
     private record Atividade(Instant ultima, int aulas, int questoes, int simulados) {
         static final Atividade NENHUMA = new Atividade(null, 0, 0, 0);
@@ -712,7 +713,8 @@ public class AnaliseServico {
                 .map(u -> {
                     var fez = atividade.getOrDefault(u.getId(), Atividade.NENHUMA);
                     return new AlunoNaBusca(u.getId(), u.getNome(), u.getEmail(), turmas.getOrDefault(u.getId(), List.of()),
-                            gerais.get(u.getId()), u.getCriadoEm(), fez.ultima(), fez.aulas(), fez.questoes(), fez.simulados());
+                            gerais.get(u.getId()), u.getCriadoEm(), fez.ultima(), fez.aulas(), fez.questoes(), fez.simulados(),
+                            u.isSenhaTemporaria());
                 })
                 .toList();
     }

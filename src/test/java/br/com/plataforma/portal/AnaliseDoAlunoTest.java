@@ -536,7 +536,8 @@ class AnaliseDoAlunoTest extends BaseDoPortal {
                 .andExpect(jsonPath("$[0].turmas").isEmpty())
                 .andExpect(jsonPath("$[0].cadastrado_em").exists())
                 .andExpect(jsonPath("$[0].ultima_atividade").doesNotExist())
-                .andExpect(jsonPath("$[0].questoes_respondidas").value(0));
+                .andExpect(jsonPath("$[0].questoes_respondidas").value(0))
+                .andExpect(jsonPath("$[0].senha_temporaria").value(false));
         get("/api/admin/alunos?busca=otavio", ADMIN)
                 .andExpect(jsonPath("$[0].questoes_respondidas").value(1))
                 .andExpect(jsonPath("$[0].ultima_atividade").value(org.hamcrest.Matchers.startsWith("2026-10-30T12:00")));

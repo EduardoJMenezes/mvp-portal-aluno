@@ -1,16 +1,19 @@
 "use client";
 
+import { KeyRound, UserMinus } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
 import { AnaliseDoSimuladoParaOProfessor, AnaliseGeral } from "@/components/Analise";
 import { AssuntosEmDetalhe } from "@/components/AssuntosEmDetalhe";
 import { CursoDoAluno } from "@/components/CursoDoAluno";
+import { Matricular, type Segredo } from "@/components/Matricular";
+import { Menu } from "@/components/Menu";
 import { AssuntosAoLadoDosColegas, EvolucaoNosSimulados, NumerosDoPanorama } from "@/components/PanoramaDoAluno";
 import { OndeRevisar } from "@/components/Resultado";
 import { Anel } from "@/components/Resultado";
-import { Abas, Aviso, Botao, BotaoLink, Campo, Cartao, Estado, Etiqueta, LinkDeTitulo, Pagina, TituloDeSecao, Vazio } from "@/components/ui";
+import { Abas, Aviso, Botao, BotaoLink, Campo, Cartao, Estado, Etiqueta, LinkDeTitulo, Pagina, Progresso, SegredoUmaVez, TituloDeSecao, Vazio, useConfirmar } from "@/components/ui";
 import { api, useDados, type AlunoNaBusca } from "@/lib/api";
-import { dataCurta, plural } from "@/lib/formato";
+import { dataCurta, emBrasilia, haQuantoTempo, plural } from "@/lib/formato";
 
 export default function PaginaDoDesempenho() {
   return (
@@ -22,44 +25,150 @@ export default function PaginaDoDesempenho() {
 
 const semAcento = (texto: string) => texto.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
 
-/** Todos os alunos da plataforma, com ou sem turma: o professor acha um pelo nome e abre o acompanhamento dele. */
+/** O filtro da turma na URL: o id da turma, "sem" para quem não tem nenhuma, ou nada para todos. */
+const SEM_TURMA = "sem";
+
+/**
+ * Todos os alunos da plataforma, com ou sem turma. Com uma turma no filtro, a mesma tabela vira a
+ * tela da turma: matricular, tirar da turma e quanto cada um já fez do curso dela.
+ */
 function BuscaDeAlunos() {
+  const router = useRouter();
+  const filtro = useSearchParams().get("turma") ?? "";
+  const turmaId = filtro && filtro !== SEM_TURMA ? Number(filtro) : null;
   const alunos = useDados(() => api.alunos());
+  const turmas = useDados(() => api.turmas());
+  // O progresso vem à parte e só com uma turma: se falhar, a lista de alunos continua de pé.
+  const progresso = useDados(() => (turmaId ? api.progressoDaTurma(turmaId).catch(() => null) : Promise.resolve(null)), [turmaId]);
+  const noCurso = new Map(progresso.dados?.alunos.map((a) => [a.id, a]));
+  const turma = turmas.dados?.find((t) => t.id === turmaId);
   const [busca, setBusca] = useState("");
+  const [segredo, setSegredo] = useState<Segredo | null>(null);
+  const [matriculando, setMatriculando] = useState(false);
+  const [erro, setErro] = useState("");
+  const [dialogo, confirmar] = useConfirmar();
   const termo = semAcento(busca.trim());
-  const filtrar = (lista: AlunoNaBusca[]) => (termo ? lista.filter((a) => semAcento(a.nome).includes(termo) || semAcento(a.email).includes(termo)) : lista);
+
+  const naTurma = (a: AlunoNaBusca) => (filtro === SEM_TURMA ? !a.turmas.length : turma ? a.turmas.includes(turma.nome) : !turmaId);
+  const naBusca = (a: AlunoNaBusca) => !termo || semAcento(a.nome).includes(termo) || semAcento(a.email).includes(termo);
+  const escolher = (valor: string) => router.replace(valor ? `/admin/alunos/?turma=${valor}` : "/admin/alunos/", { scroll: false });
+
+  async function redefinir(aluno: AlunoNaBusca) {
+    const sim = await confirmar({
+      titulo: `Nova senha para ${aluno.nome}?`,
+      texto: "A senha atual deixa de valer e as sessões abertas caem. A nova é temporária: o aluno troca no primeiro acesso.",
+      confirmar: "Gerar nova senha",
+    });
+    if (!sim) return;
+    setErro("");
+    try {
+      const r = await api.redefinirSenha(aluno.id);
+      setSegredo({ titulo: `Senha temporária de ${aluno.nome}`, valor: r.senha_temporaria, para: aluno.email });
+      void alunos.recarregar();
+    } catch (ex) {
+      setErro((ex as Error).message);
+    }
+  }
+
+  async function tirar(aluno: AlunoNaBusca) {
+    if (!turma) return;
+    const sim = await confirmar({
+      titulo: `Tirar ${aluno.nome} da ${turma.nome}?`,
+      texto: "O aluno perde o acesso ao curso e aos simulados desta turma na hora. A conta continua, e as provas que já fez ficam no histórico.",
+      confirmar: "Tirar da turma",
+      perigo: true,
+    });
+    if (!sim) return;
+    setErro("");
+    try {
+      await api.desmatricular(turma.id, aluno.id);
+      void alunos.recarregar();
+    } catch (ex) {
+      setErro((ex as Error).message);
+    }
+  }
 
   return (
-    <Pagina titulo="Alunos" legenda="Todos os alunos da plataforma, inclusive os que não estão em nenhuma turma. Abra um para ver o que ele já fez do curso, como está em cada assunto, os simulados e a análise geral.">
-      <Campo rotulo="Aluno" className="max-w-md">
-        {(id) => <input id={id} type="search" autoFocus value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Nome ou e-mail" className="campo" />}
-      </Campo>
-      <Estado {...alunos} linhas={4}>
+    <Pagina
+      titulo={turma ? `Alunos · ${turma.nome}` : "Alunos"}
+      legenda={
+        turma
+          ? `Quem está matriculado vê o curso publicado e os simulados desta turma.${progresso.dados ? ` Hoje o curso dela tem ${plural(progresso.dados.total, "item publicado", "itens publicados")}.` : ""}`
+          : "Todos os alunos da plataforma, inclusive os que não estão em nenhuma turma. Abra um para ver o que ele já fez do curso, como está em cada assunto, os simulados e a análise geral."
+      }
+      acoes={
+        turma && (
+          <>
+            <BotaoLink href={`/admin/turmas/desempenho/?turma=${turma.id}`}>Desempenho da turma</BotaoLink>
+            <Botao variante="primario" onClick={() => setMatriculando(true)}>Matricular aluno</Botao>
+          </>
+        )
+      }
+    >
+      {dialogo}
+      {matriculando && turma && (
+        <Matricular turma={turma.id} aoMatricular={(r) => { if (r) setSegredo(r); void alunos.recarregar(); }} aoFechar={() => setMatriculando(false)} />
+      )}
+      {segredo && (
+        <SegredoUmaVez titulo={segredo.titulo} valor={segredo.valor}>
+          Passe para {segredo.para} por um canal seguro. Ela aparece só agora e o aluno troca no primeiro acesso.
+        </SegredoUmaVez>
+      )}
+      {erro && <Aviso tom="erro">{erro}</Aviso>}
+      <div className="flex flex-wrap items-end gap-3">
+        <Campo rotulo="Aluno" className="w-full max-w-md">
+          {(id) => <input id={id} type="search" autoFocus value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Nome ou e-mail" className="campo" />}
+        </Campo>
+        <Campo rotulo="Turma" className="w-full sm:w-64">
+          {(id) => (
+            <select id={id} value={filtro} onChange={(e) => escolher(e.target.value)} className="campo">
+              <option value="">Todas</option>
+              {turmas.dados?.map((t) => (
+                <option key={t.id} value={String(t.id)}>{t.nome}</option>
+              ))}
+              <option value={SEM_TURMA}>Sem turma</option>
+            </select>
+          )}
+        </Campo>
+      </div>
+      <Estado {...alunos} linhas={4} forma="tabela">
         {(todos) => {
-          const lista = filtrar(todos);
-          if (!todos.length) return <Vazio titulo="Nenhum aluno cadastrado">Os alunos entram pelas turmas, em Turmas e alunos.</Vazio>;
+          const daTurma = todos.filter(naTurma);
+          const lista = daTurma.filter(naBusca);
+          if (!todos.length) return <Vazio titulo="Nenhum aluno cadastrado">Os alunos entram matriculados numa turma: escolha a turma no filtro e use &quot;Matricular aluno&quot;.</Vazio>;
+          if (turmaId && !turma) return turmas.carregando ? null : <Aviso tom="atencao">Esta turma não existe mais. Escolha outra no filtro.</Aviso>;
+          if (!lista.length) {
+            return termo ? (
+              <Vazio titulo="Ninguém com esse nome">Confira a grafia, ou procure pelo e-mail.</Vazio>
+            ) : turma ? (
+              <Vazio titulo="Nenhum aluno nesta turma">Matricule o primeiro em &quot;Matricular aluno&quot;.</Vazio>
+            ) : (
+              <Vazio titulo="Ninguém sem turma">Todo aluno da plataforma está matriculado em alguma turma.</Vazio>
+            );
+          }
           const semTurma = todos.filter((a) => !a.turmas.length).length;
-          if (!lista.length) return <Vazio titulo="Ninguém com esse nome">Confira a grafia, ou procure pelo e-mail.</Vazio>;
           return (
             <>
               <p className="text-sm text-suave">
                 {plural(lista.length, "aluno", "alunos")}
-                {termo ? ` de ${todos.length}` : ""}
-                {semTurma ? ` · ${plural(semTurma, "sem turma", "sem turma")}` : ""}
+                {termo ? ` de ${daTurma.length}` : ""}
+                {!filtro && semTurma ? ` · ${plural(semTurma, "sem turma", "sem turma")}` : ""}
               </p>
               <Cartao className="overflow-x-auto">
-                <table className="tabela min-w-[56rem]">
+                <table className="tabela min-w-[60rem]">
                   <thead>
                     <tr>
                       <th scope="col">Aluno</th>
-                      <th scope="col">Turmas</th>
+                      {!turma && <th scope="col">Turmas</th>}
+                      {turma && <th scope="col">No curso</th>}
                       <th scope="col">Cadastro</th>
-                      <th scope="col">Última atividade</th>
+                      {!turma && <th scope="col">Última atividade</th>}
                       <th scope="col" className="text-right">Aulas</th>
                       <th scope="col" className="text-right">Questões</th>
                       <th scope="col" className="text-right">Simulados</th>
+                      <th scope="col">Acesso</th>
                       <th scope="col">Análise geral</th>
-                      <th scope="col"><span className="sr-only">Abrir</span></th>
+                      <th scope="col"><span className="sr-only">Ações</span></th>
                     </tr>
                   </thead>
                   <tbody>
@@ -67,17 +176,32 @@ function BuscaDeAlunos() {
                       <tr key={a.id}>
                         <td>
                           <LinkDeTitulo href={`/admin/alunos/?aluno=${a.id}`}>{a.nome}</LinkDeTitulo>
-                          <span className="block text-[13px] text-suave">{a.email}</span>
+                          <span className="block whitespace-nowrap text-[13px] text-suave">{a.email}</span>
                         </td>
-                        <td>{a.turmas.length ? a.turmas.join(", ") : <Etiqueta tom="atencao">Sem turma</Etiqueta>}</td>
+                        {!turma && <td>{a.turmas.length ? a.turmas.join(", ") : <Etiqueta tom="atencao">Sem turma</Etiqueta>}</td>}
+                        {turma && (
+                          <td className="min-w-44">
+                            <NoCurso aluno={noCurso.get(a.id)} carregando={progresso.carregando} />
+                          </td>
+                        )}
                         <td className="whitespace-nowrap text-suave">{dataCurta(a.cadastrado_em) || "—"}</td>
-                        <td className="whitespace-nowrap text-suave">{a.ultima_atividade ? dataCurta(a.ultima_atividade) : "Nunca"}</td>
+                        {!turma && <td className="whitespace-nowrap text-suave">{a.ultima_atividade ? dataCurta(a.ultima_atividade) : "Nunca"}</td>}
                         <td className="text-right tabular-nums">{a.aulas_concluidas}</td>
                         <td className="text-right tabular-nums">{a.questoes_respondidas}</td>
                         <td className="text-right tabular-nums">{a.simulados_feitos}</td>
+                        <td>{a.senha_temporaria ? <Etiqueta tom="atencao">Senha temporária</Etiqueta> : <Etiqueta tom="sucesso">Ativo</Etiqueta>}</td>
                         <td>{a.analise_geral_em ? <Etiqueta tom="sucesso">Escrita em {dataCurta(a.analise_geral_em)}</Etiqueta> : <span className="text-suave">—</span>}</td>
-                        <td className="text-right">
-                          <BotaoLink tamanho="mini" href={`/admin/alunos/?aluno=${a.id}`}>Acompanhar</BotaoLink>
+                        <td>
+                          <div className="flex items-center justify-end gap-1">
+                            <BotaoLink tamanho="mini" href={`/admin/alunos/?aluno=${a.id}`}>Acompanhar</BotaoLink>
+                            <Menu
+                              rotulo={`Mais ações de ${a.nome}`}
+                              itens={[
+                                { rotulo: "Gerar nova senha", icone: KeyRound, aoEscolher: () => void redefinir(a) },
+                                ...(turma ? ["divisor" as const, { rotulo: "Tirar da turma", icone: UserMinus, perigo: true, aoEscolher: () => void tirar(a) }] : []),
+                              ]}
+                            />
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -89,6 +213,24 @@ function BuscaDeAlunos() {
         }}
       </Estado>
     </Pagina>
+  );
+}
+
+/** Quanto do curso da turma o aluno já fez e quando apareceu pela última vez. */
+function NoCurso({ aluno, carregando }: { aluno?: { nome: string; concluidos: number; total: number; ultima_atividade: string | null }; carregando: boolean }) {
+  if (!aluno) return <span className="text-suave">{carregando ? "…" : "—"}</span>;
+  if (aluno.total === 0) return <span className="text-suave">Sem itens publicados</span>;
+  return (
+    <div className="flex flex-col gap-1">
+      <span className="flex items-baseline justify-between gap-2">
+        <span className="font-medium tabular-nums text-tinta">{aluno.concluidos} de {aluno.total}</span>
+        <span className="text-[13px] tabular-nums text-suave">{Math.round((aluno.concluidos / aluno.total) * 100)}%</span>
+      </span>
+      <Progresso feitos={aluno.concluidos} total={aluno.total} rotulo={`Progresso de ${aluno.nome} no curso`} />
+      <span className="text-[13px] text-suave" title={aluno.ultima_atividade ? emBrasilia(aluno.ultima_atividade) : undefined}>
+        {aluno.ultima_atividade ? `Última atividade ${haQuantoTempo(aluno.ultima_atividade)}` : "Ainda não começou"}
+      </span>
+    </div>
   );
 }
 
