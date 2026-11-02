@@ -187,6 +187,48 @@ class GabaritoNoFimTest extends BaseDoPortal {
         get("/api/aluno/submodulos/" + secao + "/analise", ADMIN).andExpect(status().isForbidden());
     }
 
+    /**
+     * A turma pela dificuldade de cada questão: o erro que quase todos acertaram vem primeiro, a
+     * posição só aparece do lado bom e os próximos passos param em três.
+     */
+    @Test
+    void aTurmaOrdenaOsErrosEDaAPosicao() throws Exception {
+        var secao = jdbc.queryForObject("SELECT submodulo_id FROM items WHERE id = ?", Integer.class, linhas.get(0));
+        ligar().andExpect(status().isOk());
+        // Quatro colegas: todos acertam a Q03 e erram a Q01; a Q02 só um acerta. Um não termina.
+        String[][] dosColegas = {{"A", "D", "E"}, {"A", "A", "E"}, {"A", "A", "E"}, {"A", "A", null}};
+        for (var i = 0; i < dosColegas.length; i++) {
+            var colega = criarUsuario("Colega " + i, "colega" + i + "@teste.invalid", SENHA, "ALUNO", false);
+            matricular(colega, 10);
+            for (var q = 0; q < 3; q++) {
+                if (dosColegas[i][q] != null) {
+                    post("/api/aluno/itens/" + linhas.get(q) + "/responder", "{\"alternativa\": \"%s\"}".formatted(dosColegas[i][q]), colega)
+                            .andExpect(status().isOk());
+                }
+            }
+        }
+
+        responder(0, "A").andExpect(status().isOk());
+        responder(1, "A").andExpect(status().isOk());
+        responder(2, "A").andExpect(status().isOk());
+        get("/api/aluno/submodulos/" + secao + "/analise", ALUNO)
+                .andExpect(jsonPath("$.questoes[*].turma_acertou").value(Matchers.contains(0, 25, 100)))
+                .andExpect(jsonPath("$.questoes[*].colegas").value(Matchers.contains(4, 4, 3)))
+                .andExpect(jsonPath("$.erros[*].nome").value(Matchers.contains("Q03", "Q02", "Q01")))
+                .andExpect(jsonPath("$.posicao").value(nullValue()));
+
+        // Com duas certas, passa dos dois colegas que terminaram com uma: acima da metade.
+        jdbc.update("UPDATE item_answers SET correta = true WHERE aluno_id = ? AND item_id IN (?, ?)", ALUNO, linhas.get(1), linhas.get(2));
+        get("/api/aluno/submodulos/" + secao + "/analise", ALUNO)
+                .andExpect(jsonPath("$.posicao").value("Neste bloco, você ficou acima da metade da turma."))
+                .andExpect(jsonPath("$.erros[*].nome").value(Matchers.contains("Q01")));
+        // Com as três, passa de todos.
+        jdbc.update("UPDATE item_answers SET correta = true WHERE aluno_id = ? AND item_id = ?", ALUNO, linhas.get(0));
+        get("/api/aluno/submodulos/" + secao + "/analise", ALUNO)
+                .andExpect(jsonPath("$.posicao").value("Neste bloco, você ficou entre os 25% melhores da turma."))
+                .andExpect(jsonPath("$.erros").isEmpty());
+    }
+
     @Test
     void oProfessorVeAPreviaComGabaritoENaoResponde() throws Exception {
         ligar().andExpect(status().isOk());

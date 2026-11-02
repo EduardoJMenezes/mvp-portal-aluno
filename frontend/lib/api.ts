@@ -229,6 +229,8 @@ export type Exercicio = {
 };
 /** A análise de quem terminou as questões de uma seção. Rasa de propósito: a profunda é do professor. */
 export type LigacaoDaAnalise = { item_id: number; secao_id: number; nome: string };
+/** `turma_acertou`: % dos colegas (ele fora) que acertaram; nulo se nenhum respondeu. */
+export type QuestaoDaAnalise = { item_id: number; nome: string; correta: boolean; assunto: string | null; subassunto: string | null; turma_acertou: number | null; colegas: number };
 export type AnaliseDaSecao = {
   modulo_id: number;
   modulo: string;
@@ -240,10 +242,15 @@ export type AnaliseDaSecao = {
   acertos: number;
   total: number;
   percentual: number;
-  questoes: { item_id: number; nome: string; correta: boolean; assunto: string | null; subassunto: string | null }[];
+  questoes: QuestaoDaAnalise[];
   por_assunto: { assunto: string; acertos: number; questoes: number; percentual: number; media_da_turma: number; alunos_na_media: number }[];
   sobre_os_acertos: string | null;
   sobre_os_erros: string | null;
+  /** As erradas, da que a turma mais acertou para a que menos acertou. */
+  erros: QuestaoDaAnalise[];
+  /** Só do lado bom ("entre os 25% melhores", "acima da metade"); nulo no resto. */
+  posicao: string | null;
+  /** Os próximos passos: três no máximo. */
   para_estudar: { ponto: string; questoes: LigacaoDaAnalise[]; videos: LigacaoDaAnalise[] }[];
 };
 /** Aula ao vivo agendada no sub-módulo, enquanto a gravação não chegou. ENCERRADA aqui é "processando". */

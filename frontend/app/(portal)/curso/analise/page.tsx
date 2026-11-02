@@ -9,7 +9,7 @@ import { GradeQuestoes } from "@/components/GradeQuestoes";
 import { Player } from "@/components/Player";
 import { Anel } from "@/components/Resultado";
 import { Aviso, Botao, BotaoLink, Cartao, Estado, Etiqueta, Pagina, TituloDeSecao } from "@/components/ui";
-import { api, useDados, type AnaliseDaSecao, type ConteudoDaTurma, type LigacaoDaAnalise } from "@/lib/api";
+import { api, useDados, type AnaliseDaSecao, type ConteudoDaTurma, type LigacaoDaAnalise, type QuestaoDaAnalise } from "@/lib/api";
 import { enderecoDaSecao, enderecoDoCapitulo } from "@/lib/curso";
 import { plural, porcento } from "@/lib/formato";
 
@@ -17,6 +17,9 @@ import { plural, porcento } from "@/lib/formato";
 // vermelha, o desempenho por assunto contra a média da turma, e os blocos de acertos e erros com a
 // pizza de cada um. Os textos são curtos de propósito — "errou isto, estude isto". A leitura
 // aprofundada é do professor, não da tela.
+//
+// A turma entra pela dificuldade de cada questão: os erros vêm do que quase todos acertaram para o
+// que poucos acertaram, e os próximos passos são três no máximo. A posição só aparece do lado bom.
 //
 // A navegação é a da tela: o aluno veio rever. Questão e vídeo abrem num painel por cima, com
 // anterior/próxima lá dentro, e fechar devolve à análise no mesmo ponto — nada de ir para outra
@@ -83,6 +86,7 @@ function Conteudo({ a, moduloId, turmas }: { a: AnaliseDaSecao; moduloId: number
           <p className="font-titulo text-2xl font-bold text-tinta">
             {a.acertos} de {a.total} <span className="text-base font-normal text-tinta-2">acertos</span>
           </p>
+          {a.posicao && <p className="mt-1 text-[15px] font-medium text-sucesso">{a.posicao}</p>}
           <p className="mt-1 text-[15px] text-tinta-2">Clique numa questão da grade para ver a resolução.</p>
         </div>
       </Cartao>
@@ -134,26 +138,45 @@ function Conteudo({ a, moduloId, turmas }: { a: AnaliseDaSecao; moduloId: number
       <div className="grid gap-5 lg:grid-cols-2">
         <Bloco titulo="Acertos" icone={<CircleCheck aria-hidden="true" className="size-5 text-sucesso-vivo" />} texto={a.sobre_os_acertos} fatias={fatias(true)} vazio="Nenhum acerto neste bloco." />
         <Bloco titulo="Erros" icone={<CircleX aria-hidden="true" className="size-5 text-erro" />} texto={a.sobre_os_erros} fatias={fatias(false)} vazio="Nenhum erro neste bloco.">
+          {a.erros.length > 0 && (
+            <div className="flex flex-col gap-2 border-t border-borda pt-3">
+              <h3 className="text-[15px] font-semibold text-tinta">Reveja nesta ordem</h3>
+              <ol className="flex flex-col gap-1">
+                {a.erros.map((q) => (
+                  <li key={q.item_id} className="flex flex-wrap items-center gap-x-3 gap-y-0.5">
+                    <Botao tamanho="mini" variante="discreto" onClick={() => abrirQuestao(q.item_id)}>
+                      <SquarePen aria-hidden="true" className="size-4" /> Resolução da {q.nome}
+                    </Botao>
+                    <span className="text-[13px] text-suave">{daTurma(q)}</span>
+                  </li>
+                ))}
+              </ol>
+            </div>
+          )}
           {a.para_estudar.length > 0 && (
-            <ul className="flex flex-col gap-3 border-t border-borda pt-3">
-              {a.para_estudar.map((p) => (
-                <li key={p.ponto} className="flex flex-col gap-1.5">
-                  <span className="text-[15px] font-semibold text-tinta">{p.ponto}</span>
-                  <span className="flex flex-wrap gap-x-3 gap-y-1">
-                    {p.questoes.map((q) => (
-                      <Botao key={q.item_id} tamanho="mini" variante="discreto" onClick={() => abrirQuestao(q.item_id)}>
-                        <SquarePen aria-hidden="true" className="size-4" /> Resolução da {q.nome}
-                      </Botao>
-                    ))}
-                    {p.videos.map((v) => (
-                      <Botao key={v.item_id} tamanho="mini" variante="discreto" onClick={() => setAberto({ tipo: "video", ligacao: v })}>
-                        <PlayCircle aria-hidden="true" className="size-4" /> {v.nome}
-                      </Botao>
-                    ))}
-                  </span>
-                </li>
-              ))}
-            </ul>
+            <div className="flex flex-col gap-2 border-t border-borda pt-3">
+              <h3 className="text-[15px] font-semibold text-tinta">Próximos passos</h3>
+              <ol className="flex flex-col gap-3">
+                {a.para_estudar.map((p, i) => (
+                  <li key={p.ponto} className="flex flex-col gap-1.5">
+                    <span className="text-[15px] text-tinta">
+                      <span className="font-semibold">{i + 1}.</span> Estude {p.ponto}
+                    </span>
+                    {p.videos.length > 0 ? (
+                      <span className="flex flex-wrap gap-x-3 gap-y-1">
+                        {p.videos.map((v) => (
+                          <Botao key={v.item_id} tamanho="mini" variante="discreto" onClick={() => setAberto({ tipo: "video", ligacao: v })}>
+                            <PlayCircle aria-hidden="true" className="size-4" /> {v.nome}
+                          </Botao>
+                        ))}
+                      </span>
+                    ) : (
+                      <span className="text-[13px] text-suave">Reveja a resolução: {juntar(p.questoes.map((q) => q.nome))}.</span>
+                    )}
+                  </li>
+                ))}
+              </ol>
+            </div>
           )}
         </Bloco>
       </div>
@@ -195,7 +218,7 @@ function Painel({ a, aberto, turmas, mudar }: { a: AnaliseDaSecao; aberto: Abert
           {q.correta ? <Etiqueta tom="sucesso">Acertou</Etiqueta> : <Etiqueta tom="erro">Errou</Etiqueta>}
         </span>
       }
-      legenda={[q.assunto, q.subassunto].filter(Boolean).join(" · ") || undefined}
+      legenda={[q.assunto, q.subassunto, q.turma_acertou !== null ? daTurma(q) : null].filter(Boolean).join(" · ") || undefined}
       rodape={
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex gap-2">
@@ -213,6 +236,21 @@ function Painel({ a, aberto, turmas, mudar }: { a: AnaliseDaSecao; aberto: Abert
       <Exercicio key={q.item_id} item={q.item_id} />
     </OffCanvas>
   );
+}
+
+/**
+ * Quanto a turma acertou a questão. Errar a que poucos acertaram é normal, e a frase diz isso para o
+ * aluno não se cobrar à toa.
+ */
+function daTurma(q: QuestaoDaAnalise): string {
+  if (q.turma_acertou === null) return "nenhum colega respondeu ainda";
+  const quantos = `a turma acertou ${porcento(q.turma_acertou)} (${plural(q.colegas, "colega", "colegas")})`;
+  return !q.correta && q.turma_acertou <= 30 ? `${quantos} · questão difícil` : quantos;
+}
+
+/** "Q01", "Q01 e Q04", "Q01, Q04 e Q07". */
+function juntar(partes: string[]): string {
+  return partes.length <= 1 ? partes.join("") : `${partes.slice(0, -1).join(", ")} e ${partes.at(-1)}`;
 }
 
 type Fatia = { rotulo: string; valor: number; cor: string };
