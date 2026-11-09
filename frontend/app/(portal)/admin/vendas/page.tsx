@@ -90,7 +90,7 @@ function Planos() {
                         <Etiqueta tom="info">{plano.tipo === "MENSAL" ? "Assinatura mensal" : "Pagamento único"}</Etiqueta>
                       </div>
                       <p className="text-lg font-semibold text-tinta">{plano.nome}</p>
-                      <p className="text-[15px] text-tinta-2">{preco(plano.tipo, plano.preco_centavos, plano.parcelas_max)}</p>
+                      <p className="text-[15px] text-tinta-2">{preco(plano.tipo, plano.preco_centavos, plano.parcelas_max, plano.mensalidades)}</p>
                       <p className="text-[13px] text-suave">
                         Dá acesso a: {plano.turmas.join(", ")}
                         {plano.acesso_ate && ` · até ${dataCurta(plano.acesso_ate + "T12:00:00")}`}
@@ -120,8 +120,11 @@ function Planos() {
   );
 }
 
-function preco(tipo: TipoDePlano, centavos: number, parcelas: number): string {
-  if (tipo === "MENSAL") return `${reais(centavos)} por mês · cartão de crédito`;
+function preco(tipo: TipoDePlano, centavos: number, parcelas: number, mensalidades: number | null): string {
+  if (tipo === "MENSAL")
+    return mensalidades
+      ? `${mensalidades}x de ${reais(centavos)}, uma por mês · cartão de crédito`
+      : `${reais(centavos)} por mês, até o aluno cancelar · cartão de crédito`;
   return parcelas > 1
     ? `${reais(centavos)} à vista no Pix ou em até ${parcelas}x no cartão`
     : `${reais(centavos)} à vista no Pix ou no cartão`;
@@ -163,6 +166,8 @@ function FormularioDoPlano({
   const [tipo, setTipo] = useState<TipoDePlano>(plano?.tipo ?? "MENSAL");
   const [valor, setValor] = useState(plano ? (plano.preco_centavos / 100).toFixed(2).replace(".", ",") : "");
   const [parcelas, setParcelas] = useState(plano?.parcelas_max ?? 12);
+  // 0 é "até o aluno cancelar"; plano novo já nasce com o ano do curso.
+  const [mensalidades, setMensalidades] = useState(plano ? (plano.mensalidades ?? 0) : 12);
   const [acessoAte, setAcessoAte] = useState(plano?.acesso_ate ?? "");
   const [escolhidas, setEscolhidas] = useState<string[]>(plano?.turmas ?? []);
   const [ativo, setAtivo] = useState(plano?.ativo ?? true);
@@ -185,6 +190,7 @@ function FormularioDoPlano({
         tipo,
         preco_centavos: preco,
         parcelas_max: tipo === "UNICO" ? parcelas : 1,
+        ...(tipo === "MENSAL" && { mensalidades }),
         acesso_ate: tipo === "UNICO" && acessoAte ? acessoAte : null,
         turmas: escolhidas,
         ativo,
@@ -285,7 +291,7 @@ function FormularioDoPlano({
               marcada={tipo === "MENSAL"}
               aoMarcar={() => setTipo("MENSAL")}
               titulo="Assinatura mensal"
-              texto="Cobra todo mês no cartão de crédito."
+              texto="Cobra uma vez por mês no cartão de crédito."
             />
             <OpcaoDeTipo
               marcada={tipo === "UNICO"}
@@ -310,6 +316,25 @@ function FormularioDoPlano({
               />
             )}
           </Campo>
+          {tipo === "MENSAL" && (
+            <Campo rotulo="Quantas mensalidades" dica="Na última, a cobrança para sozinha.">
+              {(id) => (
+                <select
+                  id={id}
+                  className="campo"
+                  value={mensalidades}
+                  onChange={(e) => setMensalidades(Number(e.target.value))}
+                >
+                  {Array.from({ length: 23 }, (_, i) => i + 2).map((n) => (
+                    <option key={n} value={n}>
+                      {n} mensalidades
+                    </option>
+                  ))}
+                  <option value={0}>Sem fim (até o aluno cancelar)</option>
+                </select>
+              )}
+            </Campo>
+          )}
           {tipo === "UNICO" && (
             <>
               <Campo rotulo="Parcelas no cartão">

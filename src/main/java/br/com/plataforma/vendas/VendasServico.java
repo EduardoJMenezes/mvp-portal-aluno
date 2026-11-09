@@ -64,11 +64,13 @@ public class VendasServico {
 
     // --- planos (professor) --------------------------------------------------
 
+    /** {@code mensalidades}: só na assinatura mensal; 0 tira o limite (cobra até o aluno cancelar). */
     public record DadosDoPlano(String nome, String link, String tipo, Integer precoCentavos, Integer parcelasMax,
-            LocalDate acessoAte, List<String> turmas, Boolean ativo) {}
+            Integer mensalidades, LocalDate acessoAte, List<String> turmas, Boolean ativo) {}
 
     public record PlanoNaLista(Integer planoId, String nome, String link, Plano.Tipo tipo, Integer precoCentavos,
-            Integer parcelasMax, LocalDate acessoAte, boolean ativo, List<String> turmas, long alunosComAcesso) {}
+            Integer parcelasMax, Integer mensalidades, LocalDate acessoAte, boolean ativo, List<String> turmas,
+            long alunosComAcesso) {}
 
     @Transactional(readOnly = true)
     public List<PlanoNaLista> listarPlanos(Identidade ident) {
@@ -78,7 +80,7 @@ public class VendasServico {
 
     private PlanoNaLista naLista(Plano p) {
         return new PlanoNaLista(p.getId(), p.getNome(), p.getLink(), p.getTipo(), p.getPrecoCentavos(),
-                p.getParcelasMax(), p.getAcessoAte(), p.isAtivo(), p.getTurmas().stream().map(Turma::getNome).toList(),
+                p.getParcelasMax(), p.getMensalidades(), p.getAcessoAte(), p.isAtivo(), p.getTurmas().stream().map(Turma::getNome).toList(),
                 pedidos.comAcesso(p));
     }
 
@@ -136,6 +138,12 @@ public class VendasServico {
         if (parcelas < 1 || parcelas > 12) {
             throw new RegraDeNegocio("Parcelas: de 1 a 12.");
         }
+        Integer mensalidades = tipo != Plano.Tipo.MENSAL ? null
+                : d.mensalidades() != null ? (d.mensalidades() == 0 ? null : d.mensalidades())
+                : novo ? null : p.getMensalidades();
+        if (mensalidades != null && (mensalidades < 2 || mensalidades > 24)) {
+            throw new RegraDeNegocio("Número de mensalidades: de 2 a 24 (ou sem limite, até o aluno cancelar).");
+        }
         var acessoAte = tipo == Plano.Tipo.MENSAL ? null : d.acessoAte() != null ? d.acessoAte() : (novo ? null : p.getAcessoAte());
         if (acessoAte != null && acessoAte.isBefore(LocalDate.now(BRASILIA))) {
             throw new RegraDeNegocio("O 'acesso até' já passou.");
@@ -145,7 +153,7 @@ public class VendasServico {
             throw new RegraDeNegocio("Escolha ao menos uma turma: é o que o aluno passa a acessar.");
         }
         var ativo = d.ativo() == null ? (novo || p.isAtivo()) : d.ativo();
-        p.mudar(nome.strip(), link, tipo, preco, parcelas, acessoAte, List.copyOf(turmas), ativo, novo ? null : agora);
+        p.mudar(nome.strip(), link, tipo, preco, parcelas, mensalidades, acessoAte, List.copyOf(turmas), ativo, novo ? null : agora);
     }
 
     private static String escolher(String novo, String atual, boolean criando) {
@@ -169,13 +177,13 @@ public class VendasServico {
     public record TurmaNoPlano(String nome, int modulos, int aulas) {}
 
     public record PlanoPublico(String nome, String link, Plano.Tipo tipo, Integer precoCentavos, Integer parcelasMax,
-            LocalDate acessoAte, List<TurmaNoPlano> turmas) {}
+            Integer mensalidades, LocalDate acessoAte, List<TurmaNoPlano> turmas) {}
 
     @Transactional(readOnly = true)
     public PlanoPublico planoPublico(String link) {
         var p = aVenda(link);
         return new PlanoPublico(p.getNome(), p.getLink(), p.getTipo(), p.getPrecoCentavos(), p.getParcelasMax(),
-                p.getAcessoAte(), p.getTurmas().stream().map(t -> new TurmaNoPlano(t.getNome(), estrutura.contarModulos(t),
+                p.getMensalidades(), p.getAcessoAte(), p.getTurmas().stream().map(t -> new TurmaNoPlano(t.getNome(), estrutura.contarModulos(t),
                         estrutura.contarItensDaTurma(t, Status.PUBLICADO))).toList());
     }
 
@@ -227,7 +235,7 @@ public class VendasServico {
                 celular.isEmpty() ? null : celular, cep, numero));
         var checkout = asaas.criarCheckout(new Asaas.NovoCheckout(plano.getNome(),
                 "Acesso a " + String.join(", ", plano.getTurmas().stream().map(Turma::getNome).toList()),
-                plano.getPrecoCentavos(), plano.getTipo(), plano.getParcelasMax(),
+                plano.getPrecoCentavos(), plano.getTipo(), plano.getParcelasMax(), plano.getMensalidades(),
                 new Asaas.Comprador(nome, email, cpf, celular.isEmpty() ? null : celular, cep, numero),
                 "pedido-" + pedido.getId(),
                 base + "/assinar/pronto/?pedido=" + token,

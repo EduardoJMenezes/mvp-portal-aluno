@@ -26,7 +26,8 @@ class AsaasDeVerdadeTest {
 
         for (var tipo : Plano.Tipo.values()) {
             var checkout = asaas.criarCheckout(new Asaas.NovoCheckout("[TESTE] Extensivo 2026 — plano de teste",
-                    "Acesso a Extensivo 2026", 19700, tipo, tipo == Plano.Tipo.UNICO ? 12 : 1, comprador,
+                    "Acesso a Extensivo 2026", 19700, tipo, tipo == Plano.Tipo.UNICO ? 12 : 1,
+                    tipo == Plano.Tipo.MENSAL ? 12 : null, comprador,
                     "teste-" + tipo, "https://app-production-e5b7.up.railway.app/assinar/pronto/?pedido=teste",
                     "https://app-production-e5b7.up.railway.app/assinar/teste"));
             System.out.println("CHECKOUT_" + tipo + "=" + checkout.link());

@@ -123,6 +123,7 @@ class VendasTest extends BaseDoPortal {
         var enviado = asaasDeMentira().criados.getLast();
         assertThat(enviado.tipo()).isEqualTo(Plano.Tipo.MENSAL);
         assertThat(enviado.valorCentavos()).isEqualTo(19700);
+        assertThat(enviado.mensalidades()).as("sem número, cobra até o aluno cancelar").isNull();
         assertThat(enviado.comprador().cpf()).isEqualTo(CPF);
         assertThat(enviado.urlDeVolta()).endsWith("/assinar/extensivo-2027");
         var token = tokenDoUltimoCheckout();
@@ -253,6 +254,35 @@ class VendasTest extends BaseDoPortal {
         avisar("""
                 {"event": "PAYMENT_REFUNDED", "payment": {"subscription": "sub_9", "customer": "cus_9"}}""");
         assertThat(matriculasDoPedido()).isZero();
+    }
+
+    @Test
+    void assinaturaDoAnoParaNaDecimaSegundaMensalidade() throws Exception {
+        post("/api/admin/vendas/planos", """
+                {"nome": "Extensivo 2027 — 12x", "link": "extensivo-2027-12x", "tipo": "MENSAL",
+                 "preco_centavos": 19700, "mensalidades": 12, "turmas": ["Extensivo 2027"]}""", ADMIN)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.mensalidades").value(12));
+        mvc.perform(MockMvcRequestBuilders.get("/api/vendas/planos/extensivo-2027-12x"))
+                .andExpect(jsonPath("$.mensalidades").value(12));
+        comprar("extensivo-2027-12x", "Carla Souza", "carla@exemplo.com", CPF).andExpect(status().isOk());
+        assertThat(asaasDeMentira().criados.getLast().mensalidades()).isEqualTo(12);
+
+        post("/api/admin/vendas/planos", """
+                {"nome": "Mensal demais", "link": "mensal-demais", "tipo": "MENSAL",
+                 "preco_centavos": 19700, "mensalidades": 30, "turmas": ["Extensivo 2027"]}""", ADMIN)
+                .andExpect(status().is4xxClientError());
+    }
+
+    @Test
+    void dataLimiteDaAssinaturaPegaAUltimaMensalidadeENaoAProxima() {
+        var primeira = java.time.LocalDate.of(2027, 1, 31);
+        var limite = Asaas.ultimoVencimentoAte(primeira, 12);
+        // 12ª vence em 31/12/2027; a 13ª seria 31/01/2028.
+        assertThat(limite).isAfterOrEqualTo(java.time.LocalDate.of(2027, 12, 31))
+                .isBefore(java.time.LocalDate.of(2028, 1, 28));
+        assertThat(Asaas.ultimoVencimentoAte(java.time.LocalDate.of(2026, 11, 9), 12))
+                .isAfterOrEqualTo(java.time.LocalDate.of(2027, 10, 9)).isBefore(java.time.LocalDate.of(2027, 11, 9));
     }
 
     @Test

@@ -38,10 +38,11 @@ public class VendasPortal {
     // --- professor -----------------------------------------------------------
 
     public record PlanoIn(@Size(max = 120) String nome, @Size(max = 60) String link, String tipo, Integer precoCentavos,
-            Integer parcelasMax, LocalDate acessoAte, List<String> turmas, Boolean ativo) {
+            Integer parcelasMax, Integer mensalidades, LocalDate acessoAte, List<String> turmas, Boolean ativo) {
 
         VendasServico.DadosDoPlano dados() {
-            return new VendasServico.DadosDoPlano(nome, link, tipo, precoCentavos, parcelasMax, acessoAte, turmas, ativo);
+            return new VendasServico.DadosDoPlano(nome, link, tipo, precoCentavos, parcelasMax, mensalidades, acessoAte,
+                    turmas, ativo);
         }
     }
 

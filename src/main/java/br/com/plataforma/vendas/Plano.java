@@ -50,6 +50,10 @@ public class Plano {
     @Column(name = "parcelas_max", nullable = false)
     private Integer parcelasMax;
 
+    /** Só na assinatura mensal: quantas cobranças ela faz (ex.: 12). Vazio é até o aluno cancelar. */
+    @Column(name = "mensalidades")
+    private Integer mensalidades;
+
     /** Só no pagamento único: até quando o acesso vale. Vazio é sem prazo. */
     @Column(name = "acesso_ate")
     private LocalDate acessoAte;
@@ -73,16 +77,17 @@ public class Plano {
 
     Plano(String nome, String link, Tipo tipo, int precoCentavos, int parcelasMax, LocalDate acessoAte,
             List<Turma> turmas) {
-        mudar(nome, link, tipo, precoCentavos, parcelasMax, acessoAte, turmas, true, null);
+        mudar(nome, link, tipo, precoCentavos, parcelasMax, null, acessoAte, turmas, true, null);
     }
 
-    void mudar(String nome, String link, Tipo tipo, int precoCentavos, int parcelasMax, LocalDate acessoAte,
-            List<Turma> turmas, boolean ativo, Instant agora) {
+    void mudar(String nome, String link, Tipo tipo, int precoCentavos, int parcelasMax, Integer mensalidades,
+            LocalDate acessoAte, List<Turma> turmas, boolean ativo, Instant agora) {
         this.nome = nome;
         this.link = link;
         this.tipo = tipo;
         this.precoCentavos = precoCentavos;
         this.parcelasMax = parcelasMax;
+        this.mensalidades = mensalidades;
         this.acessoAte = acessoAte;
         this.turmas.clear();
         this.turmas.addAll(turmas);
@@ -112,6 +117,10 @@ public class Plano {
 
     public Integer getParcelasMax() {
         return parcelasMax;
+    }
+
+    public Integer getMensalidades() {
+        return mensalidades;
     }
 
     public LocalDate getAcessoAte() {

@@ -25,12 +25,22 @@ public interface Asaas {
 
     record Comprador(String nome, String email, String cpf, String celular, String cep, String numero) {}
 
+    /** {@code mensalidades}: quantas cobranças a assinatura mensal faz; null é até o aluno cancelar. */
     record NovoCheckout(String titulo, String descricao, int valorCentavos, Plano.Tipo tipo, int parcelasMax,
-            Comprador comprador, String referencia, String urlDeSucesso, String urlDeVolta) {}
+            Integer mensalidades, Comprador comprador, String referencia, String urlDeSucesso, String urlDeVolta) {}
 
     record Checkout(String id, String link) {}
 
     Checkout criarCheckout(NovoCheckout pedido);
+
+    /**
+     * O checkout não aceita "número de cobranças", só a data limite dos vencimentos ({@code endDate}).
+     * A n-ésima mensalidade vence {@code n - 1} meses depois da primeira; a data limite fica 15 dias
+     * depois dela — folga para o ajuste de fim de mês (31 vira 30, 28) sem alcançar a seguinte.
+     */
+    static LocalDate ultimoVencimentoAte(LocalDate primeira, int mensalidades) {
+        return primeira.plusMonths(mensalidades - 1).plusDays(15);
+    }
 
     /** Chave de teste (sandbox) e de produção são contas diferentes; o prefixo diz qual é qual. */
     static String baseDaChave(String chave) {
@@ -60,8 +70,12 @@ public interface Asaas {
                     : p.parcelasMax() > 1 ? List.of("DETACHED", "INSTALLMENT") : List.of("DETACHED"));
             if (mensal) {
                 // A primeira mensalidade cai hoje; as seguintes, no mesmo dia dos meses seguintes.
-                corpo.put("subscription", Map.of("cycle", "MONTHLY",
-                        "nextDueDate", LocalDate.now(ZoneId.of("America/Sao_Paulo")).toString()));
+                var hoje = LocalDate.now(ZoneId.of("America/Sao_Paulo"));
+                var assinatura = new HashMap<String, Object>(Map.of("cycle", "MONTHLY", "nextDueDate", hoje.toString()));
+                if (p.mensalidades() != null) {
+                    assinatura.put("endDate", ultimoVencimentoAte(hoje, p.mensalidades()).toString());
+                }
+                corpo.put("subscription", assinatura);
             } else if (p.parcelasMax() > 1) {
                 corpo.put("installment", Map.of("maxInstallmentCount", p.parcelasMax()));
             }

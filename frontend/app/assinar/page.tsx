@@ -38,7 +38,13 @@ function Assinar() {
 }
 
 function precoPorExtenso(p: PlanoPublico): { valor: string; detalhe: string } {
-  if (p.tipo === "MENSAL") return { valor: reais(p.preco_centavos), detalhe: "por mês, no cartão de crédito" };
+  if (p.tipo === "MENSAL")
+    return p.mensalidades
+      ? {
+          valor: `${p.mensalidades}x de ${reais(p.preco_centavos)}`,
+          detalhe: "uma por mês, no cartão de crédito",
+        }
+      : { valor: reais(p.preco_centavos), detalhe: "por mês, no cartão de crédito" };
   if (p.parcelas_max > 1)
     return {
       valor: reais(p.preco_centavos),

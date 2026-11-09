@@ -827,6 +827,8 @@ export type PlanoDeVenda = {
   tipo: TipoDePlano;
   preco_centavos: number;
   parcelas_max: number;
+  /** Só na assinatura mensal: quantas cobranças faz. null é até o aluno cancelar. */
+  mensalidades: number | null;
   acesso_ate: string | null;
   ativo: boolean;
   turmas: string[];
@@ -839,6 +841,8 @@ export type DadosDoPlano = Partial<{
   tipo: TipoDePlano;
   preco_centavos: number;
   parcelas_max: number;
+  /** 0 tira o limite. */
+  mensalidades: number;
   acesso_ate: string | null;
   turmas: string[];
   ativo: boolean;
@@ -865,6 +869,7 @@ export type PlanoPublico = {
   tipo: TipoDePlano;
   preco_centavos: number;
   parcelas_max: number;
+  mensalidades: number | null;
   acesso_ate: string | null;
   turmas: { nome: string; modulos: number; aulas: number }[];
 };
