@@ -5,6 +5,7 @@ import { Suspense, useEffect, useState, type FormEvent } from "react";
 import { Moldura } from "@/components/Moldura";
 import { Aviso, Botao, BotaoLink } from "@/components/ui";
 import { api, type SituacaoDoPedido } from "@/lib/api";
+import { reais } from "@/lib/formato";
 
 // A volta do checkout do Asaas: ?pedido=<token>. O aviso de pago pode chegar depois do aluno,
 // então a página pergunta de novo até ele chegar.
@@ -36,7 +37,8 @@ function Pronto() {
         const s = await api.situacaoDoPedido(token);
         if (!ativo) return;
         setSituacao(s);
-        if (s.status === "AGUARDANDO") espera = setTimeout(perguntar, INTERVALO_MS);
+        // Matrícula paga no cartão: a página para de perguntar e oferece o curso.
+        if (s.status === "AGUARDANDO" && !s.falta_pagar_curso) espera = setTimeout(perguntar, INTERVALO_MS);
       } catch (ex) {
         if (ativo) setErro(ex instanceof Error ? ex.message : "Não foi possível consultar o pedido.");
       }
@@ -56,6 +58,8 @@ function Pronto() {
             <h1 className="text-xl font-semibold text-tinta">Pedido não encontrado</h1>
             <p className="mt-1 text-[15px] text-suave">{erro}</p>
           </>
+        ) : situacao?.falta_pagar_curso ? (
+          <PagarCurso token={token} situacao={situacao} />
         ) : !situacao || situacao.status === "AGUARDANDO" ? (
           <>
             <h1 className="text-xl font-semibold text-tinta">Confirmando seu pagamento…</h1>
@@ -87,6 +91,48 @@ function Pronto() {
         )}
       </div>
     </Moldura>
+  );
+}
+
+/** Cartão, segunda etapa: a matrícula entrou; o curso é outro pagamento, parcelado. */
+function PagarCurso({ token, situacao }: { token: string; situacao: SituacaoDoPedido }) {
+  const [erro, setErro] = useState("");
+  const [abrindo, setAbrindo] = useState(false);
+  const n = situacao.cartao_parcelas ?? 1;
+  const total = situacao.curso_centavos ?? 0;
+  const parcela = n > 1 ? `${n}x de ${reais(Math.round(total / n))}` : reais(total);
+
+  async function abrir() {
+    setErro("");
+    setAbrindo(true);
+    try {
+      const { checkout } = await api.pagarCurso(token);
+      window.location.assign(checkout);
+    } catch (ex) {
+      setErro(ex instanceof Error ? ex.message : "Não foi possível abrir o pagamento do curso.");
+      setAbrindo(false);
+    }
+  }
+
+  return (
+    <>
+      <h1 className="text-xl font-semibold text-tinta">Matrícula confirmada!</h1>
+      <p className="mt-1 text-[15px] text-suave">
+        Falta um passo: o pagamento de {situacao.plano} no cartão, em até{" "}
+        <strong className="text-tinta">{parcela}</strong>. Pago, você cria sua senha e já entra na turma.
+      </p>
+      {erro && (
+        <Aviso tom="erro" className="mt-4">
+          {erro}
+        </Aviso>
+      )}
+      <Botao variante="primario" ocupado={abrindo} onClick={abrir} className="mt-5 w-full">
+        {abrindo ? "Abrindo o pagamento…" : `Pagar o curso: ${parcela}`}
+      </Botao>
+      <p className="mt-3 text-[13px] text-suave">
+        Se precisar sair agora, guarde este endereço: por ele você volta e paga o curso depois.
+      </p>
+    </>
   );
 }
 

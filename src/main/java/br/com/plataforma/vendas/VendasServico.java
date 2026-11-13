@@ -44,6 +44,11 @@ public class VendasServico {
     private static final Pattern LINK = Pattern.compile("^[a-z0-9]+(-[a-z0-9]+)*$");
     private static final Pattern EMAIL = Pattern.compile("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$");
     private static final SecureRandom SORTEIO = new SecureRandom();
+    /**
+     * A versão dos termos de matrícula que a página /termos mostra. Mudou o texto lá
+     * ({@code frontend/app/termos/page.tsx}), muda aqui: o pedido guarda qual versão o aluno aceitou.
+     */
+    public static final String TERMOS_VERSAO = "2026-11-12";
 
     private final PlanoRepositorio planos;
     private final PedidoRepositorio pedidos;
@@ -64,13 +69,22 @@ public class VendasServico {
 
     // --- planos (professor) --------------------------------------------------
 
-    /** {@code mensalidades}: só na assinatura mensal; 0 tira o limite (cobra até o aluno cancelar). */
+    /** Uma linha da tabela de preços do pagamento único. {@code aPartirDe} vazio: desde já. */
+    public record PrecoDoPlano(LocalDate aPartirDe, Integer pixCentavos, Integer cartaoCentavos, Integer cartaoParcelas) {}
+
+    /**
+     * Na edição, o que não veio fica como está. {@code mensalidades} e {@code matriculaCentavos}: 0 tira.
+     * {@code aVendaAte}: "" tira o prazo. {@code precos}: a tabela inteira do pagamento único — sem
+     * ela, {@code precoCentavos} vale no Pix e no cartão.
+     */
     public record DadosDoPlano(String nome, String link, String tipo, Integer precoCentavos, Integer parcelasMax,
-            Integer mensalidades, LocalDate acessoAte, List<String> turmas, Boolean ativo) {}
+            Integer mensalidades, LocalDate acessoAte, List<String> turmas, Boolean ativo, Integer matriculaCentavos,
+            Integer matriculaParcelasMax, String aVendaAte, List<PrecoDoPlano> precos) {}
 
     public record PlanoNaLista(Integer planoId, String nome, String link, Plano.Tipo tipo, Integer precoCentavos,
             Integer parcelasMax, Integer mensalidades, LocalDate acessoAte, boolean ativo, List<String> turmas,
-            long alunosComAcesso) {}
+            long alunosComAcesso, Integer matriculaCentavos, Integer matriculaParcelasMax, LocalDate aVendaAte,
+            List<PrecoDoPlano> precos) {}
 
     @Transactional(readOnly = true)
     public List<PlanoNaLista> listarPlanos(Identidade ident) {
@@ -81,7 +95,13 @@ public class VendasServico {
     private PlanoNaLista naLista(Plano p) {
         return new PlanoNaLista(p.getId(), p.getNome(), p.getLink(), p.getTipo(), p.getPrecoCentavos(),
                 p.getParcelasMax(), p.getMensalidades(), p.getAcessoAte(), p.isAtivo(), p.getTurmas().stream().map(Turma::getNome).toList(),
-                pedidos.comAcesso(p));
+                pedidos.comAcesso(p), p.getMatriculaCentavos(), p.getMatriculaParcelasMax(), p.getAVendaAte(),
+                precos(p));
+    }
+
+    private static List<PrecoDoPlano> precos(Plano p) {
+        return p.getPrecos().stream().map(l -> new PrecoDoPlano(l.getAPartirDe(), l.getPixCentavos(),
+                l.getCartaoCentavos(), l.getCartaoParcelas())).toList();
     }
 
     @Transactional
@@ -129,14 +149,46 @@ public class VendasServico {
         if (tipo == null) {
             throw new RegraDeNegocio("Tipo do plano: MENSAL (assinatura no cartão) ou UNICO (Pix ou cartão parcelado).");
         }
-        var preco = d.precoCentavos() == null ? (novo ? null : p.getPrecoCentavos()) : d.precoCentavos();
-        if (preco == null || preco < 500) {
-            throw new RegraDeNegocio("O preço mínimo que o Asaas cobra é R$ 5,00.");
+        var unico = tipo == Plano.Tipo.UNICO;
+        var linhas = unico && d.precos() != null ? tabelaDePrecos(d.precos()) : null;
+        Integer preco;
+        int parcelas;
+        if (linhas != null) {
+            // A primeira linha é o preço de referência do plano (lista, ordenação).
+            preco = linhas.getFirst().pixCentavos() != null ? linhas.getFirst().pixCentavos() : linhas.getFirst().cartaoCentavos();
+            parcelas = linhas.getFirst().cartaoParcelas();
+        } else {
+            preco = d.precoCentavos() == null ? (novo ? null : p.getPrecoCentavos()) : d.precoCentavos();
+            if (preco == null || preco < 500) {
+                throw new RegraDeNegocio("O preço mínimo que o Asaas cobra é R$ 5,00.");
+            }
+            parcelas = tipo == Plano.Tipo.MENSAL ? 1
+                    : d.parcelasMax() != null ? d.parcelasMax() : (novo ? 1 : p.getParcelasMax());
+            if (parcelas < 1 || parcelas > 12) {
+                throw new RegraDeNegocio("Parcelas: de 1 a 12.");
+            }
+            // Sem tabela, o preço único vale no Pix e no cartão — como antes da tabela existir.
+            if (unico && (novo || p.getTipo() != Plano.Tipo.UNICO || d.precoCentavos() != null || d.parcelasMax() != null)) {
+                linhas = List.of(new Plano.LinhaDePreco(null, preco, preco, parcelas));
+            }
         }
-        var parcelas = tipo == Plano.Tipo.MENSAL ? 1
-                : d.parcelasMax() != null ? d.parcelasMax() : (novo ? 1 : p.getParcelasMax());
-        if (parcelas < 1 || parcelas > 12) {
-            throw new RegraDeNegocio("Parcelas: de 1 a 12.");
+        Integer matricula = !unico ? null
+                : d.matriculaCentavos() != null ? (d.matriculaCentavos() == 0 ? null : d.matriculaCentavos())
+                : novo ? null : p.getMatriculaCentavos();
+        if (matricula != null && matricula < 500) {
+            throw new RegraDeNegocio("A matrícula mínima que o Asaas cobra é R$ 5,00 (ou sem matrícula).");
+        }
+        var parcelasDaMatricula = d.matriculaParcelasMax() != null ? d.matriculaParcelasMax()
+                : novo ? 1 : p.getMatriculaParcelasMax();
+        if (parcelasDaMatricula < 1 || parcelasDaMatricula > 12) {
+            throw new RegraDeNegocio("Parcelas da matrícula: de 1 a 12.");
+        }
+        LocalDate aVendaAte;
+        try {
+            aVendaAte = d.aVendaAte() == null ? (novo ? null : p.getAVendaAte())
+                    : d.aVendaAte().isBlank() ? null : LocalDate.parse(d.aVendaAte().strip());
+        } catch (java.time.format.DateTimeParseException e) {
+            throw new RegraDeNegocio("'À venda até' é uma data, ex.: 2027-08-31.");
         }
         Integer mensalidades = tipo != Plano.Tipo.MENSAL ? null
                 : d.mensalidades() != null ? (d.mensalidades() == 0 ? null : d.mensalidades())
@@ -154,6 +206,45 @@ public class VendasServico {
         }
         var ativo = d.ativo() == null ? (novo || p.isAtivo()) : d.ativo();
         p.mudar(nome.strip(), link, tipo, preco, parcelas, mensalidades, acessoAte, List.copyOf(turmas), ativo, novo ? null : agora);
+        p.mudarMatricula(matricula, parcelasDaMatricula);
+        p.mudarVendaAte(aVendaAte);
+        if (!unico) {
+            p.mudarPrecos(List.of());
+        } else if (linhas != null) {
+            p.mudarPrecos(linhas);
+        }
+    }
+
+    /** A tabela do pagamento único: uma linha "desde já" e, se quiser, outras a partir de uma data. */
+    private static List<Plano.LinhaDePreco> tabelaDePrecos(List<PrecoDoPlano> recebidas) {
+        if (recebidas.isEmpty() || recebidas.size() > 24) {
+            throw new RegraDeNegocio("A tabela de preços tem de 1 a 24 linhas.");
+        }
+        var linhas = recebidas.stream()
+                .map(l -> new Plano.LinhaDePreco(l.aPartirDe(), l.pixCentavos(), l.cartaoCentavos(),
+                        l.cartaoParcelas() == null ? 1 : l.cartaoParcelas()))
+                .sorted(java.util.Comparator.comparing(Plano.LinhaDePreco::aPartirDe, Plano.PELA_DATA))
+                .toList();
+        if (linhas.getFirst().aPartirDe() != null) {
+            throw new RegraDeNegocio("A primeira linha de preço vale desde já: deixe a data dela vazia.");
+        }
+        var datas = new java.util.HashSet<LocalDate>();
+        for (var l : linhas) {
+            var quando = l.aPartirDe() == null ? "desde já" : "a partir de " + l.aPartirDe();
+            if (!datas.add(l.aPartirDe() == null ? LocalDate.MIN : l.aPartirDe())) {
+                throw new RegraDeNegocio("Duas linhas de preço com a mesma data (%s).".formatted(quando));
+            }
+            if (l.pixCentavos() == null && l.cartaoCentavos() == null) {
+                throw new RegraDeNegocio("A linha %s precisa do preço no Pix, no cartão ou dos dois.".formatted(quando));
+            }
+            if ((l.pixCentavos() != null && l.pixCentavos() < 500) || (l.cartaoCentavos() != null && l.cartaoCentavos() < 500)) {
+                throw new RegraDeNegocio("O preço mínimo que o Asaas cobra é R$ 5,00 (linha %s).".formatted(quando));
+            }
+            if (l.cartaoParcelas() < 1 || l.cartaoParcelas() > 12) {
+                throw new RegraDeNegocio("Parcelas no cartão: de 1 a 12 (linha %s).".formatted(quando));
+            }
+        }
+        return linhas;
     }
 
     private static String escolher(String novo, String atual, boolean criando) {
@@ -161,45 +252,100 @@ public class VendasServico {
     }
 
     public record PedidoNaLista(Integer pedidoId, Instant criadoEm, String nome, String email, String plano,
-            Integer valorCentavos, Pedido.Status status, Instant pagoEm, Instant acessoAte, boolean acessoLiberado) {}
+            Integer valorCentavos, Pedido.Status status, Instant pagoEm, Instant acessoAte, boolean acessoLiberado,
+            Pedido.Forma forma, Integer cursoCentavos, Integer cartaoParcelas, Integer matriculaCentavos,
+            Instant matriculaPagaEm, String celular, String endereco, String termosVersao, Instant envio1Em,
+            Instant envio2Em) {}
 
     @Transactional(readOnly = true)
     public List<PedidoNaLista> listarPedidos(Identidade ident) {
         ident.exigirOperador();
-        return pedidos.findTop200ByOrderByIdDesc().stream()
-                .map(p -> new PedidoNaLista(p.getId(), p.getCriadoEm(), p.getNome(), p.getEmail(), p.getPlano().getNome(),
-                        p.getValorCentavos(), p.getStatus(), p.getPagoEm(), p.getAcessoAte(), p.isAcessoLiberado()))
-                .toList();
+        return pedidos.findTop200ByOrderByIdDesc().stream().map(VendasServico::naLista).toList();
+    }
+
+    private static PedidoNaLista naLista(Pedido p) {
+        return new PedidoNaLista(p.getId(), p.getCriadoEm(), p.getNome(), p.getEmail(), p.getPlano().getNome(),
+                p.getValorCentavos(), p.getStatus(), p.getPagoEm(), p.getAcessoAte(), p.isAcessoLiberado(), p.getForma(),
+                p.getCursoCentavos(), p.getCartaoParcelas(), p.getMatriculaCentavos(), p.getMatriculaPagaEm(),
+                p.getCelular(), enderecoPorExtenso(p), p.getTermosVersao(), p.getEnvio1Em(), p.getEnvio2Em());
+    }
+
+    /** "Rua X, 100, apto 2 — Centro, Recife/PE — CEP 53030-260", para a etiqueta do envio. */
+    private static String enderecoPorExtenso(Pedido p) {
+        if (p.getRua() == null) {
+            return null;
+        }
+        var cep = p.getCep() == null || p.getCep().length() != 8 ? p.getCep()
+                : p.getCep().substring(0, 5) + "-" + p.getCep().substring(5);
+        return "%s, %s%s — %s, %s/%s — CEP %s".formatted(p.getRua(), p.getNumero(),
+                p.getComplemento() == null ? "" : ", " + p.getComplemento(), p.getBairro(), p.getCidade(), p.getUf(), cep);
+    }
+
+    /** O professor marca que o 1º ou o 2º envio do material saiu (ou desmarca). */
+    @Transactional
+    public PedidoNaLista marcarEnvio(Identidade ident, Integer pedidoId, Integer qual, Boolean enviado, Instant agora) {
+        ident.exigirOperador();
+        if (qual == null || (qual != 1 && qual != 2) || enviado == null) {
+            throw new RegraDeNegocio("Diga qual envio (1 ou 2) e se saiu (enviado: true ou false).");
+        }
+        var p = pedidos.findById(pedidoId).orElseThrow(() -> new NaoEncontrado("Pedido %d não existe.".formatted(pedidoId)));
+        p.envio(qual, enviado, agora);
+        return naLista(p);
     }
 
     // --- a página pública ----------------------------------------------------
 
     public record TurmaNoPlano(String nome, int modulos, int aulas) {}
 
+    /**
+     * O plano como o aluno vê hoje. No pagamento único, {@code pixCentavos}, {@code cartaoCentavos} e
+     * {@code cartaoParcelas} são a linha da tabela que vale hoje, e {@code precoValeAte} é até quando.
+     */
     public record PlanoPublico(String nome, String link, Plano.Tipo tipo, Integer precoCentavos, Integer parcelasMax,
-            Integer mensalidades, LocalDate acessoAte, List<TurmaNoPlano> turmas) {}
+            Integer mensalidades, LocalDate acessoAte, List<TurmaNoPlano> turmas, Integer matriculaCentavos,
+            Integer matriculaParcelasMax, Integer pixCentavos, Integer cartaoCentavos, Integer cartaoParcelas,
+            LocalDate precoValeAte, LocalDate aVendaAte, String termosVersao) {}
 
     @Transactional(readOnly = true)
     public PlanoPublico planoPublico(String link) {
         var p = aVenda(link);
+        var hoje = LocalDate.now(BRASILIA);
+        var dia = p.getTipo() == Plano.Tipo.UNICO ? p.precoDoDia(hoje).orElse(null) : null;
         return new PlanoPublico(p.getNome(), p.getLink(), p.getTipo(), p.getPrecoCentavos(), p.getParcelasMax(),
-                p.getMensalidades(), p.getAcessoAte(), p.getTurmas().stream().map(t -> new TurmaNoPlano(t.getNome(), estrutura.contarModulos(t),
-                        estrutura.contarItensDaTurma(t, Status.PUBLICADO))).toList());
+                p.getMensalidades(), p.getAcessoAte(), p.getTurmas().stream().map(t -> new TurmaNoPlano(t.getNome(),
+                        estrutura.contarModulos(t), estrutura.contarItensDaTurma(t, Status.PUBLICADO))).toList(),
+                p.getMatriculaCentavos(), p.getMatriculaParcelasMax(),
+                dia == null ? null : dia.getPixCentavos(), dia == null ? null : dia.getCartaoCentavos(),
+                dia == null ? null : dia.getCartaoParcelas(), dia == null ? null : p.precoValeAte(hoje), p.getAVendaAte(),
+                TERMOS_VERSAO);
     }
 
     private Plano aVenda(String link) {
-        return planos.findFirstByLinkIgnoreCase(link == null ? "" : link.strip())
+        var plano = planos.findFirstByLinkIgnoreCase(link == null ? "" : link.strip())
                 .filter(Plano::isAtivo)
                 .orElseThrow(() -> new NaoEncontrado("Este plano não está à venda."));
+        if (plano.vendaEncerrada(LocalDate.now(BRASILIA))) {
+            throw new NaoEncontrado("As matrículas deste plano estão encerradas.");
+        }
+        return plano;
     }
 
-    public record DadosDaCompra(String nome, String email, String cpf, String celular, String cep, String numero) {}
+    /**
+     * {@code forma}: no pagamento único, PIX ou CARTAO (vazio vale se o plano só tem uma). {@code
+     * aceiteTermos}: o aluno marcou que leu e aceita os termos de matrícula — sem isso, não há compra.
+     */
+    public record DadosDaCompra(String nome, String email, String cpf, String celular, String cep, String numero,
+            String complemento, String forma, Boolean aceiteTermos) {}
 
     public record CompraIniciada(String checkout) {}
 
     /**
      * Grava o pedido e abre o checkout no Asaas, já com os dados do aluno. A volta do checkout traz
      * um token só deste pedido — é ele que deixa a página de volta criar a senha da conta nova.
+     *
+     * <p>No Pix, curso e matrícula vão num pagamento só. No cartão, a matrícula vem primeiro (Pix ou
+     * cartão, com as parcelas dela) e o curso depois, pela página de volta: o Asaas não parcela duas
+     * coisas de jeitos diferentes no mesmo pagamento.
      */
     @Transactional
     public CompraIniciada comprar(String link, DadosDaCompra d, String ip, String base, Instant agora) {
@@ -228,24 +374,122 @@ public class VendasServico {
         if (numero.isEmpty() || numero.length() > 10) {
             throw new RegraDeNegocio("Informe o número do endereço (ou S/N).");
         }
+        var complemento = d.complemento() == null || d.complemento().isBlank() ? null : d.complemento().strip();
+        if (complemento != null && complemento.length() > 60) {
+            throw new RegraDeNegocio("O complemento tem até 60 letras, ex.: 'apto 302, bloco B'.");
+        }
+        var valores = valores(plano, d.forma(), LocalDate.now(BRASILIA));
+        if (!Boolean.TRUE.equals(d.aceiteTermos())) {
+            throw new RegraDeNegocio("Para seguir, leia e aceite os termos de matrícula.");
+        }
         contas.limitar("compra:" + ip, 10, agora);
 
+        var achado = asaas.endereco(cep);
+        var endereco = new Pedido.Endereco(cep, achado.rua(), numero, complemento, achado.bairro(), achado.cidade(),
+                achado.uf());
         var token = novoToken();
         var pedido = pedidos.save(new Pedido(plano, Senhas.sha256(token), nome, email, cpf,
-                celular.isEmpty() ? null : celular, cep, numero));
-        var checkout = asaas.criarCheckout(new Asaas.NovoCheckout(plano.getNome(),
-                "Acesso a " + String.join(", ", plano.getTurmas().stream().map(Turma::getNome).toList()),
-                plano.getPrecoCentavos(), plano.getTipo(), plano.getParcelasMax(), plano.getMensalidades(),
-                new Asaas.Comprador(nome, email, cpf, celular.isEmpty() ? null : celular, cep, numero),
-                "pedido-" + pedido.getId(),
-                base + "/assinar/pronto/?pedido=" + token,
-                base + "/assinar/" + plano.getLink()));
-        pedido.checkoutCriado(checkout.id());
+                celular.isEmpty() ? null : celular, endereco, valores, new Pedido.Aceite(TERMOS_VERSAO, agora, ip)));
+        var sucesso = base + "/assinar/pronto/?pedido=" + token;
+        var volta = base + "/assinar/" + plano.getLink();
+        var comprador = comprador(pedido);
+        var curso = itemDoCurso(plano, valores.cursoCentavos());
+        var matricula = valores.matriculaCentavos() == null ? null
+                : new Asaas.Item("Matrícula", "Matrícula — " + plano.getNome(), valores.matriculaCentavos());
+        var referencia = "pedido-" + pedido.getId();
+        Asaas.Checkout checkout;
+        switch (valores.forma()) {
+            case MENSAL -> {
+                checkout = asaas.criarCheckout(new Asaas.NovoCheckout(List.of(curso), Asaas.Forma.MENSAL, 1,
+                        plano.getMensalidades(), comprador, referencia, sucesso, volta));
+                pedido.checkoutCriado(checkout.id());
+            }
+            case PIX -> {
+                var itens = matricula == null ? List.of(curso) : List.of(matricula, curso);
+                checkout = asaas.criarCheckout(new Asaas.NovoCheckout(itens, Asaas.Forma.PIX, 1, null, comprador,
+                        referencia, sucesso, volta));
+                pedido.checkoutCriado(checkout.id());
+            }
+            default -> {
+                if (matricula != null) {
+                    checkout = asaas.criarCheckout(new Asaas.NovoCheckout(List.of(matricula), Asaas.Forma.PIX_OU_CARTAO,
+                            plano.getMatriculaParcelasMax(), null, comprador, referencia + "-matricula", sucesso, volta));
+                    pedido.matriculaCheckoutCriado(checkout.id());
+                } else {
+                    checkout = asaas.criarCheckout(new Asaas.NovoCheckout(List.of(curso), Asaas.Forma.CARTAO,
+                            valores.cartaoParcelas(), null, comprador, referencia, sucesso, volta));
+                    pedido.checkoutCriado(checkout.id());
+                }
+            }
+        }
         return new CompraIniciada(checkout.link());
     }
 
+    /**
+     * A segunda etapa do cartão: matrícula paga, agora o curso parcelado. O valor é o do pedido — o
+     * do dia em que o aluno começou —, mesmo que a tabela tenha virado no meio.
+     */
+    @Transactional
+    public CompraIniciada pagarCurso(String token, String base, Instant agora) {
+        var p = peloToken(token);
+        if (!p.faltaPagarOCurso()) {
+            throw new RegraDeNegocio(p.getForma() == Pedido.Forma.CARTAO && p.getMatriculaPagaEm() == null
+                    && p.getStatus() == Pedido.Status.AGUARDANDO
+                    ? "A matrícula ainda não foi confirmada. Aguarde um instante."
+                    : "Este pedido não tem curso a pagar.");
+        }
+        contas.limitar("curso:" + p.getId(), 10, agora);
+        var volta = base + "/assinar/pronto/?pedido=" + token;
+        var checkout = asaas.criarCheckout(new Asaas.NovoCheckout(List.of(itemDoCurso(p.getPlano(), p.getCursoCentavos())),
+                Asaas.Forma.CARTAO, p.getCartaoParcelas(), null, comprador(p), "pedido-" + p.getId(), volta, volta));
+        p.checkoutCriado(checkout.id());
+        return new CompraIniciada(checkout.link());
+    }
+
+    /** Forma e valores do pedido, pela tabela do dia. */
+    private static Pedido.Valores valores(Plano plano, String forma, LocalDate hoje) {
+        if (plano.getTipo() == Plano.Tipo.MENSAL) {
+            return new Pedido.Valores(Pedido.Forma.MENSAL, plano.getPrecoCentavos(), 1, null);
+        }
+        var dia = plano.precoDoDia(hoje).orElseThrow(() -> new RegraDeNegocio("Este plano ainda não tem preço para hoje."));
+        var escolhida = forma == null || forma.isBlank() ? null : forma.strip().toUpperCase(Locale.ROOT);
+        if (escolhida == null) {
+            if (dia.getPixCentavos() != null && dia.getCartaoCentavos() != null) {
+                throw new RegraDeNegocio("Escolha como pagar: Pix à vista ou cartão.");
+            }
+            escolhida = dia.getPixCentavos() != null ? "PIX" : "CARTAO";
+        }
+        return switch (escolhida) {
+            case "PIX" -> {
+                if (dia.getPixCentavos() == null) {
+                    throw new RegraDeNegocio("Este plano não aceita Pix: escolha o cartão.");
+                }
+                yield new Pedido.Valores(Pedido.Forma.PIX, dia.getPixCentavos(), 1, plano.getMatriculaCentavos());
+            }
+            case "CARTAO" -> {
+                if (dia.getCartaoCentavos() == null) {
+                    throw new RegraDeNegocio("Este plano não aceita cartão: escolha o Pix.");
+                }
+                yield new Pedido.Valores(Pedido.Forma.CARTAO, dia.getCartaoCentavos(), dia.getCartaoParcelas(),
+                        plano.getMatriculaCentavos());
+            }
+            default -> throw new RegraDeNegocio("Forma de pagamento: PIX ou CARTAO.");
+        };
+    }
+
+    private static Asaas.Item itemDoCurso(Plano plano, int centavos) {
+        return new Asaas.Item(plano.getNome(),
+                "Acesso a " + String.join(", ", plano.getTurmas().stream().map(Turma::getNome).toList()), centavos);
+    }
+
+    private static Asaas.Comprador comprador(Pedido p) {
+        return new Asaas.Comprador(p.getNome(), p.getEmail(), p.getCpf(), p.getCelular(), p.getCep(), p.getNumero(),
+                p.getRua(), p.getComplemento(), p.getBairro());
+    }
+
     public record Situacao(Pedido.Status status, String plano, String email, boolean podeCriarSenha,
-            boolean jaTinhaConta) {}
+            boolean jaTinhaConta, Pedido.Forma forma, boolean matriculaPaga, boolean faltaPagarCurso,
+            Integer cursoCentavos, Integer cartaoParcelas) {}
 
     /** O que a página de volta mostra. Quem tem o token é quem comprou: é o endereço de volta dele. */
     @Transactional(readOnly = true)
@@ -253,7 +497,8 @@ public class VendasServico {
         var p = peloToken(token);
         return new Situacao(p.getStatus(), p.getPlano().getNome(), p.getEmail(),
                 p.isAcessoLiberado() && p.isContaNova() && !p.isSenhaDefinida(),
-                p.isAcessoLiberado() && !p.isContaNova());
+                p.isAcessoLiberado() && !p.isContaNova(), p.getForma(), p.getMatriculaPagaEm() != null,
+                p.faltaPagarOCurso(), p.getCursoCentavos(), p.getCartaoParcelas());
     }
 
     /**
@@ -292,11 +537,25 @@ public class VendasServico {
         var cobranca = mapa(aviso.get("payment"));
         var assinatura = mapa(aviso.get("subscription"));
         switch (evento) {
-            case "CHECKOUT_PAID" -> pedidos.findFirstByAsaasCheckoutId(texto(checkout.get("id"))).ifPresentOrElse(
-                    p -> liberar(p, texto(checkout.get("customer")), idDe(checkout.get("subscription")), agora),
-                    () -> log.info("checkout {} pago, sem pedido nosso: ignorado", texto(checkout.get("id"))));
+            case "CHECKOUT_PAID" -> {
+                var id = texto(checkout.get("id"));
+                var cliente = texto(checkout.get("customer"));
+                pedidos.findFirstByAsaasCheckoutId(id).ifPresentOrElse(p -> {
+                    // No Pix a matrícula veio junto com o curso.
+                    if (p.getMatriculaCentavos() != null) {
+                        p.matriculaPaga(cliente, agora);
+                    }
+                    liberar(p, cliente, idDe(checkout.get("subscription")), agora);
+                }, () -> pedidos.findFirstByMatriculaCheckoutId(id).ifPresentOrElse(
+                        // Só a matrícula: o acesso espera o curso, que a página de volta oferece em seguida.
+                        p -> p.matriculaPaga(cliente, agora),
+                        () -> log.info("checkout {} pago, sem pedido nosso: ignorado", id)));
+            }
+            // Expirou o checkout do curso depois da matrícula paga: o pedido segue, e a página de volta abre outro.
             case "CHECKOUT_EXPIRED", "CHECKOUT_CANCELED" -> pedidos.findFirstByAsaasCheckoutId(texto(checkout.get("id")))
-                    .filter(p -> p.getStatus() == Pedido.Status.AGUARDANDO).ifPresent(p -> p.expirou(agora));
+                    .or(() -> pedidos.findFirstByMatriculaCheckoutId(texto(checkout.get("id"))))
+                    .filter(p -> p.getStatus() == Pedido.Status.AGUARDANDO && p.getMatriculaPagaEm() == null)
+                    .ifPresent(p -> p.expirou(agora));
             case "PAYMENT_CONFIRMED", "PAYMENT_RECEIVED" -> daAssinatura(cobranca)
                     // Mensalidade em dia de novo: some o prazo, e o acesso volta se tinha caído.
                     .ifPresent(p -> liberar(p, texto(cobranca.get("customer")), null, agora));
@@ -343,8 +602,13 @@ public class VendasServico {
             return peloPlano;
         }
         var cliente = texto(cobranca.get("customer"));
-        return cliente.isEmpty() ? java.util.Optional.empty()
-                : pedidos.findFirstByAsaasClienteIdAndStatusOrderByIdDesc(cliente, Pedido.Status.PAGO);
+        if (cliente.isEmpty()) {
+            return java.util.Optional.empty();
+        }
+        // Pago; ou só a matrícula paga, à espera do curso — devolvida, o pedido acaba ali.
+        return pedidos.findFirstByAsaasClienteIdAndStatusOrderByIdDesc(cliente, Pedido.Status.PAGO)
+                .or(() -> pedidos.findFirstByAsaasClienteIdAndStatusOrderByIdDesc(cliente, Pedido.Status.AGUARDANDO)
+                        .filter(p -> p.getMatriculaPagaEm() != null));
     }
 
     private void liberar(Pedido p, String clienteId, String assinaturaId, Instant agora) {

@@ -9,12 +9,13 @@ import {
   type DadosDoPlano,
   type PedidoDeVenda,
   type PlanoDeVenda,
+  type PrecoDoPlano,
   type StatusDoPedido,
   type TipoDePlano,
 } from "@/lib/api";
-import { dataCurta, plural, reais } from "@/lib/formato";
+import { dataCurta, dia, plural, reais } from "@/lib/formato";
 
-type Aba = "planos" | "pedidos";
+type Aba = "planos" | "pedidos" | "envios";
 
 export default function Vendas() {
   const [aba, setAba] = useState<Aba>("planos");
@@ -27,11 +28,12 @@ export default function Vendas() {
         abas={[
           { valor: "planos", rotulo: "Planos" },
           { valor: "pedidos", rotulo: "Pedidos" },
+          { valor: "envios", rotulo: "Envios do material" },
         ]}
         atual={aba}
         aoTrocar={setAba}
       />
-      {aba === "planos" ? <Planos /> : <Pedidos />}
+      {aba === "planos" ? <Planos /> : aba === "pedidos" ? <Pedidos /> : <Envios />}
     </Pagina>
   );
 }
@@ -87,13 +89,14 @@ function Planos() {
                     <div className="min-w-0">
                       <div className="mb-1 flex flex-wrap items-center gap-2">
                         {plano.ativo ? <Etiqueta tom="sucesso">À venda</Etiqueta> : <Etiqueta>Fora do ar</Etiqueta>}
-                        <Etiqueta tom="info">{plano.tipo === "MENSAL" ? "Assinatura mensal" : "Pagamento único"}</Etiqueta>
+                        <Etiqueta tom="info">{plano.tipo === "MENSAL" ? "Assinatura mensal" : "Curso: Pix ou cartão"}</Etiqueta>
                       </div>
                       <p className="text-lg font-semibold text-tinta">{plano.nome}</p>
-                      <p className="text-[15px] text-tinta-2">{preco(plano.tipo, plano.preco_centavos, plano.parcelas_max, plano.mensalidades)}</p>
+                      <p className="text-[15px] text-tinta-2">{precoDoPlano(plano)}</p>
                       <p className="text-[13px] text-suave">
                         Dá acesso a: {plano.turmas.join(", ")}
                         {plano.acesso_ate && ` · até ${dataCurta(plano.acesso_ate + "T12:00:00")}`}
+                        {plano.a_venda_ate && ` · à venda até ${dia(plano.a_venda_ate)}`}
                         {" · "}
                         {plural(plano.alunos_com_acesso, "aluno com acesso", "alunos com acesso")}
                       </p>
@@ -120,14 +123,45 @@ function Planos() {
   );
 }
 
-function preco(tipo: TipoDePlano, centavos: number, parcelas: number, mensalidades: number | null): string {
-  if (tipo === "MENSAL")
-    return mensalidades
-      ? `${mensalidades}x de ${reais(centavos)}, uma por mês · cartão de crédito`
-      : `${reais(centavos)} por mês, até o aluno cancelar · cartão de crédito`;
-  return parcelas > 1
-    ? `${reais(centavos)} à vista no Pix ou em até ${parcelas}x no cartão`
-    : `${reais(centavos)} à vista no Pix ou no cartão`;
+function precoDoPlano(plano: PlanoDeVenda): string {
+  if (plano.tipo === "MENSAL")
+    return plano.mensalidades
+      ? `${plano.mensalidades}x de ${reais(plano.preco_centavos)}, uma por mês · cartão de crédito`
+      : `${reais(plano.preco_centavos)} por mês, até o aluno cancelar · cartão de crédito`;
+  const hoje = new Date().toLocaleDateString("sv-SE", { timeZone: "America/Sao_Paulo" });
+  const vale = plano.precos.filter((l) => !l.a_partir_de || l.a_partir_de <= hoje).at(-1) ?? plano.precos[0];
+  const partes = vale ? opcoesDaLinha(vale) : [];
+  const matricula = plano.matricula_centavos ? ` · + matrícula de ${reais(plano.matricula_centavos)}` : "";
+  const outras = plano.precos.length > 1 ? ` · ${plural(plano.precos.length, "preço", "preços")} na tabela` : "";
+  return `Hoje: ${partes.join(" ou ")}${matricula}${outras}`;
+}
+
+function opcoesDaLinha(l: PrecoDoPlano): string[] {
+  const partes: string[] = [];
+  if (l.cartao_centavos)
+    partes.push(
+      l.cartao_parcelas > 1
+        ? `${l.cartao_parcelas}x de ${reais(Math.round(l.cartao_centavos / l.cartao_parcelas))} no cartão`
+        : `${reais(l.cartao_centavos)} no cartão`,
+    );
+  if (l.pix_centavos) partes.push(`${reais(l.pix_centavos)} no Pix`);
+  return partes;
+}
+
+/** Uma linha da tabela como o formulário edita: textos, e o cartão pelo valor da parcela. */
+type LinhaEditavel = { chave: number; aPartirDe: string; pix: string; parcelas: number; parcela: string };
+
+const emReais = (c: number) => (c / 100).toFixed(2).replace(".", ",");
+
+function paraEditar(precos: PrecoDoPlano[]): LinhaEditavel[] {
+  if (precos.length === 0) return [{ chave: 1, aPartirDe: "", pix: "", parcelas: 12, parcela: "" }];
+  return precos.map((l, i) => ({
+    chave: i + 1,
+    aPartirDe: l.a_partir_de ?? "",
+    pix: l.pix_centavos ? emReais(l.pix_centavos) : "",
+    parcelas: l.cartao_parcelas,
+    parcela: l.cartao_centavos ? emReais(Math.round(l.cartao_centavos / l.cartao_parcelas)) : "",
+  }));
 }
 
 /** "Extensivo 2026 — mensal" vira "extensivo-2026-mensal". */
@@ -163,12 +197,15 @@ function FormularioDoPlano({
   const [nome, setNome] = useState(plano?.nome ?? "");
   const [link, setLink] = useState(plano?.link ?? "");
   const [linkMexido, setLinkMexido] = useState(Boolean(plano));
-  const [tipo, setTipo] = useState<TipoDePlano>(plano?.tipo ?? "MENSAL");
+  const [tipo, setTipo] = useState<TipoDePlano>(plano?.tipo ?? "UNICO");
   const [valor, setValor] = useState(plano ? (plano.preco_centavos / 100).toFixed(2).replace(".", ",") : "");
-  const [parcelas, setParcelas] = useState(plano?.parcelas_max ?? 12);
   // 0 é "até o aluno cancelar"; plano novo já nasce com o ano do curso.
   const [mensalidades, setMensalidades] = useState(plano ? (plano.mensalidades ?? 0) : 12);
   const [acessoAte, setAcessoAte] = useState(plano?.acesso_ate ?? "");
+  const [vendaAte, setVendaAte] = useState(plano?.a_venda_ate ?? "");
+  const [matricula, setMatricula] = useState(plano?.matricula_centavos ? emReais(plano.matricula_centavos) : "");
+  const [parcelasDaMatricula, setParcelasDaMatricula] = useState(plano?.matricula_parcelas_max ?? 3);
+  const [linhas, setLinhas] = useState<LinhaEditavel[]>(paraEditar(plano?.precos ?? []));
   const [escolhidas, setEscolhidas] = useState<string[]>(plano?.turmas ?? []);
   const [ativo, setAtivo] = useState(plano?.ativo ?? true);
   const [erro, setErro] = useState("");
@@ -177,10 +214,45 @@ function FormularioDoPlano({
   async function enviar(e: FormEvent) {
     e.preventDefault();
     setErro("");
-    const preco = centavos(valor);
-    if (Number.isNaN(preco)) {
-      setErro("Informe o preço, ex.: 197,00.");
-      return;
+    let especifico: DadosDoPlano;
+    if (tipo === "MENSAL") {
+      const preco = centavos(valor);
+      if (Number.isNaN(preco)) {
+        setErro("Informe o preço por mês, ex.: 197,00.");
+        return;
+      }
+      especifico = { preco_centavos: preco, parcelas_max: 1, mensalidades };
+    } else {
+      const precos: PrecoDoPlano[] = [];
+      for (const [i, l] of linhas.entries()) {
+        const pix = l.pix.trim() ? centavos(l.pix) : null;
+        const parcela = l.parcela.trim() ? centavos(l.parcela) : null;
+        if (Number.isNaN(pix) || Number.isNaN(parcela)) {
+          setErro(`Linha ${i + 1} da tabela: use valores como 1.700,00 ou 159,90.`);
+          return;
+        }
+        if (i > 0 && !l.aPartirDe) {
+          setErro(`Linha ${i + 1} da tabela: diga a partir de quando ela vale.`);
+          return;
+        }
+        precos.push({
+          a_partir_de: i === 0 ? null : l.aPartirDe,
+          pix_centavos: pix,
+          cartao_centavos: parcela === null ? null : parcela * l.parcelas,
+          cartao_parcelas: l.parcelas,
+        });
+      }
+      const taxa = matricula.trim() ? centavos(matricula) : 0;
+      if (Number.isNaN(taxa)) {
+        setErro("Informe a matrícula como 330,00, ou deixe vazio para não cobrar.");
+        return;
+      }
+      especifico = {
+        precos,
+        matricula_centavos: taxa,
+        matricula_parcelas_max: parcelasDaMatricula,
+        acesso_ate: acessoAte || null,
+      };
     }
     setSalvando(true);
     try {
@@ -188,10 +260,8 @@ function FormularioDoPlano({
         nome: nome.trim(),
         link,
         tipo,
-        preco_centavos: preco,
-        parcelas_max: tipo === "UNICO" ? parcelas : 1,
-        ...(tipo === "MENSAL" && { mensalidades }),
-        acesso_ate: tipo === "UNICO" && acessoAte ? acessoAte : null,
+        ...especifico,
+        a_venda_ate: vendaAte,
         turmas: escolhidas,
         ativo,
       });
@@ -288,35 +358,35 @@ function FormularioDoPlano({
           <legend className="mb-1.5 text-sm font-semibold text-tinta-2">Como o aluno paga</legend>
           <div className="flex flex-col gap-2 sm:flex-row">
             <OpcaoDeTipo
+              marcada={tipo === "UNICO"}
+              aoMarcar={() => setTipo("UNICO")}
+              titulo="Curso: Pix ou cartão"
+              texto="Pix à vista ou parcelado no cartão, cada um com seu preço, mais a matrícula."
+            />
+            <OpcaoDeTipo
               marcada={tipo === "MENSAL"}
               aoMarcar={() => setTipo("MENSAL")}
               titulo="Assinatura mensal"
               texto="Cobra uma vez por mês no cartão de crédito."
             />
-            <OpcaoDeTipo
-              marcada={tipo === "UNICO"}
-              aoMarcar={() => setTipo("UNICO")}
-              titulo="Pagamento único"
-              texto="À vista no Pix ou parcelado no cartão."
-            />
           </div>
         </fieldset>
 
-        <div className="grid gap-3 sm:grid-cols-3">
-          <Campo rotulo={tipo === "MENSAL" ? "Preço por mês" : "Preço total"}>
-            {(id) => (
-              <input
-                id={id}
-                className="campo"
-                inputMode="decimal"
-                value={valor}
-                required
-                placeholder="197,00"
-                onChange={(e) => setValor(e.target.value)}
-              />
-            )}
-          </Campo>
-          {tipo === "MENSAL" && (
+        {tipo === "MENSAL" ? (
+          <div className="grid gap-3 sm:grid-cols-3">
+            <Campo rotulo="Preço por mês">
+              {(id) => (
+                <input
+                  id={id}
+                  className="campo"
+                  inputMode="decimal"
+                  value={valor}
+                  required
+                  placeholder="197,00"
+                  onChange={(e) => setValor(e.target.value)}
+                />
+              )}
+            </Campo>
             <Campo rotulo="Quantas mensalidades" dica="Na última, a cobrança para sozinha.">
               {(id) => (
                 <select
@@ -334,12 +404,31 @@ function FormularioDoPlano({
                 </select>
               )}
             </Campo>
-          )}
-          {tipo === "UNICO" && (
-            <>
-              <Campo rotulo="Parcelas no cartão">
+          </div>
+        ) : (
+          <>
+            <TabelaDePrecos linhas={linhas} aoMudar={setLinhas} />
+            <div className="grid gap-3 sm:grid-cols-3">
+              <Campo rotulo="Matrícula" dica="Cobrada no início, à parte. Vazio: sem matrícula.">
                 {(id) => (
-                  <select id={id} className="campo" value={parcelas} onChange={(e) => setParcelas(Number(e.target.value))}>
+                  <input
+                    id={id}
+                    className="campo"
+                    inputMode="decimal"
+                    value={matricula}
+                    placeholder="330,00"
+                    onChange={(e) => setMatricula(e.target.value)}
+                  />
+                )}
+              </Campo>
+              <Campo rotulo="Matrícula no cartão">
+                {(id) => (
+                  <select
+                    id={id}
+                    className="campo"
+                    value={parcelasDaMatricula}
+                    onChange={(e) => setParcelasDaMatricula(Number(e.target.value))}
+                  >
                     {Array.from({ length: 12 }, (_, i) => i + 1).map((n) => (
                       <option key={n} value={n}>
                         {n === 1 ? "Só à vista" : `Até ${n}x`}
@@ -353,9 +442,21 @@ function FormularioDoPlano({
                   <input id={id} type="date" className="campo" value={acessoAte} onChange={(e) => setAcessoAte(e.target.value)} />
                 )}
               </Campo>
-            </>
+            </div>
+          </>
+        )}
+
+        <Campo rotulo="À venda até" dica="Último dia de matrícula; depois o link mostra “matrículas encerradas”. Vazio: sem prazo.">
+          {(id) => (
+            <input
+              id={id}
+              type="date"
+              className="campo sm:w-56"
+              value={vendaAte}
+              onChange={(e) => setVendaAte(e.target.value)}
+            />
           )}
-        </div>
+        </Campo>
 
         {plano && (
           <label className="flex w-fit cursor-pointer items-center gap-2 text-[15px] text-tinta">
@@ -367,6 +468,98 @@ function FormularioDoPlano({
         {erro && <Aviso tom="erro">{erro}</Aviso>}
       </form>
     </OffCanvas>
+  );
+}
+
+/**
+ * O preço que muda com a data: a primeira linha vale desde já; cada outra, a partir do dia dela.
+ * O cartão entra como "N x de R$ parcela", que é como a página de vendas anuncia.
+ */
+function TabelaDePrecos({ linhas, aoMudar }: { linhas: LinhaEditavel[]; aoMudar: (l: LinhaEditavel[]) => void }) {
+  const mudar = (chave: number, campo: Partial<LinhaEditavel>) =>
+    aoMudar(linhas.map((l) => (l.chave === chave ? { ...l, ...campo } : l)));
+  const proxima = Math.max(0, ...linhas.map((l) => l.chave)) + 1;
+  return (
+    <fieldset className="flex flex-col gap-2">
+      <legend className="mb-1.5 text-sm font-semibold text-tinta-2">Preço do curso</legend>
+      <p className="text-[13px] text-suave">
+        Cada linha vale a partir da data dela até a próxima. Deixe o Pix ou o cartão vazio para não oferecer essa forma.
+      </p>
+      {linhas.map((l, i) => (
+        <div key={l.chave} className="grid items-end gap-2 rounded-lg border border-borda p-3 sm:grid-cols-[9.5rem_1fr_auto_1fr_auto]">
+          <Campo rotulo={i === 0 ? "Vale" : "A partir de"}>
+            {(id) =>
+              i === 0 ? (
+                <input id={id} className="campo" value="Desde já" disabled />
+              ) : (
+                <input
+                  id={id}
+                  type="date"
+                  className="campo"
+                  value={l.aPartirDe}
+                  required
+                  onChange={(e) => mudar(l.chave, { aPartirDe: e.target.value })}
+                />
+              )
+            }
+          </Campo>
+          <Campo rotulo="Pix à vista">
+            {(id) => (
+              <input
+                id={id}
+                className="campo"
+                inputMode="decimal"
+                value={l.pix}
+                placeholder="1.700,00"
+                onChange={(e) => mudar(l.chave, { pix: e.target.value })}
+              />
+            )}
+          </Campo>
+          <Campo rotulo="Cartão">
+            {(id) => (
+              <select
+                id={id}
+                className="campo"
+                value={l.parcelas}
+                onChange={(e) => mudar(l.chave, { parcelas: Number(e.target.value) })}
+              >
+                {Array.from({ length: 12 }, (_, n) => n + 1).map((n) => (
+                  <option key={n} value={n}>
+                    {n}x de
+                  </option>
+                ))}
+              </select>
+            )}
+          </Campo>
+          <Campo rotulo="Parcela">
+            {(id) => (
+              <input
+                id={id}
+                className="campo"
+                inputMode="decimal"
+                value={l.parcela}
+                placeholder="159,90"
+                onChange={(e) => mudar(l.chave, { parcela: e.target.value })}
+              />
+            )}
+          </Campo>
+          {i === 0 ? (
+            <span className="hidden w-[4.5rem] sm:block" />
+          ) : (
+            <Botao tamanho="pequeno" onClick={() => aoMudar(linhas.filter((x) => x.chave !== l.chave))}>
+              Tirar
+            </Botao>
+          )}
+        </div>
+      ))}
+      <Botao
+        tamanho="pequeno"
+        className="w-fit"
+        onClick={() => aoMudar([...linhas, { chave: proxima, aPartirDe: "", pix: "", parcelas: linhas.at(-1)?.parcelas ?? 12, parcela: "" }])}
+      >
+        Adicionar preço a partir de uma data
+      </Botao>
+    </fieldset>
   );
 }
 
@@ -439,11 +632,90 @@ function LinhaDoPedido({ pedido: p }: { pedido: PedidoDeVenda }) {
       <div className="flex flex-wrap items-center gap-3 text-[13px] text-suave">
         <span className="tabular-nums">{dataCurta(p.criado_em)}</span>
         <span className="font-semibold tabular-nums text-tinta">{reais(p.valor_centavos)}</span>
+        {p.forma === "PIX" && <span>Pix</span>}
+        {p.forma === "CARTAO" && p.cartao_parcelas && <span>cartão em até {p.cartao_parcelas}x</span>}
+        {p.status === "AGUARDANDO" && p.matricula_paga_em && <Etiqueta tom="info">Matrícula paga, falta o curso</Etiqueta>}
         <Etiqueta tom={situacao.tom}>{situacao.rotulo}</Etiqueta>
         {p.acesso_liberado && p.acesso_ate && (
           <span>acesso até {dataCurta(p.acesso_ate)}</span>
         )}
       </div>
     </Cartao>
+  );
+}
+
+// --- envios ------------------------------------------------------------------
+
+/**
+ * Quem pagou e precisa receber o material em casa. Dois envios por aluno (na página de vendas: a
+ * apostila logo após a matrícula; camisa e material de revisão em agosto). Marcar só registra.
+ */
+function Envios() {
+  const lista = useDados(() => api.pedidosDeVenda());
+  const [salvando, setSalvando] = useState("");
+  const [erro, setErro] = useState("");
+
+  async function marcar(p: PedidoDeVenda, envio: 1 | 2, enviado: boolean) {
+    setErro("");
+    setSalvando(`${p.pedido_id}-${envio}`);
+    try {
+      await api.marcarEnvio(p.pedido_id, envio, enviado);
+      await lista.recarregar();
+    } catch (ex) {
+      setErro((ex as Error).message);
+    } finally {
+      setSalvando("");
+    }
+  }
+
+  return (
+    <Estado {...lista} linhas={4}>
+      {(pedidos) => {
+        const comEndereco = pedidos.filter((p) => p.acesso_liberado && p.endereco);
+        const faltam = (n: 1 | 2) => comEndereco.filter((p) => !(n === 1 ? p.envio1_em : p.envio2_em)).length;
+        return comEndereco.length === 0 ? (
+          <Vazio titulo="Nenhum material para enviar">Quem pagar o curso aparece aqui, com o endereço de entrega.</Vazio>
+        ) : (
+          <div className="flex flex-col gap-3">
+            <p className="text-[15px] text-tinta-2">
+              Faltam {plural(faltam(1), "1º envio", "1º envios")} (apostila) e {plural(faltam(2), "2º envio", "2º envios")}{" "}
+              (camisa e revisão).
+            </p>
+            {erro && <Aviso tom="erro">{erro}</Aviso>}
+            <ul className="flex flex-col gap-2">
+              {comEndereco.map((p) => (
+                <Cartao key={p.pedido_id} como="li" className="flex flex-wrap items-start justify-between gap-3 px-4 py-3">
+                  <div className="min-w-0">
+                    <p className="font-semibold text-tinta">{p.nome}</p>
+                    <p className="text-[13px] text-tinta-2">{p.endereco}</p>
+                    <p className="text-[13px] text-suave">
+                      {p.plano}
+                      {p.celular && ` · ${p.celular}`}
+                    </p>
+                  </div>
+                  <div className="flex flex-col gap-1.5 text-[15px]">
+                    {([1, 2] as const).map((n) => {
+                      const em = n === 1 ? p.envio1_em : p.envio2_em;
+                      return (
+                        <label key={n} className="flex cursor-pointer items-center gap-2">
+                          <input
+                            type="checkbox"
+                            checked={Boolean(em)}
+                            disabled={salvando === `${p.pedido_id}-${n}`}
+                            onChange={(e) => marcar(p, n, e.target.checked)}
+                          />
+                          {n === 1 ? "1º envio (apostila)" : "2º envio (camisa e revisão)"}
+                          {em && <span className="text-[13px] text-suave">em {dataCurta(em)}</span>}
+                        </label>
+                      );
+                    })}
+                  </div>
+                </Cartao>
+              ))}
+            </ul>
+          </div>
+        );
+      }}
+    </Estado>
   );
 }

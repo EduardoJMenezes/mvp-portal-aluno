@@ -25,6 +25,13 @@ export function dataCurta(iso?: string | null): string {
   return Number.isNaN(data.getTime()) ? iso : DATA_LONGA.format(data);
 }
 
+/** Uma data sem hora ("2027-08-31") como "31/08/2027": prazo de venda, de preço, de acesso. */
+export function dia(data?: string | null): string {
+  if (!data) return "—";
+  const [a, m, d] = data.slice(0, 10).split("-");
+  return d && m && a ? `${d}/${m}/${a}` : data;
+}
+
 /** ISO com fuso (como o backend devolve) para o valor de um input datetime-local em Brasília. */
 export function paraCampoDataHora(iso?: string | null): string {
   if (!iso) return "";

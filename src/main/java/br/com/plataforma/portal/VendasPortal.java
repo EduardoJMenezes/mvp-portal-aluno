@@ -38,11 +38,13 @@ public class VendasPortal {
     // --- professor -----------------------------------------------------------
 
     public record PlanoIn(@Size(max = 120) String nome, @Size(max = 60) String link, String tipo, Integer precoCentavos,
-            Integer parcelasMax, Integer mensalidades, LocalDate acessoAte, List<String> turmas, Boolean ativo) {
+            Integer parcelasMax, Integer mensalidades, LocalDate acessoAte, List<String> turmas, Boolean ativo,
+            Integer matriculaCentavos, Integer matriculaParcelasMax, @Size(max = 10) String aVendaAte,
+            @Size(max = 24) List<VendasServico.PrecoDoPlano> precos) {
 
         VendasServico.DadosDoPlano dados() {
             return new VendasServico.DadosDoPlano(nome, link, tipo, precoCentavos, parcelasMax, mensalidades, acessoAte,
-                    turmas, ativo);
+                    turmas, ativo, matriculaCentavos, matriculaParcelasMax, aVendaAte, precos);
         }
     }
 
@@ -67,6 +69,14 @@ public class VendasPortal {
         return vendas.listarPedidos(ident);
     }
 
+    public record EnvioIn(Integer envio, Boolean enviado) {}
+
+    @PatchMapping("/api/admin/vendas/pedidos/{pedido}/envio")
+    public VendasServico.PedidoNaLista marcarEnvio(@AuthenticationPrincipal Identidade ident, @PathVariable Integer pedido,
+            @RequestBody EnvioIn d) {
+        return vendas.marcarEnvio(ident, pedido, d.envio(), d.enviado(), Instant.now());
+    }
+
     // --- público -------------------------------------------------------------
 
     /**
@@ -87,15 +97,23 @@ public class VendasPortal {
 
     public record CompraIn(@NotBlank @Size(max = 200) String nome, @NotBlank @Size(max = 200) String email,
             @NotBlank @Size(max = 20) String cpf, @Size(max = 20) String celular, @Size(max = 10) String cep,
-            @Size(max = 10) String numero) {}
+            @Size(max = 10) String numero, @Size(max = 60) String complemento, @Size(max = 10) String forma,
+            Boolean aceiteTermos) {}
 
     @PostMapping("/api/vendas/planos/{link}/comprar")
     public VendasServico.CompraIniciada comprar(@PathVariable String link, @Valid @RequestBody CompraIn d,
             HttpServletRequest pedido) {
         // Atrás do proxy, o Spring já montou o endereço público (https, domínio do Railway).
         var base = ServletUriComponentsBuilder.fromCurrentContextPath().build().toUriString();
-        return vendas.comprar(link, new VendasServico.DadosDaCompra(d.nome(), d.email(), d.cpf(), d.celular(), d.cep(), d.numero()),
-                AutenticacaoPortal.ip(pedido), base, Instant.now());
+        return vendas.comprar(link, new VendasServico.DadosDaCompra(d.nome(), d.email(), d.cpf(), d.celular(), d.cep(),
+                d.numero(), d.complemento(), d.forma(), d.aceiteTermos()), AutenticacaoPortal.ip(pedido), base, Instant.now());
+    }
+
+    /** Cartão, segunda etapa: com a matrícula paga, abre o checkout do curso parcelado. */
+    @PostMapping("/api/vendas/pedidos/{token}/curso")
+    public VendasServico.CompraIniciada pagarCurso(@PathVariable String token) {
+        var base = ServletUriComponentsBuilder.fromCurrentContextPath().build().toUriString();
+        return vendas.pagarCurso(token, base, Instant.now());
     }
 
     @GetMapping("/api/vendas/pedidos/{token}")

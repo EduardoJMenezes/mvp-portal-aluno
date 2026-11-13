@@ -820,6 +820,15 @@ const seg = encodeURIComponent;
 
 export type TipoDePlano = "MENSAL" | "UNICO";
 
+/** Uma linha da tabela de preços do pagamento único. a_partir_de null: desde já. */
+export type PrecoDoPlano = {
+  a_partir_de: string | null;
+  pix_centavos: number | null;
+  /** Total no cartão; a parcela é o total dividido pelas parcelas. */
+  cartao_centavos: number | null;
+  cartao_parcelas: number;
+};
+
 export type PlanoDeVenda = {
   plano_id: number;
   nome: string;
@@ -833,6 +842,10 @@ export type PlanoDeVenda = {
   ativo: boolean;
   turmas: string[];
   alunos_com_acesso: number;
+  matricula_centavos: number | null;
+  matricula_parcelas_max: number;
+  a_venda_ate: string | null;
+  precos: PrecoDoPlano[];
 };
 
 export type DadosDoPlano = Partial<{
@@ -846,6 +859,12 @@ export type DadosDoPlano = Partial<{
   acesso_ate: string | null;
   turmas: string[];
   ativo: boolean;
+  /** 0 tira a matrícula. */
+  matricula_centavos: number;
+  matricula_parcelas_max: number;
+  /** "" tira o prazo. */
+  a_venda_ate: string;
+  precos: PrecoDoPlano[];
 }>;
 
 export type StatusDoPedido = "AGUARDANDO" | "PAGO" | "ATRASADO" | "CANCELADO" | "REEMBOLSADO" | "EXPIRADO";
@@ -861,7 +880,19 @@ export type PedidoDeVenda = {
   pago_em: string | null;
   acesso_ate: string | null;
   acesso_liberado: boolean;
+  forma: FormaDoPedido | null;
+  curso_centavos: number | null;
+  cartao_parcelas: number | null;
+  matricula_centavos: number | null;
+  matricula_paga_em: string | null;
+  celular: string | null;
+  endereco: string | null;
+  termos_versao: string | null;
+  envio1_em: string | null;
+  envio2_em: string | null;
 };
+
+export type FormaDoPedido = "MENSAL" | "PIX" | "CARTAO";
 
 export type PlanoPublico = {
   nome: string;
@@ -872,6 +903,16 @@ export type PlanoPublico = {
   mensalidades: number | null;
   acesso_ate: string | null;
   turmas: { nome: string; modulos: number; aulas: number }[];
+  matricula_centavos: number | null;
+  matricula_parcelas_max: number;
+  /** Pagamento único: a linha da tabela que vale hoje. */
+  pix_centavos: number | null;
+  cartao_centavos: number | null;
+  cartao_parcelas: number | null;
+  /** Até quando o preço de hoje vale; null: não muda. */
+  preco_vale_ate: string | null;
+  a_venda_ate: string | null;
+  termos_versao: string;
 };
 
 export type SituacaoDoPedido = {
@@ -880,6 +921,12 @@ export type SituacaoDoPedido = {
   email: string;
   pode_criar_senha: boolean;
   ja_tinha_conta: boolean;
+  forma: FormaDoPedido | null;
+  matricula_paga: boolean;
+  /** Cartão: matrícula paga, falta abrir o pagamento do curso. */
+  falta_pagar_curso: boolean;
+  curso_centavos: number | null;
+  cartao_parcelas: number | null;
 };
 
 export const api = {
@@ -889,11 +936,28 @@ export const api = {
   editarPlano: (id: number, dados: DadosDoPlano) =>
     pedir<PlanoDeVenda>(`/admin/vendas/planos/${id}`, { method: "PATCH", json: dados }),
   pedidosDeVenda: () => pedir<PedidoDeVenda[]>("/admin/vendas/pedidos"),
+  marcarEnvio: (pedido: number, envio: 1 | 2, enviado: boolean) =>
+    pedir<PedidoDeVenda>(`/admin/vendas/pedidos/${pedido}/envio`, { method: "PATCH", json: { envio, enviado } }),
   // vendas: público
   planoPublico: (link: string) => pedir<PlanoPublico>(`/vendas/planos/${encodeURIComponent(link)}`),
-  comprar: (link: string, dados: { nome: string; email: string; cpf: string; celular?: string; cep: string; numero: string }) =>
+  comprar: (
+    link: string,
+    dados: {
+      nome: string;
+      email: string;
+      cpf: string;
+      celular?: string;
+      cep: string;
+      numero: string;
+      complemento?: string;
+      forma?: "PIX" | "CARTAO";
+      aceite_termos: boolean;
+    },
+  ) =>
     pedir<{ checkout: string }>(`/vendas/planos/${encodeURIComponent(link)}/comprar`, { method: "POST", json: dados }),
   situacaoDoPedido: (token: string) => pedir<SituacaoDoPedido>(`/vendas/pedidos/${encodeURIComponent(token)}`),
+  pagarCurso: (token: string) =>
+    pedir<{ checkout: string }>(`/vendas/pedidos/${encodeURIComponent(token)}/curso`, { method: "POST" }),
   criarSenhaDoPedido: (token: string, senha: string) =>
     pedir<{ entrou: boolean }>(`/vendas/pedidos/${encodeURIComponent(token)}/senha`, { method: "POST", json: { senha } }),
 

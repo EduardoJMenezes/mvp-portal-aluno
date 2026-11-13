@@ -43,12 +43,17 @@ class VendasTest extends BaseDoPortal {
     }
 
     private ResultActions comprar(String link, String nome, String email, String cpf) throws Exception {
+        return comprar(link, nome, email, cpf, null);
+    }
+
+    private ResultActions comprar(String link, String nome, String email, String cpf, String forma) throws Exception {
         return mvc.perform(MockMvcRequestBuilders.post("/api/vendas/planos/" + link + "/comprar")
                 .contentType(APPLICATION_JSON)
                 .content("""
                         {"nome": "%s", "email": "%s", "cpf": "%s", "celular": "(81) 99999-0000",
-                         "cep": "53030-260", "numero": "100"}"""
-                        .formatted(nome, email, cpf)));
+                         "cep": "53030-260", "numero": "100", "complemento": "apto 302",
+                         "forma": %s, "aceite_termos": true}"""
+                        .formatted(nome, email, cpf, forma == null ? "null" : "\"" + forma + "\"")));
     }
 
     /** O token do pedido é o que volta na URL de sucesso do checkout. */
@@ -121,7 +126,7 @@ class VendasTest extends BaseDoPortal {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.checkout").value("https://sandbox.asaas.com/checkoutSession/show/chk-de-mentira-1"));
         var enviado = asaasDeMentira().criados.getLast();
-        assertThat(enviado.tipo()).isEqualTo(Plano.Tipo.MENSAL);
+        assertThat(enviado.forma()).isEqualTo(Asaas.Forma.MENSAL);
         assertThat(enviado.valorCentavos()).isEqualTo(19700);
         assertThat(enviado.mensalidades()).as("sem número, cobra até o aluno cancelar").isNull();
         assertThat(enviado.comprador().cpf()).isEqualTo(CPF);
@@ -285,6 +290,149 @@ class VendasTest extends BaseDoPortal {
                 .isAfterOrEqualTo(java.time.LocalDate.of(2027, 10, 9)).isBefore(java.time.LocalDate.of(2027, 11, 9));
     }
 
+    // --- o curso com matrícula e tabela de preços ------------------------------
+
+    /** O Extensivo como na página de vendas: matrícula à parte e o preço que muda com a data. */
+    private void planoDoCurso() throws Exception {
+        var depois = java.time.LocalDate.now(VendasServico.BRASILIA).plusDays(30);
+        post("/api/admin/vendas/planos", """
+                {"nome": "Extensivo 2027", "link": "extensivo-2027-curso", "tipo": "UNICO",
+                 "turmas": ["Extensivo 2027", "Intensivo 2027"], "matricula_centavos": 33000,
+                 "matricula_parcelas_max": 3, "a_venda_ate": "%s",
+                 "precos": [
+                   {"a_partir_de": "%s", "pix_centavos": 124000, "cartao_centavos": 139920, "cartao_parcelas": 8},
+                   {"a_partir_de": null, "pix_centavos": 170000, "cartao_centavos": 191880, "cartao_parcelas": 12}]}"""
+                .formatted(depois.plusDays(60), depois), ADMIN)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.precos.length()").value(2))
+                .andExpect(jsonPath("$.precos[0].a_partir_de").doesNotExist())
+                .andExpect(jsonPath("$.matricula_centavos").value(33000));
+    }
+
+    @Test
+    void oAlunoVeOPrecoDoDiaEAMatricula() throws Exception {
+        planoDoCurso();
+        var depois = java.time.LocalDate.now(VendasServico.BRASILIA).plusDays(30);
+        mvc.perform(MockMvcRequestBuilders.get("/api/vendas/planos/extensivo-2027-curso"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.pix_centavos").value(170000))
+                .andExpect(jsonPath("$.cartao_centavos").value(191880))
+                .andExpect(jsonPath("$.cartao_parcelas").value(12))
+                .andExpect(jsonPath("$.preco_vale_ate").value(depois.minusDays(1).toString()))
+                .andExpect(jsonPath("$.matricula_centavos").value(33000))
+                .andExpect(jsonPath("$.matricula_parcelas_max").value(3))
+                .andExpect(jsonPath("$.termos_versao").value(VendasServico.TERMOS_VERSAO));
+
+        // Sem aceitar os termos, não há compra.
+        mvc.perform(MockMvcRequestBuilders.post("/api/vendas/planos/extensivo-2027-curso/comprar")
+                        .contentType(APPLICATION_JSON).content("""
+                                {"nome": "Carla Souza", "email": "carla@exemplo.com", "cpf": "%s", "cep": "53030260",
+                                 "numero": "100", "forma": "PIX"}""".formatted(CPF)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.detail").value("Para seguir, leia e aceite os termos de matrícula."));
+        assertThat(asaasDeMentira().criados).isEmpty();
+
+        // Passou o "à venda até": as matrículas encerram.
+        var id = jdbc.queryForObject("SELECT id FROM planos", Integer.class);
+        patch("/api/admin/vendas/planos/" + id, "{\"a_venda_ate\": \"%s\"}"
+                .formatted(java.time.LocalDate.now(VendasServico.BRASILIA).minusDays(1)), ADMIN).andExpect(status().isOk());
+        mvc.perform(MockMvcRequestBuilders.get("/api/vendas/planos/extensivo-2027-curso"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.detail").value("As matrículas deste plano estão encerradas."));
+        patch("/api/admin/vendas/planos/" + id, "{\"a_venda_ate\": \"\"}", ADMIN)
+                .andExpect(status().isOk()).andExpect(jsonPath("$.a_venda_ate").doesNotExist());
+        // A tabela continua lá depois de editar outra coisa.
+        get("/api/admin/vendas/planos", ADMIN).andExpect(jsonPath("$[0].precos.length()").value(2));
+    }
+
+    @Test
+    void tabelaDePrecosPrecisaDaLinhaDesdeJa() throws Exception {
+        post("/api/admin/vendas/planos", """
+                {"nome": "Sem desde já", "link": "sem-desde-ja", "tipo": "UNICO", "turmas": ["Extensivo 2027"],
+                 "precos": [{"a_partir_de": "2027-04-01", "pix_centavos": 124000}]}""", ADMIN)
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.detail").value("A primeira linha de preço vale desde já: deixe a data dela vazia."));
+        post("/api/admin/vendas/planos", """
+                {"nome": "Linha vazia", "link": "linha-vazia", "tipo": "UNICO", "turmas": ["Extensivo 2027"],
+                 "precos": [{"a_partir_de": null}]}""", ADMIN)
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void noPixMatriculaECursoVaoNumPagamentoSo() throws Exception {
+        planoDoCurso();
+        comprar("extensivo-2027-curso", "Carla Souza", "carla@exemplo.com", CPF, "PIX").andExpect(status().isOk());
+        var enviado = asaasDeMentira().criados.getLast();
+        assertThat(enviado.forma()).isEqualTo(Asaas.Forma.PIX);
+        assertThat(enviado.itens()).extracting(Asaas.Item::valorCentavos).containsExactly(33000, 170000);
+        assertThat(enviado.comprador().complemento()).isEqualTo("apto 302");
+
+        avisar(PAGO).andExpect(status().isOk());
+        assertThat(matriculasDoPedido()).isEqualTo(2);
+        var pedido = jdbc.queryForMap("SELECT * FROM pedidos");
+        assertThat(pedido.get("valor_centavos")).isEqualTo(203000);
+        assertThat(pedido.get("forma")).isEqualTo("PIX");
+        assertThat(pedido.get("matricula_paga_em")).isNotNull();
+        assertThat(pedido.get("termos_versao")).isEqualTo(VendasServico.TERMOS_VERSAO);
+        assertThat(pedido.get("termos_ip")).isNotNull();
+        assertThat(pedido.get("cidade")).isEqualTo("Recife");
+
+        // O endereço vai para a lista de envios, e o professor marca o que saiu.
+        var id = (Integer) pedido.get("id");
+        get("/api/admin/vendas/pedidos", ADMIN)
+                .andExpect(jsonPath("$[0].endereco").value("Rua do Teste, 100, apto 302 — Centro, Recife/PE — CEP 53030-260"));
+        patch("/api/admin/vendas/pedidos/" + id + "/envio", "{\"envio\": 1, \"enviado\": true}", ADMIN)
+                .andExpect(status().isOk()).andExpect(jsonPath("$.envio1_em").exists())
+                .andExpect(jsonPath("$.envio2_em").doesNotExist());
+        patch("/api/admin/vendas/pedidos/" + id + "/envio", "{\"envio\": 1, \"enviado\": true}", ALUNO)
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void noCartaoAMatriculaVemAntesDoCurso() throws Exception {
+        planoDoCurso();
+        comprar("extensivo-2027-curso", "Carla Souza", "carla@exemplo.com", CPF, "CARTAO").andExpect(status().isOk());
+        var matricula = asaasDeMentira().criados.getLast();
+        assertThat(matricula.forma()).isEqualTo(Asaas.Forma.PIX_OU_CARTAO);
+        assertThat(matricula.parcelasMax()).isEqualTo(3);
+        assertThat(matricula.valorCentavos()).isEqualTo(33000);
+        var token = tokenDoUltimoCheckout();
+        var curso = "/api/vendas/pedidos/" + token + "/curso";
+
+        situacao(token).andExpect(jsonPath("$.falta_pagar_curso").value(false));
+        mvc.perform(MockMvcRequestBuilders.post(curso)).andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.detail").value("A matrícula ainda não foi confirmada. Aguarde um instante."));
+
+        // Matrícula paga: ainda sem acesso, e a página de volta oferece o curso.
+        avisar("""
+                {"event": "CHECKOUT_PAID", "checkout": {"id": "chk-de-mentira-1", "customer": "cus_1"}}""");
+        assertThat(matriculasDoPedido()).isZero();
+        situacao(token).andExpect(jsonPath("$.status").value("AGUARDANDO"))
+                .andExpect(jsonPath("$.matricula_paga").value(true))
+                .andExpect(jsonPath("$.falta_pagar_curso").value(true))
+                .andExpect(jsonPath("$.curso_centavos").value(191880))
+                .andExpect(jsonPath("$.cartao_parcelas").value(12));
+
+        mvc.perform(MockMvcRequestBuilders.post(curso)).andExpect(status().isOk());
+        var doCurso = asaasDeMentira().criados.getLast();
+        assertThat(doCurso.forma()).isEqualTo(Asaas.Forma.CARTAO);
+        assertThat(doCurso.parcelasMax()).isEqualTo(12);
+        assertThat(doCurso.valorCentavos()).isEqualTo(191880);
+
+        // O checkout do curso expirou: o pedido não morre, abre-se outro.
+        avisar("""
+                {"event": "CHECKOUT_EXPIRED", "checkout": {"id": "chk-de-mentira-2"}}""");
+        situacao(token).andExpect(jsonPath("$.falta_pagar_curso").value(true));
+        mvc.perform(MockMvcRequestBuilders.post(curso)).andExpect(status().isOk());
+
+        avisar("""
+                {"event": "CHECKOUT_PAID", "checkout": {"id": "chk-de-mentira-3", "customer": "cus_1"}}""");
+        assertThat(matriculasDoPedido()).isEqualTo(2);
+        situacao(token).andExpect(jsonPath("$.status").value("PAGO"))
+                .andExpect(jsonPath("$.falta_pagar_curso").value(false));
+        mvc.perform(MockMvcRequestBuilders.post(curso)).andExpect(status().isBadRequest());
+    }
+
     @Test
     void pagamentoUnicoValeAteADataDoPlano() throws Exception {
         var fim = java.time.LocalDate.now(VendasServico.BRASILIA).plusMonths(3);
@@ -293,8 +441,12 @@ class VendasTest extends BaseDoPortal {
                  "preco_centavos": 199700, "parcelas_max": 12, "acesso_ate": "%s",
                  "turmas": ["Extensivo 2027", "Intensivo 2027"]}""".formatted(fim), ADMIN)
                 .andExpect(status().isOk());
-        comprar("extensivo-2027-avista", "Carla Souza", "carla@exemplo.com", CPF).andExpect(status().isOk());
+        comprar("extensivo-2027-avista", "Carla Souza", "carla@exemplo.com", CPF)
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.detail").value("Escolha como pagar: Pix à vista ou cartão."));
+        comprar("extensivo-2027-avista", "Carla Souza", "carla@exemplo.com", CPF, "CARTAO").andExpect(status().isOk());
         assertThat(asaasDeMentira().criados.getLast().parcelasMax()).isEqualTo(12);
+        assertThat(asaasDeMentira().criados.getLast().forma()).isEqualTo(Asaas.Forma.CARTAO);
 
         avisar("""
                 {"event": "CHECKOUT_PAID", "checkout": {"id": "chk-de-mentira-1", "customer": "cus_2"}}""");

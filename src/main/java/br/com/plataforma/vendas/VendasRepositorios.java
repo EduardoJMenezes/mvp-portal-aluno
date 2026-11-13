@@ -19,6 +19,8 @@ interface PedidoRepositorio extends JpaRepository<Pedido, Integer> {
 
     Optional<Pedido> findFirstByAsaasCheckoutId(String checkoutId);
 
+    Optional<Pedido> findFirstByMatriculaCheckoutId(String checkoutId);
+
     Optional<Pedido> findFirstByAsaasAssinaturaIdOrderByIdDesc(String assinaturaId);
 
     /** Pagamento único não tem assinatura: o cliente do Asaas leva ao pedido pago mais recente. */

@@ -21,16 +21,30 @@ class AsaasDeVerdadeTest {
         assertThat(chave).as("este teste só roda com chave de sandbox").startsWith("$aact_hmlg_");
         var asaas = new Asaas.Real(chave, Asaas.baseDaChave(chave),
                 new ClassPathResource("vendas/icone.png").getContentAsByteArray());
+        var endereco = asaas.endereco("53030260");
+        assertThat(endereco.cidade()).isNotBlank();
         var comprador = new Asaas.Comprador("Aluna Teste Portal", "aluna.teste.portal@example.com", "52998224725",
-                "81999990000", "53030260", "100");
+                "81999990000", "53030260", "100", endereco.rua(), "apto 1", endereco.bairro());
+        var matricula = new Asaas.Item("Matrícula", "[TESTE] Matrícula", 33000);
+        var curso = new Asaas.Item("[TESTE] Extensivo 2027", "Acesso a Extensivo 2027", 191880);
 
-        for (var tipo : Plano.Tipo.values()) {
-            var checkout = asaas.criarCheckout(new Asaas.NovoCheckout("[TESTE] Extensivo 2026 — plano de teste",
-                    "Acesso a Extensivo 2026", 19700, tipo, tipo == Plano.Tipo.UNICO ? 12 : 1,
-                    tipo == Plano.Tipo.MENSAL ? 12 : null, comprador,
-                    "teste-" + tipo, "https://app-production-e5b7.up.railway.app/assinar/pronto/?pedido=teste",
+        // Cada jeito que a venda usa: mensal com 12 cobranças, Pix com matrícula junto, matrícula em 3x, curso em 12x.
+        for (var forma : Asaas.Forma.values()) {
+            var itens = switch (forma) {
+                case PIX -> java.util.List.of(matricula, curso);
+                case PIX_OU_CARTAO -> java.util.List.of(matricula);
+                default -> java.util.List.of(curso);
+            };
+            var parcelas = switch (forma) {
+                case CARTAO -> 12;
+                case PIX_OU_CARTAO -> 3;
+                default -> 1;
+            };
+            var checkout = asaas.criarCheckout(new Asaas.NovoCheckout(itens, forma, parcelas,
+                    forma == Asaas.Forma.MENSAL ? 12 : null, comprador, "teste-" + forma,
+                    "https://app-production-e5b7.up.railway.app/assinar/pronto/?pedido=teste",
                     "https://app-production-e5b7.up.railway.app/assinar/teste"));
-            System.out.println("CHECKOUT_" + tipo + "=" + checkout.link());
+            System.out.println("CHECKOUT_" + forma + "=" + checkout.link());
             assertThat(checkout.link()).startsWith("https://sandbox.asaas.com/");
         }
     }
