@@ -120,6 +120,63 @@ public class VendasServico {
         return salvar(plano);
     }
 
+    public record VendaMontada(boolean criada, PlanoNaLista plano, String aviso) {}
+
+    /**
+     * O plano montado pelo Claude do professor, achado pelo link: existe, edita; não existe, cria.
+     * Criado por aqui nasce FORA DO AR, mesmo que peçam o contrário: o professor confere a tabela na
+     * tela de Vendas e só depois manda pôr no ar, numa segunda chamada. Preço errado cobra o aluno.
+     */
+    @Transactional
+    public VendaMontada montarVenda(Identidade ident, String link, DadosDoPlano d, Instant agora) {
+        ident.exigirOperador();
+        var chave = link == null ? "" : link.strip().toLowerCase(Locale.ROOT);
+        var existente = planos.findFirstByLinkIgnoreCase(chave);
+        if (existente.isPresent()) {
+            return new VendaMontada(false, editarPlano(ident, existente.get().getId(), d, agora), null);
+        }
+        var pediuNoAr = Boolean.TRUE.equals(d.ativo());
+        var foraDoAr = new DadosDoPlano(d.nome(), chave, d.tipo() == null ? "UNICO" : d.tipo(), d.precoCentavos(), d.parcelasMax(), d.mensalidades(),
+                d.acessoAte(), d.turmas(), false, d.matriculaCentavos(), d.matriculaParcelasMax(), d.aVendaAte(), d.precos());
+        var criado = criarPlano(ident, foraDoAr, agora);
+        return new VendaMontada(true, criado, pediuNoAr
+                ? "O plano nasceu fora do ar, como todo plano criado pelo chat. Confira na tela de Vendas e peça para pôr no ar."
+                : null);
+    }
+
+    public record PrecoDeHoje(Integer pixCentavos, Integer cartaoCentavos, Integer cartaoParcelas, LocalDate valeAte) {}
+
+    public record PlanoNoResumo(PlanoNaLista plano, PrecoDeHoje hoje, boolean vendaEncerrada) {}
+
+    public record EnvioPendente(Integer pedidoId, String nome, String plano, String endereco, String celular,
+            boolean falta1, boolean falta2) {}
+
+    public record ResumoDasVendas(List<PlanoNoResumo> planos, Map<String, Long> pedidos, long matriculaPagaSemCurso,
+            List<EnvioPendente> enviosPendentes) {}
+
+    /** Tudo o que o professor pergunta sobre a venda: planos com o preço de hoje, pedidos e envios. */
+    @Transactional(readOnly = true)
+    public ResumoDasVendas resumo(Identidade ident) {
+        ident.exigirOperador();
+        var hoje = LocalDate.now(BRASILIA);
+        var listaDePlanos = planos.findAllByOrderByAtivoDescNomeAsc().stream().map(p -> {
+            var dia = p.getTipo() == Plano.Tipo.UNICO ? p.precoDoDia(hoje).orElse(null) : null;
+            var preco = dia == null ? null : new PrecoDeHoje(dia.getPixCentavos(), dia.getCartaoCentavos(),
+                    dia.getCartaoParcelas(), p.precoValeAte(hoje));
+            return new PlanoNoResumo(naLista(p), preco, p.vendaEncerrada(hoje));
+        }).toList();
+        var todos = pedidos.findTop200ByOrderByIdDesc();
+        var porStatus = new java.util.TreeMap<String, Long>();
+        todos.forEach(p -> porStatus.merge(p.getStatus().name(), 1L, Long::sum));
+        var semCurso = todos.stream().filter(Pedido::faltaPagarOCurso).count();
+        var envios = todos.stream()
+                .filter(p -> p.isAcessoLiberado() && p.getRua() != null && (p.getEnvio1Em() == null || p.getEnvio2Em() == null))
+                .map(p -> new EnvioPendente(p.getId(), p.getNome(), p.getPlano().getNome(), enderecoPorExtenso(p),
+                        p.getCelular(), p.getEnvio1Em() == null, p.getEnvio2Em() == null))
+                .toList();
+        return new ResumoDasVendas(listaDePlanos, porStatus, semCurso, envios);
+    }
+
     private PlanoNaLista salvar(Plano plano) {
         try {
             return naLista(planos.saveAndFlush(plano));
