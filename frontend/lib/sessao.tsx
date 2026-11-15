@@ -17,9 +17,10 @@ type ValorDaSessao = {
 const Contexto = createContext<ValorDaSessao | null>(null);
 
 const normalizar = (caminho: string) => (caminho.length > 1 ? caminho.replace(/\/+$/, "") : caminho);
-// /assinar é a página de venda: quem chega pelo link ainda não tem conta. /estilo é a vitrine
+// /assinar é a página de venda: quem chega pelo link ainda não tem conta, e /termos é lido dali
+// antes da compra. /estilo é a vitrine
 // dos componentes, para quem revisa o design sem ter conta no portal.
-const PUBLICAS = ["/entrar", "/enviar", "/assinar", "/estilo"];
+const PUBLICAS = ["/entrar", "/enviar", "/assinar", "/termos", "/estilo"];
 const ehPublica = (caminho: string) => PUBLICAS.some((p) => caminho === p || caminho.startsWith(`${p}/`));
 // Na prévia do aluno o professor anda pelo portal como aluno: as rotas e o menu são os do aluno,
 // e o backend responde como para um aluno da turma escolhida.
