@@ -3,7 +3,7 @@ import { Moldura } from "@/components/Moldura";
 
 // Os termos que o aluno aceita na página de assinar. Mudou o texto, mude a versão aqui E em
 // VendasServico.TERMOS_VERSAO: cada pedido guarda a versão que o aluno aceitou.
-const VERSAO = "2026-11-12";
+const VERSAO = "2026-11-15";
 
 export const metadata = { title: "Termos de matrícula" };
 
@@ -31,11 +31,12 @@ export default function Termos() {
           os dados do cartão são digitados na página dele e não passam pela plataforma.
         </Secao>
 
-        <Secao titulo="3. Material impresso">
+        <Secao titulo="3. Material">
           A matrícula inclui o material impresso, com frete grátis para todo o Brasil: a apostila, enviada depois da
           confirmação da matrícula (quem se matricula antes do início do curso recebe em janeiro), e a camisa com o
-          material de revisão, enviados em agosto. O material vai para o endereço informado na matrícula; mantê-lo
-          correto é responsabilidade do aluno.
+          material de revisão, enviados em agosto. A apostila também fica disponível na versão digital, na área de
+          materiais da plataforma, sem custo adicional. O material impresso vai para o endereço informado na
+          matrícula; mantê-lo correto é responsabilidade do aluno.
         </Secao>
 
         <Secao titulo="4. Garantia de 7 dias">

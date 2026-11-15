@@ -48,7 +48,7 @@ public class VendasServico {
      * A versão dos termos de matrícula que a página /termos mostra. Mudou o texto lá
      * ({@code frontend/app/termos/page.tsx}), muda aqui: o pedido guarda qual versão o aluno aceitou.
      */
-    public static final String TERMOS_VERSAO = "2026-11-12";
+    public static final String TERMOS_VERSAO = "2026-11-15";
 
     private final PlanoRepositorio planos;
     private final PedidoRepositorio pedidos;
