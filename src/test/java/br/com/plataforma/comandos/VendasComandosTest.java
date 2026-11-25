@@ -17,6 +17,10 @@ class VendasComandosTest extends BaseDeComando {
                {"pix": 1700, "cartao_parcelas": 12, "cartao_parcela": 159.90},
                {"a_partir_de": "2027-04-01", "pix": 1240, "cartao_parcelas": 8, "cartao_parcela": 174.90}]}""";
 
+    private static final String TABELA_ORIGINAL = """
+            [{"pix": 1700, "cartao_parcelas": 12, "cartao_parcela": 159.90},
+             {"a_partir_de": "2027-04-01", "pix": 1240, "cartao_parcelas": 8, "cartao_parcela": 174.90}]""";
+
     @Test
     void montaOExtensivoForaDoArEDepoisPoeNoAr() throws Exception {
         comando("montar_venda", EXTENSIVO)
@@ -36,6 +40,18 @@ class VendasComandosTest extends BaseDeComando {
                 .andExpect(jsonPath("$.criada").value(false))
                 .andExpect(jsonPath("$.plano.ativo").value(true))
                 .andExpect(jsonPath("$.plano.precos.length()").value(2));
+
+        // Trocar a tabela de um plano que já existe, repetindo a linha "desde já" (só cartão agora).
+        comando("montar_venda", """
+                {"link": "extensivo-2027", "precos": [
+                  {"cartao_parcelas": 12, "cartao_parcela": 159.90},
+                  {"a_partir_de": "2027-04-01", "cartao_parcelas": 8, "cartao_parcela": 174.90}]}""")
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.plano.precos.length()").value(2))
+                .andExpect(jsonPath("$.plano.precos[0].pix_centavos").doesNotExist())
+                .andExpect(jsonPath("$.plano.precos[0].cartao_centavos").value(191880));
+        comando("montar_venda", "{\"link\": \"extensivo-2027\", \"precos\": " + TABELA_ORIGINAL + "}")
+                .andExpect(status().isOk());
 
         comando("ver_vendas", "{}")
                 .andExpect(status().isOk())

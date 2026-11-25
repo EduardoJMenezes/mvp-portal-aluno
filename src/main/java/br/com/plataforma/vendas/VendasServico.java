@@ -181,6 +181,7 @@ public class VendasServico {
         try {
             return naLista(planos.saveAndFlush(plano));
         } catch (DataIntegrityViolationException e) {
+            // O link repetido já é barrado em aplicar(); aqui só chega a corrida de dois ao mesmo tempo.
             throw new RegraDeNegocio("Já existe um plano com o link '%s'. Escolha outro.".formatted(plano.getLink()));
         }
     }
@@ -196,6 +197,10 @@ public class VendasServico {
         if (link.length() < 3 || link.length() > 60 || !LINK.matcher(link).matches()) {
             throw new RegraDeNegocio("O link usa só letras minúsculas, números e hífen, de 3 a 60 caracteres, "
                     + "ex.: 'extensivo-2026'.");
+        }
+        var mesmoLink = planos.findFirstByLinkIgnoreCase(link);
+        if (mesmoLink.isPresent() && (novo || !mesmoLink.get().getId().equals(p.getId()))) {
+            throw new RegraDeNegocio("Já existe um plano com o link '%s'. Escolha outro.".formatted(link));
         }
         Plano.Tipo tipo;
         try {
@@ -268,6 +273,12 @@ public class VendasServico {
         if (!unico) {
             p.mudarPrecos(List.of());
         } else if (linhas != null) {
+            if (!novo) {
+                // A tabela nova pode repetir datas da antiga (a linha "desde já", no mínimo), e o
+                // Hibernate grava as novas antes de apagar as velhas: apaga primeiro, de verdade.
+                p.mudarPrecos(List.of());
+                planos.flush();
+            }
             p.mudarPrecos(linhas);
         }
     }
