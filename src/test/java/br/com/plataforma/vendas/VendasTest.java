@@ -106,6 +106,23 @@ class VendasTest extends BaseDoPortal {
                 .andExpect(jsonPath("$.detail").value("Este plano não está à venda."));
     }
 
+    /** A página de vendas, em outro domínio, lê o preço do dia; comprar e o resto da API, não. */
+    @Test
+    void qualquerSiteLeOPrecoMasNaoCompraNemLeOResto() throws Exception {
+        planoMensal();
+        var deFora = "https://rodrigomeloquimica.com.br";
+        mvc.perform(MockMvcRequestBuilders.get("/api/vendas/planos/extensivo-2027").header("Origin", deFora))
+                .andExpect(status().isOk())
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.header()
+                        .string("Access-Control-Allow-Origin", "*"));
+        mvc.perform(MockMvcRequestBuilders.options("/api/vendas/planos/extensivo-2027/comprar").header("Origin", deFora)
+                        .header("Access-Control-Request-Method", "POST"))
+                .andExpect(status().isForbidden());
+        mvc.perform(MockMvcRequestBuilders.get("/api/admin/vendas/planos").header("Origin", deFora))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.header()
+                        .doesNotExist("Access-Control-Allow-Origin"));
+    }
+
     /** O link divulgado leva à página de assinar; "pronto" é a página de volta, não um plano. */
     @Test
     void oLinkDivulgadoLevaAPaginaDeAssinar() throws Exception {

@@ -111,7 +111,14 @@ class Seguranca {
         cors.setAllowCredentials(true);
         cors.addAllowedMethod("*");
         cors.addAllowedHeader("*");
+        // O preço do plano é público: a página de vendas, em outro domínio, lê o preço do dia daqui.
+        // Só leitura e sem cookie, então qualquer origem — e só esta rota; o resto segue a lista.
+        var precoPublico = new CorsConfiguration();
+        precoPublico.addAllowedOrigin("*");
+        precoPublico.setAllowCredentials(false);
+        precoPublico.addAllowedMethod("GET");
         var fonte = new UrlBasedCorsConfigurationSource();
+        fonte.registerCorsConfiguration("/api/vendas/planos/*", precoPublico);
         fonte.registerCorsConfiguration("/api/**", cors);
         return fonte;
     }
