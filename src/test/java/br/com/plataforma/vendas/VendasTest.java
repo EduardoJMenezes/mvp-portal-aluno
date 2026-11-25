@@ -405,6 +405,28 @@ class VendasTest extends BaseDoPortal {
                 .andExpect(status().isForbidden());
     }
 
+    /**
+     * Como o Asaas de verdade avisa: o "checkout pago" sem o cliente, e o estorno de uma compra
+     * parcelada chegando parcela por parcela, cada uma com o checkout de onde veio.
+     */
+    @Test
+    void estornoDeCompraParceladaAchaOPedidoPeloCheckout() throws Exception {
+        planoDoCurso();
+        comprar("extensivo-2027-curso", "Carla Souza", "carla@exemplo.com", CPF, "PIX").andExpect(status().isOk());
+        avisar("""
+                {"event": "CHECKOUT_PAID", "checkout": {"id": "chk-de-mentira-1"}}""").andExpect(status().isOk());
+        assertThat(matriculasDoPedido()).isEqualTo(2);
+
+        for (var parcela = 1; parcela <= 3; parcela++) {
+            avisar("""
+                    {"event": "PAYMENT_REFUNDED", "payment": {"id": "pay_%d", "customer": "cus_que_nao_conhecemos",
+                     "installment": "inst_1", "installmentNumber": %d, "checkoutSession": "chk-de-mentira-1"}}"""
+                    .formatted(parcela, parcela)).andExpect(status().isOk());
+        }
+        assertThat(matriculasDoPedido()).isZero();
+        assertThat(jdbc.queryForObject("SELECT status FROM pedidos", String.class)).isEqualTo("REEMBOLSADO");
+    }
+
     @Test
     void noCartaoAMatriculaVemAntesDoCurso() throws Exception {
         planoDoCurso();

@@ -593,6 +593,7 @@ public class VendasServico {
         var checkout = mapa(aviso.get("checkout"));
         var cobranca = mapa(aviso.get("payment"));
         var assinatura = mapa(aviso.get("subscription"));
+        log.info("aviso {} do Asaas (checkout {}, cobrança {})", evento, texto(checkout.get("id")), texto(cobranca.get("id")));
         switch (evento) {
             case "CHECKOUT_PAID" -> {
                 var id = texto(checkout.get("id"));
@@ -619,14 +620,15 @@ public class VendasServico {
             case "PAYMENT_OVERDUE" -> daAssinatura(cobranca)
                     .filter(p -> p.isAcessoLiberado() && p.getAcessoAte() == null)
                     .ifPresent(p -> p.vence(Pedido.Status.ATRASADO, agora.plus(TOLERANCIA_DE_ATRASO), agora));
-            case "PAYMENT_REFUNDED", "PAYMENT_CHARGEBACK_REQUESTED" -> daCobranca(cobranca)
-                    .ifPresent(p -> revogar(p, Pedido.Status.REEMBOLSADO, agora));
+            case "PAYMENT_REFUNDED", "PAYMENT_CHARGEBACK_REQUESTED" -> daCobranca(cobranca).ifPresentOrElse(
+                    p -> revogar(p, Pedido.Status.REEMBOLSADO, agora),
+                    () -> log.warn("estorno da cobrança {} sem pedido nosso: ninguém perdeu acesso", texto(cobranca.get("id"))));
             case "SUBSCRIPTION_DELETED", "SUBSCRIPTION_INACTIVATED" -> pedidos
                     .findFirstByAsaasAssinaturaIdOrderByIdDesc(texto(assinatura.get("id")))
                     .filter(Pedido::isAcessoLiberado)
                     // Cancelou: o mês que já pagou continua valendo.
                     .ifPresent(p -> p.vence(Pedido.Status.CANCELADO, fimDoPeriodo(assinatura, agora), agora));
-            default -> log.info("aviso {} do Asaas: nada a fazer", evento);
+            default -> { /* nada a fazer: o registro acima já conta que chegou */ }
         }
     }
 
@@ -654,6 +656,16 @@ public class VendasServico {
 
     /** Estorno de mensalidade tem assinatura; de pagamento único, só o cliente. */
     private java.util.Optional<Pedido> daCobranca(Map<?, ?> cobranca) {
+        // Toda cobrança nascida de um checkout traz o id dele, o mesmo que o pedido guarda: é o
+        // caminho mais firme (o aviso de pago do checkout nem sempre traz o cliente).
+        var sessao = texto(cobranca.get("checkoutSession"));
+        if (!sessao.isEmpty()) {
+            var peloCheckout = pedidos.findFirstByAsaasCheckoutId(sessao)
+                    .or(() -> pedidos.findFirstByMatriculaCheckoutId(sessao));
+            if (peloCheckout.isPresent()) {
+                return peloCheckout;
+            }
+        }
         var peloPlano = daAssinatura(cobranca);
         if (peloPlano.isPresent()) {
             return peloPlano;
